@@ -15,6 +15,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="${ROOT}/bin"
 MODULE_NAME="$(basename "${ROOT}")"
+GO_DIR="${ROOT}/golang"
 
 # Supported platforms: "os/arch"
 PLATFORMS=(
@@ -79,7 +80,7 @@ build_one() {
 
   echo "==> Building ${os}/${arch} -> ${out_file}"
   (
-    cd "${ROOT}"
+    cd "${GO_DIR}"
     GOOS="${os}" GOARCH="${arch}" CGO_ENABLED=0 \
       go build -trimpath -ldflags="-s -w" -o "${out_file}" .
   )
