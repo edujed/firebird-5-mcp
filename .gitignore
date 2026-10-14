@@ -16,3 +16,7 @@ Thumbs.db
 # Go
 *.test
 *.out
+
+# Rust
+firebird-5-mcp/target/
+**/*.rs.bk
