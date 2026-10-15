@@ -6,6 +6,9 @@ members = ["crates/mcp-core", "crates/mcp-bin"]
 name = "firebird-5-mcp"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/edujed/jed-personal-mcp"
+description = "Pure-Rust MCP server for Firebird databases (no isql, no native libs)"
 
 [workspace.dependencies]
 # Driver do Firebird em Rust Puro (sem dependência de DLL/.so)

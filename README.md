@@ -14,9 +14,11 @@ A lightweight, pure-Rust MCP (Model Context Protocol) server for Firebird 5 data
 
 ### Schema & Structure
 - `firebird_describe_table` — Full schema of a table (columns, indexes, constraints, triggers, comments)
-- `firebird_describe_database` — Complete database overview with Mermaid ER diagram
+- `firebird_describe_database` — Complete database overview with Health section (gstat-like) + Mermaid ER diagram
 - `firebird_describe` — Multi-object describe (tables, views, procedures, functions, triggers, sequences, domains)
 - `firebird_list` — List tables, views, procedures, functions, domains, triggers, indexes, sequences
+- `firebird_find_column` — Find columns by name pattern (LIKE) across all tables/views
+- `firebird_check_duplicates` — Check for duplicate values before creating unique index/constraint
 
 ### DDL & Advanced
 - `firebird_create_database` — Create a new Firebird database file
@@ -45,7 +47,7 @@ A lightweight, pure-Rust MCP (Model Context Protocol) server for Firebird 5 data
   - **Protobuf** (Connect-RPC/gRPC)
   - **OpenAPI 3.2.0** (YAML schemas)
   - **Lazarus/Delphi** (.lfm forms with TFBDataSet)
-  - **Svelte 5** (Page + Form using `@edujed/jedsvelted-ui`)
+  - **Svelte 5** (Page read-only using `@edujed/jedsvelted-ui`)
 
 ### Discovery
 - `firebird_get_databases` — List configured databases
@@ -101,21 +103,41 @@ Create a `config.json` file:
 
 ### 2. Build
 
+Use the build script from the project root:
+
 ```bash
-# From the firebird-5-mcp directory
+./scripts/build.sh rust          # Current platform (binaries in bin/)
+./scripts/build.sh rust all      # All supported platforms
+```
+
+The script also packages the binaries into `dist/` as compressed archives:
+
+- **Windows** → `.zip` (e.g. `firebird-5-mcp-windows-amd64.zip`)
+- **Linux** → `.tar.gz` (e.g. `firebird-5-mcp-linux-amd64.tar.gz`)
+
+```bash
+./scripts/build.sh rust all
+# Binaries in: bin/
+# Archives in: dist/
+```
+
+Or build manually:
+
+```bash
 cd firebird-5-mcp
 cargo build --release
-
-# Binary will be at:
-# firebird-5-mcp/target/release/firebird-5-mcp
+# Binary will be at: firebird-5-mcp/target/release/firebird-5-mcp
 ```
 
-Or use the build script from the project root:
+**Cross-compilation notes:**
 
-```bash
-./scripts/build.sh rust
-# Binary will be at: bin/firebird-5-mcp-linux-amd64
-```
+| Platform | Target | Requirements |
+|---|---|---|
+| linux/amd64 | `x86_64-unknown-linux-gnu` | None (native on x86_64) |
+| linux/arm64 | `aarch64-unknown-linux-gnu` | `aarch64-linux-gnu-gcc` (`sudo apt install gcc-aarch64-linux-gnu`) |
+| windows/amd64 | `x86_64-pc-windows-gnu` | `x86_64-w64-mingw32-gcc` (`sudo apt install gcc-mingw-w64-x86-64`) |
+| darwin/* | `*-apple-darwin` | [osxcross](https://github.com/tpoechtrager/osxcross) (skipped with a warning if not installed) |
+| windows/arm64 | — | Not supported (no stable GNU target in Rust) |
 
 ### 3. Register in Zed Editor
 
@@ -223,6 +245,81 @@ ORDERS | TABLE | Order data
 ...
 ```
 
+### `firebird_find_column`
+
+Finds columns by name pattern across all tables and views. Supports `%` wildcards.
+
+**Arguments:**
+- `column` (required): Column name pattern (supports `%` wildcards). E.g., `EMAIL`, `%NOME%`, `ID`
+- `database` (optional): Database name
+
+**Example:**
+```json
+{
+  "column": "%EMAIL%",
+  "database": "financeiro"
+}
+```
+
+**Result:**
+```
+### Columns matching '%EMAIL%' (2 found)
+
+TABLE | COLUMN | TYPE | NULL | VIEW
+--- | --- | --- | --- | ---
+AUT_USUARIO | EMAIL | VARCHAR(250) | NO |
+VW_USER | EMAIL | VARCHAR(250) | YES | YES
+```
+
+### `firebird_check_duplicates`
+
+Checks for duplicate values in one or more columns. Use this BEFORE creating a unique index or constraint to verify data integrity. Supports composite keys.
+
+**Arguments:**
+- `table` (required): Table name to check
+- `columns` (required): Array of column names to check (supports composite keys)
+- `limit` (optional): Maximum number of duplicate combinations to return (default: 10)
+- `database` (optional): Database name
+
+**Example:**
+```json
+{
+  "table": "PEP_PESSOA",
+  "columns": ["TIPO_ID"],
+  "database": "financeiro"
+}
+```
+
+**Result (with duplicates):**
+```
+### Duplicate Check: PEP_PESSOA (TIPO_ID)
+
+⚠️ 1 duplicate combination(s) found:
+
+TIPO_ID | DUPLICATED_COUNT
+--- | ---
+136323073 | 5
+
+#### Full rows for first duplicate (TIPO_ID = 136323073):
+
+ID | TIPO_ID | PAI_ID | IS_MATRIZ | ATIVO | ...
+--- | --- | --- | --- | --- | ---
+2 | 136323073 | NULL | false | true | ...
+3 | 136323073 | 2 | true | true | ...
+4 | 136323073 | NULL | false | true | ...
+5 | 136323073 | 4 | true | true | ...
+6 | 136323073 | 4 | false | true | ...
+
+💡 Fix duplicates before creating the unique index/constraint.
+```
+
+**Result (no duplicates):**
+```
+### Duplicate Check: PEP_PESSOA (ID)
+
+✅ No duplicates found. Safe to create unique index/constraint.
+```
+
 ### `firebird_describe_table`
 
 Shows the full schema of a table or view.
@@ -259,7 +356,7 @@ PK_CLIENTS | PRIMARY KEY
 
 ### `firebird_describe_database`
 
-Provides a complete overview of the database structure with a Mermaid ER diagram.
+Provides a complete overview of the database structure with a Health section (gstat-like info) and a Mermaid ER diagram.
 
 **Arguments:**
 - `database` (optional): Database name
@@ -268,24 +365,51 @@ Provides a complete overview of the database structure with a Mermaid ER diagram
 
 **Result:**
 ```
-### Database: teste
+### Database: financeiro
 
-#### Tables (19)
+#### Health
 
-**DEPARTAMENTO** (12 rows)
+- **Path:** /database/financeiro.fdb
+- **ODS Version:** 13.1
+- **Page Size:** 32768 bytes
+- **File Size:** 428 pages (~13.4 MB)
+- **Dialect:** 3
+- **Mode:** Online (Normal)
+- **Read-Only:** NO
+- **Forced Writes:** YES
+- **Active Connections:** 1
+- **Oldest Transaction:** 1063 (active: 1772, next: 1772)
+- **Buffer Pool:** 2048 pages
+
+#### Tables (26)
+
+**AUT_ROLE**
 - ID (INTEGER, PK)
-- NOME (VARCHAR(400), UNIQUE)
 ...
 
 #### Relationships (Mermaid)
 
 ```mermaid
 erDiagram
-    DEPARTAMENTO ||--o{ USUARIO : "has"
-    USUARIO ||--o{ USUARIO_PERFIL : "has"
+    PEP_PESSOA ||--o{ AUT_USUARIO : "FK_AUT_USR_PESSOA"
     ...
 ```
 ```
+
+**Health section fields:**
+| Field | Description |
+|-------|-------------|
+| Path | Database file path |
+| ODS Version | On-Disk Structure version (13.1 = Firebird 5) |
+| Page Size | Page size in bytes |
+| File Size | Total pages and estimated size in MB |
+| Dialect | SQL dialect (3 = ANSI) |
+| Mode | Shutdown mode: Online (Normal), Multi-user, Single-user, Full |
+| Read-Only | Whether the database is read-only |
+| Forced Writes | Whether forced writes are enabled |
+| Active Connections | Number of active user connections |
+| Oldest Transaction | Oldest transaction ID (active and next) |
+| Buffer Pool | Number of buffer pool pages |
 
 ### `firebird_describe`
 
@@ -1031,6 +1155,12 @@ debug = false             # No debug info
 
 **Result:** ~1.2MB static binary (vs ~8MB for the Go version)
 
+## Credits
+
+- [rsfbclient](https://crates.io/crates/rsfbclient) — Pure-Rust Firebird client driver (no native libraries required)
+- [jedSvelted-ui](https://github.com/edujed/jedSvelted-ui) — Svelte 5 component library used by the Svelte code generator (`@edujed/jedsvelted-ui`)
+- [Model Context Protocol](https://modelcontextprotocol.io) — The MCP specification
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

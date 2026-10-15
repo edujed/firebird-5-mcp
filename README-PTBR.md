@@ -14,9 +14,11 @@ Um servidor MCP (Model Context Protocol) leve e em Rust puro para bancos de dado
 
 ### Schema & Estrutura
 - `firebird_describe_table` — Schema completo de uma tabela (colunas, índices, constraints, triggers, comentários)
-- `firebird_describe_database` — Visão completa do banco com diagrama ER Mermaid
+- `firebird_describe_database` — Visão completa do banco com seção Health (gstat-like) + diagrama ER Mermaid
 - `firebird_describe` — Describe multi-objeto (tabelas, views, procedimentos, funções, triggers, sequências, domains)
 - `firebird_list` — Lista tabelas, views, procedimentos, funções, domains, triggers, índices, sequências
+- `firebird_find_column` — Busca colunas por padrão de nome (LIKE) em todas as tabelas/views
+- `firebird_check_duplicates` — Verifica valores duplicados antes de criar índice/constraint único
 
 ### DDL & Avançado
 - `firebird_create_database` — Cria um novo arquivo de banco Firebird
@@ -45,7 +47,7 @@ Um servidor MCP (Model Context Protocol) leve e em Rust puro para bancos de dado
   - **Protobuf** (Connect-RPC/gRPC)
   - **OpenAPI 3.2.0** (schemas YAML)
   - **Lazarus/Delphi** (forms .lfm com TFBDataSet)
-  - **Svelte 5** (Page + Form usando `@edujed/jedsvelted-ui`)
+  - **Svelte 5** (Page read-only usando `@edujed/jedsvelted-ui`)
 
 ### Descoberta
 - `firebird_get_databases` — Lista bancos de dados configurados
@@ -101,21 +103,41 @@ Crie um arquivo `config.json`:
 
 ### 2. Build
 
+Use o script de build a partir da raiz do projeto:
+
 ```bash
-# A partir do diretório firebird-5-mcp
+./scripts/build.sh rust          # Plataforma atual (binários em bin/)
+./scripts/build.sh rust all      # Todas as plataformas suportadas
+```
+
+O script também empacota os binários em `dist/` como arquivos compactados:
+
+- **Windows** → `.zip` (ex.: `firebird-5-mcp-windows-amd64.zip`)
+- **Linux** → `.tar.gz` (ex.: `firebird-5-mcp-linux-amd64.tar.gz`)
+
+```bash
+./scripts/build.sh rust all
+# Binários em: bin/
+# Arquivos compactados em: dist/
+```
+
+Ou compile manualmente:
+
+```bash
 cd firebird-5-mcp
 cargo build --release
-
-# O binário estará em:
-# firebird-5-mcp/target/release/firebird-5-mcp
+# O binário estará em: firebird-5-mcp/target/release/firebird-5-mcp
 ```
 
-Ou use o script de build a partir da raiz do projeto:
+**Notas sobre cross-compilação:**
 
-```bash
-./scripts/build.sh rust
-# O binário estará em: bin/firebird-5-mcp-linux-amd64
-```
+| Plataforma | Target | Requisitos |
+|---|---|---|
+| linux/amd64 | `x86_64-unknown-linux-gnu` | Nenhum (nativo em x86_64) |
+| linux/arm64 | `aarch64-unknown-linux-gnu` | `aarch64-linux-gnu-gcc` (`sudo apt install gcc-aarch64-linux-gnu`) |
+| windows/amd64 | `x86_64-pc-windows-gnu` | `x86_64-w64-mingw32-gcc` (`sudo apt install gcc-mingw-w64-x86-64`) |
+| darwin/* | `*-apple-darwin` | [osxcross](https://github.com/tpoechtrager/osxcross) (pulado com aviso se não estiver instalado) |
+| windows/arm64 | — | Não suportado (sem target GNU estável no Rust) |
 
 ### 3. Registre no Zed Editor
 
@@ -223,6 +245,81 @@ PEDIDOS | TABLE | Dados de pedidos
 ...
 ```
 
+### `firebird_find_column`
+
+Busca colunas por padrão de nome em todas as tabelas e views. Suporta `%` wildcards.
+
+**Argumentos:**
+- `column` (obrigatório): Padrão de nome da coluna (suporta `%`). Ex.: `EMAIL`, `%NOME%`, `ID`
+- `database` (opcional): Nome do banco
+
+**Exemplo:**
+```json
+{
+  "column": "%EMAIL%",
+  "database": "financeiro"
+}
+```
+
+**Resultado:**
+```
+### Columns matching '%EMAIL%' (2 found)
+
+TABLE | COLUMN | TYPE | NULL | VIEW
+--- | --- | --- | --- | ---
+AUT_USUARIO | EMAIL | VARCHAR(250) | NO |
+VW_USER | EMAIL | VARCHAR(250) | YES | YES
+```
+
+### `firebird_check_duplicates`
+
+Verifica valores duplicados em uma ou mais colunas. Use ANTES de criar índice/constraint único para validar integridade. Suporta chaves compostas.
+
+**Argumentos:**
+- `table` (obrigatório): Nome da tabela
+- `columns` (obrigatório): Array de nomes de colunas (suporta chaves compostas)
+- `limit` (opcional): Máximo de combinações duplicadas (default: 10)
+- `database` (opcional): Nome do banco
+
+**Exemplo:**
+```json
+{
+  "table": "PEP_PESSOA",
+  "columns": ["TIPO_ID"],
+  "database": "financeiro"
+}
+```
+
+**Resultado (com duplicatas):**
+```
+### Duplicate Check: PEP_PESSOA (TIPO_ID)
+
+⚠️ 1 duplicate combination(s) found:
+
+TIPO_ID | DUPLICATED_COUNT
+--- | ---
+136323073 | 5
+
+#### Full rows for first duplicate (TIPO_ID = 136323073):
+
+ID | TIPO_ID | PAI_ID | IS_MATRIZ | ATIVO | ...
+--- | --- | --- | --- | --- | ---
+2 | 136323073 | NULL | false | true | ...
+3 | 136323073 | 2 | true | true | ...
+4 | 136323073 | NULL | false | true | ...
+5 | 136323073 | 4 | true | true | ...
+6 | 136323073 | 4 | false | true | ...
+
+💡 Fix duplicates before creating the unique index/constraint.
+```
+
+**Resultado (sem duplicatas):**
+```
+### Duplicate Check: PEP_PESSOA (ID)
+
+✅ No duplicates found. Safe to create unique index/constraint.
+```
+
 ### `firebird_describe_table`
 
 Mostra o schema completo de uma tabela ou view.
@@ -259,7 +356,7 @@ PK_CLIENTES | PRIMARY KEY
 
 ### `firebird_describe_database`
 
-Fornece uma visão completa da estrutura do banco com um diagrama ER Mermaid.
+Fornece uma visão completa da estrutura do banco com uma seção Health (info gstat-like) e um diagrama ER Mermaid.
 
 **Argumentos:**
 - `database` (opcional): Nome do banco
@@ -268,24 +365,51 @@ Fornece uma visão completa da estrutura do banco com um diagrama ER Mermaid.
 
 **Resultado:**
 ```
-### Database: teste
+### Database: financeiro
 
-#### Tables (19)
+#### Health
 
-**DEPARTAMENTO** (12 rows)
+- **Path:** /database/financeiro.fdb
+- **ODS Version:** 13.1
+- **Page Size:** 32768 bytes
+- **File Size:** 428 pages (~13.4 MB)
+- **Dialect:** 3
+- **Mode:** Online (Normal)
+- **Read-Only:** NO
+- **Forced Writes:** YES
+- **Active Connections:** 1
+- **Oldest Transaction:** 1063 (active: 1772, next: 1772)
+- **Buffer Pool:** 2048 pages
+
+#### Tables (26)
+
+**AUT_ROLE**
 - ID (INTEGER, PK)
-- NOME (VARCHAR(400), UNIQUE)
 ...
 
 #### Relationships (Mermaid)
 
 ```mermaid
 erDiagram
-    DEPARTAMENTO ||--o{ USUARIO : "has"
-    USUARIO ||--o{ USUARIO_PERFIL : "has"
+    PEP_PESSOA ||--o{ AUT_USUARIO : "FK_AUT_USR_PESSOA"
     ...
 ```
 ```
+
+**Campos da seção Health:**
+| Campo | Descrição |
+|-------|-----------|
+| Path | Caminho do arquivo do banco |
+| ODS Version | Versão On-Disk Structure (13.1 = Firebird 5) |
+| Page Size | Tamanho da página em bytes |
+| File Size | Total de páginas e tamanho estimado em MB |
+| Dialect | Dialeto SQL (3 = ANSI) |
+| Mode | Modo de shutdown: Online (Normal), Multi-user, Single-user, Full |
+| Read-Only | Se o banco está somente leitura |
+| Forced Writes | Se forced writes está habilitado |
+| Active Connections | Número de conexões de usuário ativas |
+| Oldest Transaction | ID da transação mais antiga (ativa e próxima) |
+| Buffer Pool | Número de páginas do buffer pool |
 
 ### `firebird_describe`
 
@@ -1031,6 +1155,12 @@ debug = false             # Sem debug info
 
 **Resultado:** ~1.2MB binário estático (vs ~8MB para a versão Go)
 
+## Créditos
+
+- [rsfbclient](https://crates.io/crates/rsfbclient) — Driver de cliente Firebird em Rust puro (sem bibliotecas nativas)
+- [jedSvelted-ui](https://github.com/edujed/jedSvelted-ui) — Biblioteca de componentes Svelte 5 usada pelo gerador de código Svelte (`@edujed/jedsvelted-ui`)
+- [Model Context Protocol](https://modelcontextprotocol.io) — A especificação MCP
+
 ## Licença
 
-MIT
+MIT — veja [LICENSE](LICENSE).

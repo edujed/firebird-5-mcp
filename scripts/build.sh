@@ -103,13 +103,31 @@ build_rust() {
     linux-arm64) target="aarch64-unknown-linux-gnu" ;;
     darwin-amd64) target="x86_64-apple-darwin" ;;
     darwin-arm64) target="aarch64-apple-darwin" ;;
-    windows-amd64) target="x86_64-pc-windows-msvc" ;;
-    windows-arm64) target="aarch64-pc-windows-msvc" ;;
+    windows-amd64) target="x86_64-pc-windows-gnu" ;;
+    windows-arm64)
+      # Rust has no stable aarch64-pc-windows-gnu target (only gnullvm/msvc).
+      echo "==> SKIP Rust windows/arm64: no stable GNU cross-target for aarch64 Windows"
+      return 0
+      ;;
     *)
       echo "Unsupported platform for Rust: ${os}/${arch}"
       return 1
       ;;
   esac
+
+  # Cross-compiling for macOS from Linux requires the osxcross toolchain
+  # (e.g. aarch64-apple-darwin21-clang). Without it, skip gracefully.
+  if [[ "${os}" == "darwin" ]]; then
+    local cc_name
+    case "${arch}" in
+      amd64) cc_name="x86_64-apple-darwin21-clang" ;;
+      arm64) cc_name="aarch64-apple-darwin21-clang" ;;
+    esac
+    if ! command -v "${cc_name}" >/dev/null 2>&1; then
+      echo "==> SKIP Rust ${os}/${arch}: ${cc_name} not found (install osxcross to enable)"
+      return 0
+    fi
+  fi
 
   local out_name="firebird-5-mcp"
   if [[ "${os}" == "windows" ]]; then
@@ -127,16 +145,20 @@ build_rust() {
   echo "==> Building Rust ${os}/${arch} (${target}) -> ${out_file}"
   (
     cd "${RUST_DIR}"
-    cargo build --release --target "${target}" 2>/dev/null || \
-    cargo build --release
-    # Copy the binary
-    local bin_path
-    if [[ -d "target/${target}/release" ]]; then
-      bin_path="target/${target}/release/firebird-5-mcp"
-    else
-      bin_path="target/release/firebird-5-mcp"
+    if ! cargo build --release --target "${target}"; then
+      echo "==> SKIP Rust ${os}/${arch}: cross-compile failed (target ${target})"
+      return 0
     fi
-    cp "${bin_path}" "${out_file}"
+    # Copy the binary. Skip if it's the same file (hardlink) or if the
+    # destination is already up to date (Zed may have the binary open).
+    local src="target/${target}/release/firebird-5-mcp"
+    if [[ "$(realpath "${src}")" == "$(realpath "${out_file}")" ]]; then
+      : # same inode — nothing to do
+    elif [[ -f "${out_file}" ]] && cmp -s "${src}" "${out_file}"; then
+      : # already up to date
+    else
+      cp -f "${src}" "${out_file}"
+    fi
   )
 }
 
@@ -171,9 +193,41 @@ main() {
     fi
   done
 
+  package_dist
+
   echo ""
-  echo "Build complete. Binaries in: ${BIN_DIR}"
+  echo "Build complete."
+  echo "Binaries in: ${BIN_DIR}"
   ls -lh "${BIN_DIR}"
+  echo ""
+  echo "Archives in: ${DIST_DIR}"
+  ls -lh "${DIST_DIR}"
+}
+
+# Package built binaries into dist/ as compressed archives:
+#   windows -> .zip, everything else -> .tar.gz
+package_dist() {
+  local dist_dir="${ROOT}/dist"
+  mkdir -p "${dist_dir}"
+
+  local f base name
+  for f in "${BIN_DIR}"/*; do
+    [[ -f "${f}" ]] || continue
+    base="$(basename "${f}")"
+
+    # Strip the .exe suffix for the archive name
+    name="${base%.exe}"
+
+    if [[ "${base}" == *.exe ]]; then
+      # Windows: zip the .exe
+      (cd "${BIN_DIR}" && zip -q "${dist_dir}/${name}.zip" "${base}")
+      echo "==> Packaged ${dist_dir}/${name}.zip"
+    else
+      # Linux/darwin: tar.gz the binary
+      (cd "${BIN_DIR}" && tar czf "${dist_dir}/${name}.tar.gz" "${base}")
+      echo "==> Packaged ${dist_dir}/${name}.tar.gz"
+    fi
+  done
 }
 
 main "$@"

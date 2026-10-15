@@ -2,7 +2,24 @@
 name = "firebird-5-mcp"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "MCP server (JSON-RPC over stdio) exposing Firebird tools"
 
 [dependencies]
 firebird-5-mcp-core = { path = "../mcp-core" }
 serde_json = { workspace = true }
+
+# Configuração para Linux ARM64
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+
+# Configuração para Windows AMD64 (usando MinGW)
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+
+# Configuração para Mac ARM (Apple Silicon) via osxcross
+# Nota: Ajuste o caminho se o seu SDK do osxcross estiver em outro local
+[target.aarch64-apple-darwin]
+linker = "aarch64-apple-darwin21-clang"
+ar = "aarch64-apple-darwin21-ar"

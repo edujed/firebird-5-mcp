@@ -2,6 +2,9 @@
 name = "firebird-5-mcp-core"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Reusable Firebird client library (connection, queries, schema, DDL, codegen)"
 
 [dependencies]
 rsfbclient = { workspace = true }
