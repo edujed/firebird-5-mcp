@@ -17,7 +17,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="${ROOT}/bin"
 MODULE_NAME="$(basename "${ROOT}")"
-GO_DIR="${ROOT}/golang"
+GO_DIR="${ROOT}/firebird-go-mcp"
 RUST_DIR="${ROOT}/firebird-5-mcp"
 
 # Supported platforms: "os/arch"

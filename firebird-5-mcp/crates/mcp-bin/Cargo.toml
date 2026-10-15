@@ -1,0 +1,8 @@
+[package]
+name = "firebird-5-mcp"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+firebird-5-mcp-core = { path = "../mcp-core" }
+serde_json = { workspace = true }

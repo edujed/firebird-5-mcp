@@ -1,0 +1,12 @@
+[package]
+name = "firebird-5-mcp-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rsfbclient = { workspace = true }
+rsfbclient-rust = { workspace = true }
+rsfbclient-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
