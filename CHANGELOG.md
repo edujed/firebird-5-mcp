@@ -5,7 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — Rust port (firebird-5-mcp)
+## [1.1.0] — Rust (firebird-5-mcp)
+
+### Added
+- `firebird_crypt_state` — at-rest encryption state of the database
+  (`MON$DATABASE.MON$CRYPT_STATE`, Firebird 3.0+).
+- `firebird_database_stats` — full `MON$DATABASE` snapshot with live
+  attachments (`MON$ATTACHMENTS`) and active statements
+  (`MON$STATEMENTS`).
+- `firebird_query_history` — active statements from `MON$STATEMENTS`
+  joined with `MON$ATTACHMENTS` (user, remote address, state filter).
+- `page_size` parameter on `firebird_create_database` (default 8192;
+  valid: 1024, 2048, 4096, 8192, 16384, 32768).
+- `isolation` and `lock_wait` parameters on `firebird_run_script`
+  (4 presets: read-committed, snapshot, consistency, readonly).
+- `tests/` — shell scripts (`.sh` + `.bat`) for smoke-testing the
+  deployed binary.
+- `.github/workflows/release.yml` — CI/CD release workflow: builds Rust
+  for 5 platforms (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64,
+  windows/amd64) and uploads archives to GitHub Releases on tag push.
+
+### Changed
+- **Codegen refactor** — the code generation module was restructured for
+  DRY / Clean Code / SOLID:
+  - New `FbType` enum replaces the old `ResolvedType` struct and 11
+    free-standing `is_*` predicate functions. Each target does an
+    exhaustive `match` over it (compiler guarantees no type is forgotten).
+  - Per-language target files (`targets/java.rs`, `targets/go.rs`, etc.)
+    behind a `trait Target` with `type_for()`, `generate()`, and
+    `dto_type_for()` methods.
+  - UI targets (Lazarus `.lfm` forms, Svelte 5 pages) moved to
+    `codegen/ui/` subfolder.
+  - `view_dto.rs` rewritten to use `FbType` + `dto_type_for()` — removed
+    6 duplicated `fb_type_to_*` string-matching functions (~200 lines).
+  - Shared naming helpers (`to_pascal_case`, `to_snake_case`, `to_camel_case`)
+    extracted to `codegen/naming.rs` with unit tests.
+- **Module split** — large files split into sub-modules (public API
+  unchanged via re-exports):
+  - `query.rs` (850 lines) → `query/mod.rs` + `query/split.rs` +
+    `query/row_limit.rs` + `query/batch.rs`
+  - `schema.rs` (450 lines) → `schema/mod.rs` + `schema/markdown.rs`
+- **BLOB sub_type fix** — `types.rs` had the BLOB sub_type mapping
+  inverted. Correct mapping (per Firebird docs): `sub_type 1 = TEXT`,
+  `sub_type 2 = BINARY`. Fixed in `format_column_type`.
+- `scripts/build.sh` — fixed 4 bugs:
+  - `DIST_DIR` undefined variable (used `${ROOT}/dist` instead).
+  - Duplicate `.exe` suffix in Windows binary name.
+  - Linux/arm64 cross-compile now works (sets
+    `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER` env var).
+  - Windows binary copy now finds `firebird-5-mcp.exe` in target dir.
+- README examples updated: replaced Portuguese-specific table/column
+  names (`AUT_USUARIO`, `PEP_PESSOA`, `SENHA_HASH`, `IS_MATRIZ`, etc.)
+  with common English equivalents (`USERS`, `CUSTOMERS`, `PASSWORD_HASH`,
+  `IS_VERIFIED`, etc.).
+
+### Fixed
+- `explain_plan` SQL injection: the user's SQL is now passed as a bind
+  parameter instead of being interpolated into the `MON$STATEMENTS`
+  query.
+- FK resolution in `describe_table`: now joins `RDB$INDEX_SEGMENTS` to
+  correctly resolve foreign key columns.
+- All write paths (DML, DDL, scripts, batch inserts) now use explicit
+  read-write transactions (`begin_rw_transaction()`).
+
+## [1.0.1] — Rust port (firebird-5-mcp)
 
 ### Added
 - **Rust port of the MCP server** (`firebird-5-mcp/`) using the pure-Rust

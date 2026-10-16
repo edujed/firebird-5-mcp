@@ -4,7 +4,7 @@ members = ["crates/mcp-core", "crates/mcp-bin"]
 
 [workspace.package]
 name = "firebird-5-mcp"
-version = "0.1.0"
+version = "1.1.0"
 edition = "2024"
 license = "MIT"
 authors = [ "Eduardo Jedliczka <edujed@gmail.com>"]

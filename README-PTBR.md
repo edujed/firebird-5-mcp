@@ -200,8 +200,8 @@ Executa uma única instrução SQL. Para DML/DDL, o plano de execução é anexa
 **Exemplo:**
 ```json
 {
-  "sql": "SELECT * FROM CLIENTES WHERE CIDADE = 'São Paulo'",
-  "database": "teste"
+  "sql": "SELECT * FROM CLIENTS WHERE CITY = 'New York'",
+  "database": "shop"
 }
 ```
 
@@ -213,9 +213,9 @@ Columns: ID (INT), NOME (VARCHAR), CIDADE (VARCHAR)
 
 ID | NOME | CIDADE
 --- | --- | ---
-1 | Alice | São Paulo
+1 | Alice | New York
 2 | Bob | NULL
-3 | Charlie | São Paulo
+3 | Charlie | New York
 ```
 
 ### `firebird_list`
@@ -230,7 +230,7 @@ Lista objetos do banco por tipo.
 ```json
 {
   "type": "TABLES",
-  "database": "teste"
+  "database": "shop"
 }
 ```
 
@@ -257,7 +257,7 @@ Busca colunas por padrão de nome em todas as tabelas e views. Suporta `%` wildc
 ```json
 {
   "column": "%EMAIL%",
-  "database": "financeiro"
+  "database": "shop"
 }
 ```
 
@@ -267,8 +267,8 @@ Busca colunas por padrão de nome em todas as tabelas e views. Suporta `%` wildc
 
 TABLE | COLUMN | TYPE | NULL | VIEW
 --- | --- | --- | --- | ---
-AUT_USUARIO | EMAIL | VARCHAR(250) | NO |
-VW_USER | EMAIL | VARCHAR(250) | YES | YES
+USERS | EMAIL | VARCHAR(250) | NO |
+VW_ACTIVE_USERS | EMAIL | VARCHAR(250) | YES | YES
 ```
 
 ### `firebird_check_duplicates`
@@ -284,38 +284,38 @@ Verifica valores duplicados em uma ou mais colunas. Use ANTES de criar índice/c
 **Exemplo:**
 ```json
 {
-  "table": "PEP_PESSOA",
-  "columns": ["TIPO_ID"],
-  "database": "financeiro"
+  "table": "CUSTOMERS",
+  "columns": ["TYPE_ID"],
+  "database": "shop"
 }
 ```
 
 **Resultado (com duplicatas):**
 ```
-### Duplicate Check: PEP_PESSOA (TIPO_ID)
+### Duplicate Check: CUSTOMERS (TYPE_ID)
 
 ⚠️ 1 duplicate combination(s) found:
 
-TIPO_ID | DUPLICATED_COUNT
+TYPE_ID | DUPLICATED_COUNT
 --- | ---
-136323073 | 5
+2 | 5
 
-#### Full rows for first duplicate (TIPO_ID = 136323073):
+#### Full rows for first duplicate (TYPE_ID = 2):
 
-ID | TIPO_ID | PAI_ID | IS_MATRIZ | ATIVO | ...
+ID | TYPE_ID | PARENT_ID | IS_VERIFIED | ACTIVE | ...
 --- | --- | --- | --- | --- | ---
-2 | 136323073 | NULL | false | true | ...
-3 | 136323073 | 2 | true | true | ...
-4 | 136323073 | NULL | false | true | ...
-5 | 136323073 | 4 | true | true | ...
-6 | 136323073 | 4 | false | true | ...
+2 | 2 | NULL | false | true | ...
+3 | 2 | 2 | true | true | ...
+4 | 2 | NULL | false | true | ...
+5 | 2 | 4 | true | true | ...
+6 | 2 | 4 | false | true | ...
 
 💡 Fix duplicates before creating the unique index/constraint.
 ```
 
 **Resultado (sem duplicatas):**
 ```
-### Duplicate Check: PEP_PESSOA (ID)
+### Duplicate Check: CUSTOMERS (ID)
 
 ✅ No duplicates found. Safe to create unique index/constraint.
 ```
@@ -365,11 +365,11 @@ Fornece uma visão completa da estrutura do banco com uma seção Health (info g
 
 **Resultado:**
 ```
-### Database: financeiro
+### Database: shop
 
 #### Health
 
-- **Path:** /database/financeiro.fdb
+- **Path:** /database/shop.fdb
 - **ODS Version:** 13.1
 - **Page Size:** 32768 bytes
 - **File Size:** 428 pages (~13.4 MB)
@@ -383,7 +383,7 @@ Fornece uma visão completa da estrutura do banco com uma seção Health (info g
 
 #### Tables (26)
 
-**AUT_ROLE**
+**USERS**
 - ID (INTEGER, PK)
 ...
 
@@ -391,7 +391,7 @@ Fornece uma visão completa da estrutura do banco com uma seção Health (info g
 
 ```mermaid
 erDiagram
-    PEP_PESSOA ||--o{ AUT_USUARIO : "FK_AUT_USR_PESSOA"
+    CUSTOMERS ||--o{ USERS : "FK_USR_CUST"
     ...
 ```
 ```
@@ -422,8 +422,8 @@ Describe multi-objeto — aceita qualquer mistura de tabelas, views, procediment
 **Exemplo:**
 ```json
 {
-  "objects": ["SAVE_USER", "AUT_USUARIO", "D_BOOL"],
-  "database": "financeiro"
+  "objects": ["SAVE_USER", "USERS", "D_BOOL"],
+  "database": "shop"
 }
 ```
 
@@ -472,36 +472,36 @@ Gera código de desenvolvimento a partir de schemas de tabelas.
 **Exemplo (Go):**
 ```json
 {
-  "tables": ["AUT_USUARIO"],
+  "tables": ["USERS"],
   "language": "go",
-  "database": "financeiro",
+  "database": "shop",
   "include_fks": true
 }
 ```
 
 **Resultado:**
 ```go
-// AutUsuario maps to table AUT_USUARIO
-type AutUsuario struct {
-    Id          sql.NullInt32  `db:"ID" json:"id"`
-    PessoaId    sql.NullInt32  `db:"PESSOA_ID" json:"pessoaId"` // FK → PEP_PESSOA.ID
-    Email       sql.NullString `db:"EMAIL" json:"email"`
-    SenhaHash   sql.NullString `db:"SENHA_HASH" json:"senhaHash"`
-    Ativo       bool           `db:"ATIVO" json:"ativo"`
-    CreatedAt   *time.Time     `db:"CREATED_AT" json:"createdAt"`
-    UpdatedAt   *time.Time     `db:"UPDATED_AT" json:"updatedAt"`
-    CreatedBy   i32            `db:"CREATED_BY" json:"createdBy"`
-    UpdatedBy   i32            `db:"UPDATED_BY" json:"updatedBy"`
-    DeletedAt   *time.Time     `db:"DELETED_AT" json:"deletedAt"`
+// User maps to table USERS
+type User struct {
+    Id           sql.NullInt32  `db:"ID" json:"id"`
+    CustomerId   sql.NullInt32  `db:"CUSTOMER_ID" json:"customerId"` // FK → CUSTOMERS.ID
+    Email        sql.NullString `db:"EMAIL" json:"email"`
+    PasswordHash sql.NullString `db:"PASSWORD_HASH" json:"passwordHash"`
+    Active       bool           `db:"ACTIVE" json:"active"`
+    CreatedAt    *time.Time     `db:"CREATED_AT" json:"createdAt"`
+    UpdatedAt    *time.Time     `db:"UPDATED_AT" json:"updatedAt"`
+    CreatedBy    i32            `db:"CREATED_BY" json:"createdBy"`
+    UpdatedBy    i32            `db:"UPDATED_BY" json:"updatedBy"`
+    DeletedAt    *time.Time     `db:"DELETED_AT" json:"deletedAt"`
 }
 ```
 
 **Exemplo (Java):**
 ```json
 {
-  "tables": ["AUT_USUARIO"],
+  "tables": ["USERS"],
   "language": "java",
-  "database": "financeiro",
+  "database": "shop",
   "include_fks": true
 }
 ```
@@ -509,29 +509,29 @@ type AutUsuario struct {
 **Resultado:**
 ```java
 @Entity
-@Table(name = "AUT_USUARIO")
+@Table(name = "USERS")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AutUsuario {
+public class User {
 
     @Id
     @Column(name = "ID")
     private Integer id;
 
     @ManyToOne
-    @JoinColumn(name = "PESSOA_ID")
-    private PepPessoa pessoaId;
+    @JoinColumn(name = "CUSTOMER_ID")
+    private Customer customer;
 
     @Column(name = "EMAIL", length = 250)
     private String email;
 
-    @Column(name = "SENHA_HASH", length = 250)
-    private String senhaHash;
+    @Column(name = "PASSWORD_HASH", length = 250)
+    private String passwordHash;
 
-    @Column(name = "ATIVO")
-    private Boolean ativo;
+    @Column(name = "ACTIVE")
+    private Boolean active;
 
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
@@ -553,28 +553,28 @@ public class AutUsuario {
 **Exemplo (Rust):**
 ```json
 {
-  "tables": ["AUT_USUARIO"],
+  "tables": ["USERS"],
   "language": "rust",
-  "database": "financeiro",
+  "database": "shop",
   "include_fks": true
 }
 ```
 
 **Resultado:**
 ```rust
-// AutUsuario maps to table AUT_USUARIO
+// User maps to table USERS
 #[derive(Debug, Clone, FromRow)]
-pub struct AutUsuario {
+pub struct User {
     /// Column: ID
     pub id: Option<i32>,
-    /// Column: PESSOA_ID — FK → PEP_PESSOA.ID
-    pub pessoa_id: Option<i32>,
+    /// Column: CUSTOMER_ID — FK → CUSTOMERS.ID
+    pub customer_id: Option<i32>,
     /// Column: EMAIL
     pub email: Option<String>,
-    /// Column: SENHA_HASH
-    pub senha_hash: Option<String>,
-    /// Column: ATIVO
-    pub ativo: bool,
+    /// Column: PASSWORD_HASH
+    pub password_hash: Option<String>,
+    /// Column: ACTIVE
+    pub active: bool,
     /// Column: CREATED_AT
     pub created_at: NaiveDateTime,
     /// Column: UPDATED_AT
@@ -588,29 +588,29 @@ pub struct AutUsuario {
 }
 
 // Example query (aliases must match field names for FromRow):
-// SELECT ID AS id, PESSOA_ID AS pessoa_id, EMAIL AS email, ... FROM AUT_USUARIO
-// let rows: Vec<AutUsuario> = conn.query(sql, ({}))?;
+// SELECT ID AS id, CUSTOMER_ID AS customer_id, EMAIL AS email, ... FROM USERS
+// let rows: Vec<User> = conn.query(sql, ({}))?;
 ```
 
 **Exemplo (TypeScript):**
 ```json
 {
-  "tables": ["AUT_USUARIO"],
+  "tables": ["USERS"],
   "language": "typescript",
-  "database": "financeiro",
+  "database": "shop",
   "include_fks": true
 }
 ```
 
 **Resultado:**
 ```typescript
-export interface AutUsuario {
+export interface User {
     id?: number;
-    /** FK → PEP_PESSOA.ID */
-    pessoaId?: number;
+    /** FK → CUSTOMERS.ID */
+    customerId?: number;
     email?: string;
-    senhaHash?: string;
-    ativo: boolean;
+    passwordHash?: string;
+    active: boolean;
     createdAt: string;
     updatedAt: string;
     createdBy: number;
@@ -622,9 +622,9 @@ export interface AutUsuario {
 **Exemplo (Protobuf):**
 ```json
 {
-  "tables": ["AUT_USUARIO"],
+  "tables": ["USERS"],
   "language": "protobuf",
-  "database": "financeiro",
+  "database": "shop",
   "include_fks": true
 }
 ```
@@ -633,16 +633,16 @@ export interface AutUsuario {
 ```protobuf
 syntax = "proto3";
 
-package aut_usuario;
+package users;
 
-// Nullable columns: ID, PESSOA_ID, EMAIL, SENHA_HASH
-message AutUsuario {
+// Nullable columns: ID, CUSTOMER_ID, EMAIL, PASSWORD_HASH
+message User {
     int32 id = 1;
-    // FK → PEP_PESSOA.ID
-    int32 pessoa_id = 2;
+    // FK → CUSTOMERS.ID
+    int32 customer_id = 2;
     string email = 3;
-    string senha_hash = 4;
-    bool ativo = 5;
+    string password_hash = 4;
+    bool active = 5;
     string created_at = 6;
     string updated_at = 7;
     int32 created_by = 8;
@@ -654,20 +654,20 @@ message AutUsuario {
 **Exemplo (OpenAPI):**
 ```json
 {
-  "tables": ["AUT_USUARIO"],
+  "tables": ["USERS"],
   "language": "openapi",
-  "database": "financeiro",
+  "database": "shop",
   "include_fks": true
 }
 ```
 
 **Resultado:**
 ```yaml
-AutUsuario:
+User:
   type: object
-  description: Schema for table AUT_USUARIO
+  description: Schema for table USERS
   required:
-    - ativo
+    - active
     - createdAt
     - updatedAt
     - createdBy
@@ -678,18 +678,18 @@ AutUsuario:
       type: integer
       format: int32
       nullable: true
-    pessoaId:
+    customerId:
       type: integer
       format: int32
       nullable: true
-      x-foreign-key: PEP_PESSOA.ID
+      x-foreign-key: CUSTOMERS.ID
     email:
       type: string
       nullable: true
-    senhaHash:
+    passwordHash:
       type: string
       nullable: true
-    ativo:
+    active:
       type: boolean
     createdAt:
       type: string
@@ -711,33 +711,33 @@ AutUsuario:
 **Exemplo (Lazarus/Delphi):**
 ```json
 {
-  "tables": ["PEP_PESSOA"],
+  "tables": ["CUSTOMERS"],
   "language": "lazarus",
-  "database": "financeiro"
+  "database": "shop"
 }
 ```
 
 **Resultado:**
 ```lfm
-object FormPepPessoa: TFormManutencao
+object FormCustomer: TFormManutencao
   Left = 0
   Top = 0
-  Caption = 'FormPepPessoa'
+  Caption = 'FormCustomer'
   ClientHeight = 400
   ClientWidth = 600
   LCLVersion = '3.0.0.0'
-  object FBDataSetPepPessoa: TFBDataSet
+  object FBDataSetCustomer: TFBDataSet
     Left = 24
     Top = 24
     Connected = False
     SQL.Strings = (
-      'SELECT * FROM PEP_PESSOA'
+      'SELECT * FROM CUSTOMERS'
     )
   end
-  object DataSourcePepPessoa: TDataSource
+  object DataSourceCustomer: TDataSource
     Left = 112
     Top = 24
-    DataSet = FBDataSetPepPessoa
+    DataSet = FBDataSetCustomer
   end
   object Label_ID: TLabel
     Left = 24
@@ -752,25 +752,25 @@ object FormPepPessoa: TFormManutencao
     Top = 121
     Width = 120
     Height = 23
-    DataSource = DataSourcePepPessoa
+    DataSource = DataSourceCustomer
     DataField = 'ID'
     TabOrder = 0
   end
-  object Label_IS_MATRIZ: TLabel
+  object Label_IS_VERIFIED: TLabel
     Left = 24
     Top = 160
     Width = 150
     Height = 15
-    Caption = 'IS_MATRIZ:'
+    Caption = 'IS_VERIFIED:'
     ParentColor = False
   end
-  object TDBCheckBox_IS_MATRIZ: TDBCheckBox
+  object TDBCheckBox_IS_VERIFIED: TDBCheckBox
     Left = 24
     Top = 181
     Width = 150
     Height = 23
-    DataSource = DataSourcePepPessoa
-    DataField = 'IS_MATRIZ'
+    DataSource = DataSourceCustomer
+    DataField = 'IS_VERIFIED'
     TabOrder = 1
   end
   object Label_CREATED_AT: TLabel
@@ -786,7 +786,7 @@ object FormPepPessoa: TFormManutencao
     Top = 241
     Width = 150
     Height = 23
-    DataSource = DataSourcePepPessoa
+    DataSource = DataSourceCustomer
     DataField = 'CREATED_AT'
     TabOrder = 2
     Kind = dtkDate
@@ -809,9 +809,9 @@ end
 **Exemplo (Svelte 5):**
 ```json
 {
-  "tables": ["PEP_PESSOA"],
+  "tables": ["CUSTOMERS"],
   "language": "svelte",
-  "database": "financeiro"
+  "database": "shop"
 }
 ```
 
@@ -832,15 +832,15 @@ end
 
 	// Filtros de busca (PK + FKs)
 	let searchID = $state('');
-	let searchPAI_ID = $state('');
-	let searchTIPO_ID = $state('');
+	let searchPARENT_ID = $state('');
+	let searchTYPE_ID = $state('');
 
 	const columns: TableCol[] = [
 		{ key: 'id', title: 'Id', sortable: true },
-		{ key: 'tipoId', title: 'TipoId' },
-		{ key: 'paiId', title: 'PaiId' },
-		{ key: 'isMatriz', title: 'IsMatriz' },
-		{ key: 'ativo', title: 'Ativo' },
+		{ key: 'typeId', title: 'TypeId' },
+		{ key: 'parentId', title: 'ParentId' },
+		{ key: 'isVerified', title: 'IsVerified' },
+		{ key: 'active', title: 'Active' },
 		{ key: 'createdAt', title: 'CreatedAt', formatter: (v: string) => formatDate(v, $localeStore) },
 		// ...
 	];
@@ -859,7 +859,7 @@ end
 </script>
 
 <PageShell
-	title="PepPessoa"
+	title="Customer"
 	onSearch={search}
 	onClear={clear}
 	{loading}
@@ -879,13 +879,13 @@ end
 
 	{#snippet content(state)}
 		<Table
-			id="pep_pessoa"
-			caption="PepPessoa"
+			id="customer"
+			caption="Customer"
 			{data}
 			{columns}
 			{actions}
 			rowKey="id"
-			csvFileName="pep_pessoa.csv"
+			csvFileName="customer.csv"
 			onAdd={() => {}}
 		/>
 	{/snippet}
@@ -904,10 +904,10 @@ end
 	} from '@edujed/jedsvelted-ui/forms';
 
 	let id = $state<number>(0);
-	let tipoId = $state<number>(0);
-	let paiId = $state<number>(0);
-	let isMatriz = $state<boolean>(false);
-	let ativo = $state<boolean>(false);
+	let typeId = $state<number>(0);
+	let parentId = $state<number>(0);
+	let isVerified = $state<boolean>(false);
+	let active = $state<boolean>(false);
 	let createdAt = $state<string>('');
 	// ...
 
@@ -917,10 +917,10 @@ end
 
 <form>
 	<NumericField label="Id" bind:value={id} />
-	<NumericField label="TipoId" bind:value={tipoId} />
-	<NumericField label="PaiId" bind:value={paiId} />
-	<SwitchField label="IsMatriz" bind:value={isMatriz} />
-	<SwitchField label="Ativo" bind:value={ativo} />
+	<NumericField label="TypeId" bind:value={typeId} />
+	<NumericField label="ParentId" bind:value={parentId} />
+	<SwitchField label="IsVerified" bind:value={isVerified} />
+	<SwitchField label="Active" bind:value={active} />
 	<DateField label="CreatedAt" bind:value={createdAt} />
 	<!-- ... -->
 	<FormActions onSave={save} onCancel={cancel} />
@@ -947,24 +947,24 @@ Gera DTOs/records a partir de views usando metadados resolvidos (executa `SELECT
 **Exemplo (Java):**
 ```json
 {
-  "views": ["VW_USER"],
+  "views": ["VW_ACTIVE_USERS"],
   "language": "java",
-  "database": "financeiro"
+  "database": "shop"
 }
 ```
 
 **Resultado:**
 ```java
 @Data
-public class VwUser {
+public class VwActiveUsers {
     private Long id;
     private String email;
-    private String senhaHash;
-    private Boolean ativo;
-    private Long pessoaId;
-    private Long tipoId;
-    private Boolean isMatriz;
-    private String nome;
+    private String passwordHash;
+    private Boolean active;
+    private Long customerId;
+    private Long typeId;
+    private Boolean isActive;
+    private String fullName;
     private java.time.LocalDateTime createdAt;
     private java.time.LocalDateTime updatedAt;
     private String createdBy;
@@ -975,33 +975,33 @@ public class VwUser {
 **Exemplo (Lazarus/Delphi):**
 ```json
 {
-  "views": ["VW_USER"],
+  "views": ["VW_ACTIVE_USERS"],
   "language": "lazarus",
-  "database": "financeiro"
+  "database": "shop"
 }
 ```
 
 **Resultado:**
 ```lfm
-object FormVwUser: TFormConsulta
+object FormVwActiveUsers: TFormConsulta
   Left = 0
   Top = 0
-  Caption = 'FormVwUser'
+  Caption = 'FormVwActiveUsers'
   ClientHeight = 400
   ClientWidth = 600
   LCLVersion = '3.0.0.0'
-  object FBDataSetVwUser: TFBDataSet
+  object FBDataSetVwActiveUsers: TFBDataSet
     Left = 24
     Top = 24
     Connected = False
     SQL.Strings = (
-      'SELECT * FROM VW_USER'
+      'SELECT * FROM VW_ACTIVE_USERS'
     )
   end
-  object DataSourceVwUser: TDataSource
+  object DataSourceVwActiveUsers: TDataSource
     Left = 112
     Top = 24
-    DataSet = FBDataSetVwUser
+    DataSet = FBDataSetVwActiveUsers
   end
   object Label_ID: TLabel
     Left = 24
@@ -1016,25 +1016,25 @@ object FormVwUser: TFormConsulta
     Top = 121
     Width = 120
     Height = 23
-    DataSource = DataSourceVwUser
+    DataSource = DataSourceVwActiveUsers
     DataField = 'ID'
     TabOrder = 0
   end
-  object Label_ATIVO: TLabel
+  object Label_ACTIVE: TLabel
     Left = 24
     Top = 160
     Width = 150
     Height = 15
-    Caption = 'ATIVO:'
+    Caption = 'ACTIVE:'
     ParentColor = False
   end
-  object TDBCheckBox_ATIVO: TDBCheckBox
+  object TDBCheckBox_ACTIVE: TDBCheckBox
     Left = 24
     Top = 181
     Width = 150
     Height = 23
-    DataSource = DataSourceVwUser
-    DataField = 'ATIVO'
+    DataSource = DataSourceVwActiveUsers
+    DataField = 'ACTIVE'
     TabOrder = 1
   end
   ...
