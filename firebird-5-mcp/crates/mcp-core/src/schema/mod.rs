@@ -6,6 +6,10 @@ use rsfbclient::FbError;
 use crate::client::FirebirdClient;
 use crate::query::{Value, query, query_with_param};
 
+pub mod markdown;
+
+pub use markdown::format_schema_markdown;
+
 /// A table or view in the database.
 #[derive(Debug, Clone)]
 pub struct TableInfo {
@@ -72,95 +76,6 @@ pub struct ForeignKeyInfo {
     pub column: String,
     pub ref_table: String,
     pub ref_column: String,
-}
-
-/// Formats a table schema as Markdown (for use in describe_objects).
-pub fn format_schema_markdown(schema: &TableSchema) -> String {
-    use crate::types::format_column_type;
-    let mut b = String::new();
-
-    b.push_str("#### Columns\n\n");
-    b.push_str("NAME | TYPE | NULL | DEFAULT | POSITION\n");
-    b.push_str("--- | --- | --- | --- | ---\n");
-    for col in &schema.columns {
-        let type_str = format_column_type(
-            col.type_num,
-            col.sub_type,
-            col.size,
-            col.precision,
-            col.scale,
-        );
-        let null_str = if col.nullable.map(|n| n == 1).unwrap_or(false) {
-            "YES"
-        } else {
-            "NO"
-        };
-        let default = col.default.as_deref().unwrap_or("-");
-        let position = col
-            .position
-            .map(|p| p.to_string())
-            .unwrap_or_else(|| "-".to_string());
-        b.push_str(&format!(
-            "{} | {} | {null_str} | {default} | {position}\n",
-            col.name, type_str
-        ));
-    }
-
-    if !schema.indexes.is_empty() {
-        b.push('\n');
-        b.push_str("#### Indexes\n\n");
-        b.push_str("NAME | UNIQUE | TYPE | COLUMNS\n");
-        b.push_str("--- | --- | --- | ---\n");
-        for idx in &schema.indexes {
-            let unique = if idx.unique { "YES" } else { "NO" };
-            let type_str = idx
-                .r#type
-                .map(|t| t.to_string())
-                .unwrap_or_else(|| "-".to_string());
-            b.push_str(&format!(
-                "{} | {unique} | {type_str} | {}\n",
-                idx.name, idx.columns
-            ));
-        }
-    }
-
-    if !schema.constraints.is_empty() {
-        b.push('\n');
-        b.push_str("#### Constraints\n\n");
-        b.push_str("NAME | TYPE\n");
-        b.push_str("--- | ---\n");
-        for con in &schema.constraints {
-            b.push_str(&format!("{} | {}\n", con.name, con.r#type));
-        }
-    }
-
-    if !schema.triggers.is_empty() {
-        b.push('\n');
-        b.push_str("#### Triggers\n\n");
-        b.push_str("NAME | TYPE | SEQUENCE\n");
-        b.push_str("--- | --- | ---\n");
-        for trg in &schema.triggers {
-            let type_str = trg
-                .r#type
-                .map(|t| t.to_string())
-                .unwrap_or_else(|| "-".to_string());
-            let seq = trg
-                .sequence
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "-".to_string());
-            b.push_str(&format!("{} | {type_str} | {seq}\n", trg.name));
-        }
-    }
-
-    if !schema.comments.is_empty() {
-        b.push('\n');
-        b.push_str("#### Comments\n\n");
-        for (key, value) in &schema.comments {
-            b.push_str(&format!("- {key}: {value}\n"));
-        }
-    }
-
-    b
 }
 
 /// Returns all user tables and views.
@@ -335,17 +250,20 @@ pub fn describe_table(
 pub fn get_foreign_keys(client: &mut FirebirdClient) -> Result<Vec<ForeignKeyInfo>, FbError> {
     let sql = r#"
         SELECT
-            c.RDB$CONSTRAINT_NAME AS CONSTRAINT_NAME,
-            c.RDB$RELATION_NAME AS TABLE_NAME,
-            pk.RDB$FIELD_NAME AS FK_COLUMN,
-            ci.RDB$FOREIGN_KEY AS REF_INDEX,
-            fc.RDB$RELATION_NAME AS REF_TABLE
+            c.RDB$CONSTRAINT_NAME       AS CONSTRAINT_NAME,
+            c.RDB$RELATION_NAME         AS TABLE_NAME,
+            pk.RDB$FIELD_NAME           AS FK_COLUMN,
+            fc.RDB$RELATION_NAME        AS REF_TABLE,
+            rc.RDB$FIELD_NAME           AS REF_COLUMN
         FROM RDB$RELATION_CONSTRAINTS c
         JOIN RDB$INDICES ci ON ci.RDB$INDEX_NAME = c.RDB$INDEX_NAME
         JOIN RDB$INDEX_SEGMENTS pk ON pk.RDB$INDEX_NAME = ci.RDB$INDEX_NAME
+        LEFT JOIN RDB$INDICES ri ON ri.RDB$INDEX_NAME = ci.RDB$FOREIGN_KEY
+        LEFT JOIN RDB$INDEX_SEGMENTS rc ON rc.RDB$INDEX_NAME = ri.RDB$INDEX_NAME
+            AND rc.RDB$FIELD_POSITION = pk.RDB$FIELD_POSITION
         LEFT JOIN RDB$RELATION_CONSTRAINTS fc ON fc.RDB$INDEX_NAME = ci.RDB$FOREIGN_KEY
         WHERE c.RDB$CONSTRAINT_TYPE = 'FOREIGN KEY'
-        ORDER BY c.RDB$RELATION_NAME, c.RDB$CONSTRAINT_NAME
+        ORDER BY c.RDB$RELATION_NAME, c.RDB$CONSTRAINT_NAME, pk.RDB$FIELD_POSITION
     "#;
     let result = query(client, sql)?;
     let mut fks = Vec::with_capacity(result.rows.len());
@@ -354,8 +272,8 @@ pub fn get_foreign_keys(client: &mut FirebirdClient) -> Result<Vec<ForeignKeyInf
             constraint_name: text_at(row, 0),
             table: text_at(row, 1),
             column: text_at(row, 2),
-            ref_table: text_at(row, 4),
-            ref_column: "ID".to_string(), // Assume PK is ID
+            ref_table: text_at(row, 3),
+            ref_column: text_at(row, 4),
         });
     }
     Ok(fks)

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Reusable Firebird client library (connection, queries, schema, DDL, codegen)"
+authors = [ "Eduardo Jedliczka <edujed@gmail.com>"]
 
 [dependencies]
 rsfbclient = { workspace = true }

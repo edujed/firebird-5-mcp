@@ -7,6 +7,7 @@ name = "firebird-5-mcp"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+authors = [ "Eduardo Jedliczka <edujed@gmail.com>"]
 repository = "https://github.com/edujed/jed-personal-mcp"
 description = "Pure-Rust MCP server for Firebird databases (no isql, no native libs)"
 

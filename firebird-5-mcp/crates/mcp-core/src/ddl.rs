@@ -107,8 +107,7 @@ pub fn drop(client: &mut FirebirdClient, obj_type: &str, name: &str) -> Result<(
             )));
         }
     };
-    client.conn.execute(&sql, ())?;
-    Ok(())
+    exec_block(client, &sql)
 }
 
 /// Changes the data type of a column to use a domain.
@@ -119,17 +118,27 @@ pub fn alter_column_type(
     domain: &str,
 ) -> Result<(), FbError> {
     let sql = format!("ALTER TABLE {table} ALTER {column} TYPE {domain}");
-    client.conn.execute(&sql, ())?;
-    Ok(())
+    exec_block(client, &sql)
 }
 
-/// Executes a SQL block that may contain SET TERM delimiters.
+/// Executes a SQL statement within an explicit read-write transaction.
 ///
-/// Uses `SimpleConnection::execute` which handles the transaction
-/// lifecycle automatically. The full SQL text (including `^` markers)
-/// is sent to the server in a single execute call.
+/// The connection is created with a read-only default transaction
+/// configuration (for metadata queries). DDL and DML statements require
+/// read-write access, so we start an explicit RW transaction, execute the
+/// statement, and commit.
 fn exec_block(client: &mut FirebirdClient, sql: &str) -> Result<(), FbError> {
     use rsfbclient::Execute;
-    client.conn.execute(sql, ())?;
-    Ok(())
+    client.begin_rw_transaction()?;
+    let result = client.conn.execute(sql, ());
+    match result {
+        Ok(_) => {
+            client.conn.commit()?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = client.conn.rollback();
+            Err(e)
+        }
+    }
 }

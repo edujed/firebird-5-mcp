@@ -27,10 +27,27 @@ pub fn handle_create_database(cfg: &Config, args: &Value) -> Result<String, Stri
         ));
     }
 
-    FirebirdClient::create_database(&cfg.server, &path).map_err(|e| e.to_string())?;
+    let page_size = arg_str(args, "page_size")
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(DEFAULT_PAGE_SIZE);
+    if !is_valid_page_size(page_size) {
+        return Err(format!(
+            "Invalid page size: {page_size}. Must be a power of two between 1024 and 32768 (1K, 2K, 4K, 8K, 16K or 32K)."
+        ));
+    }
+
+    FirebirdClient::create_database(&cfg.server, &path, page_size).map_err(|e| e.to_string())?;
     Ok(format!(
-        "Database created successfully at {path} (page size: 4096)."
+        "Database created successfully at {path} (page size: {page_size})."
     ))
+}
+
+/// Default page size for new databases when `page_size` is not specified.
+const DEFAULT_PAGE_SIZE: u32 = 8192;
+
+/// Firebird only accepts page sizes that are powers of two in the range 1K–32K.
+fn is_valid_page_size(size: u32) -> bool {
+    matches!(size, 1024 | 2048 | 4096 | 8192 | 16384 | 32768)
 }
 
 pub fn handle_create_trigger(cfg: &Config, args: &Value) -> Result<String, String> {

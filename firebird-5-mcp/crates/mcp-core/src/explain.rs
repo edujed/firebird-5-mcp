@@ -39,14 +39,12 @@ pub fn explain_plan(client: &mut FirebirdClient, sql: &str) -> Result<String, Fb
     // Read the plan from MON$STATEMENTS (per-transaction) on the SAME
     // connection. The MON$STATEMENTS query itself becomes a new statement in
     // the transaction, so we filter by MON$SQL_TEXT to isolate the plan of
-    // the statement the user asked about.
+    // the statement the user asked about. Uses a bind parameter to avoid
+    // SQL injection from quotes in the user's SQL.
     let plan_result: Result<String, FbError> = (|| {
-        let escaped = sql.replace('"', "''");
-        let plan_sql = format!(
-            "SELECT FIRST 1 MON$EXPLAINED_PLAN FROM MON$STATEMENTS WHERE MON$SQL_TEXT = '{}'",
-            escaped
-        );
-        let row: Option<(Option<String>,)> = client.conn.query_first(&plan_sql, ())?;
+        let plan_sql =
+            "SELECT FIRST 1 MON$EXPLAINED_PLAN FROM MON$STATEMENTS WHERE MON$SQL_TEXT = ?";
+        let row: Option<(Option<String>,)> = client.conn.query_first(plan_sql, (sql,))?;
         match row {
             Some((plan,)) => match plan {
                 Some(plan) if !plan.trim().is_empty() => Ok(plan),

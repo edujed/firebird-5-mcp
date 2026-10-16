@@ -713,6 +713,149 @@ pub fn handle_check_duplicates(cfg: &Config, args: &Value) -> Result<String, Str
     Ok(b)
 }
 
+/// Analyzes user-defined domains: lists them with usage counts, shows the most
+/// common column type signatures, and suggests domains that could be created.
+pub fn handle_domains(cfg: &Config, args: &Value) -> Result<String, String> {
+    let mut client = open_client(cfg, args)?;
+
+    // Query 1: user-defined domains (domains live in RDB$FIELDS with RDB$OWNER_NAME set;
+    // system-generated fields like RDB$1 must be excluded).
+    let q_domains = r#"
+        SELECT
+            TRIM(f.RDB$FIELD_NAME) AS DOMINIO,
+            f.RDB$FIELD_TYPE,
+            f.RDB$FIELD_SUB_TYPE,
+            f.RDB$FIELD_LENGTH,
+            f.RDB$FIELD_PRECISION,
+            f.RDB$FIELD_SCALE,
+            f.RDB$NULL_FLAG,
+            f.RDB$DEFAULT_VALUE IS NOT NULL AS TEM_DEFAULT,
+            TRIM(f.RDB$DESCRIPTION) AS DESCRICAO
+        FROM RDB$FIELDS f
+        WHERE f.RDB$OWNER_NAME IS NOT NULL
+          AND f.RDB$SYSTEM_FLAG = 0
+          AND f.RDB$FIELD_NAME NOT LIKE 'RDB$%'
+        ORDER BY f.RDB$FIELD_NAME
+    "#;
+
+    // Query 2: usage count per domain (columns whose RDB$FIELD_SOURCE is a domain).
+    let q_usage = r#"
+        SELECT rf.RDB$FIELD_SOURCE, COUNT(*) AS USOS
+        FROM RDB$RELATION_FIELDS rf
+        JOIN RDB$RELATIONS r ON rf.RDB$RELATION_NAME = r.RDB$RELATION_NAME
+        JOIN RDB$FIELDS f ON rf.RDB$FIELD_SOURCE = f.RDB$FIELD_NAME
+        WHERE r.RDB$SYSTEM_FLAG = 0
+          AND f.RDB$OWNER_NAME IS NOT NULL
+          AND f.RDB$FIELD_NAME NOT LIKE 'RDB$%'
+        GROUP BY rf.RDB$FIELD_SOURCE
+    "#;
+
+    // Query 3: most common column type signatures, with how many already use a domain.
+    let q_types = r#"
+        SELECT
+            f.RDB$FIELD_TYPE,
+            f.RDB$FIELD_SUB_TYPE,
+            f.RDB$FIELD_LENGTH,
+            f.RDB$FIELD_PRECISION,
+            f.RDB$FIELD_SCALE,
+            COUNT(*) AS COLS,
+            SUM(CASE WHEN d.RDB$FIELD_NAME IS NOT NULL THEN 1 ELSE 0 END) AS COM_DOMINIO
+        FROM RDB$RELATION_FIELDS rf
+        JOIN RDB$RELATIONS r ON rf.RDB$RELATION_NAME = r.RDB$RELATION_NAME
+        JOIN RDB$FIELDS f ON rf.RDB$FIELD_SOURCE = f.RDB$FIELD_NAME
+        LEFT JOIN RDB$FIELDS d
+          ON d.RDB$FIELD_NAME = rf.RDB$FIELD_SOURCE
+         AND d.RDB$OWNER_NAME IS NOT NULL
+         AND d.RDB$FIELD_NAME NOT LIKE 'RDB$%'
+        WHERE r.RDB$SYSTEM_FLAG = 0
+        GROUP BY f.RDB$FIELD_TYPE, f.RDB$FIELD_SUB_TYPE, f.RDB$FIELD_LENGTH,
+                 f.RDB$FIELD_PRECISION, f.RDB$FIELD_SCALE
+        ORDER BY COLS DESC
+    "#;
+
+    let domains = query::query(&mut client, q_domains).map_err(|e| e.to_string())?;
+    let usage = query::query(&mut client, q_usage).map_err(|e| e.to_string())?;
+    let types = query::query(&mut client, q_types).map_err(|e| e.to_string())?;
+
+    // Usage map: domain name -> count
+    let mut usage_map: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    for row in &usage.rows {
+        let name = cell_text(row, 0);
+        let count = cell_int(row, 1);
+        usage_map.insert(name, count);
+    }
+
+    let mut b = String::new();
+    b.push_str(&format!(
+        "### Domain Analysis ({} user domains)\n\n",
+        domains.rows.len()
+    ));
+
+    // Section 1: domains with usage
+    b.push_str("#### User Domains\n\n");
+    b.push_str("DOMAIN | TYPE | NULL | DEFAULT | USAGE | DESCRIPTION\n");
+    b.push_str("--- | --- | --- | --- | --- | ---\n");
+    for row in &domains.rows {
+        let name = cell_text(row, 0);
+        let type_str = format_column_type(
+            cell_int(row, 1),
+            cell_int(row, 2),
+            cell_int(row, 3),
+            cell_int(row, 4),
+            cell_int(row, 5),
+        );
+        let null_flag = cell_int(row, 6);
+        let null_str = if null_flag == 1 { "NO" } else { "YES" };
+        let has_default = cell_int(row, 7);
+        let default_str = if has_default == 1 { "YES" } else { "NO" };
+        let uses = usage_map.get(&name).copied().unwrap_or(0);
+        let desc = cell_text_or(row, 8, "-");
+        b.push_str(&format!(
+            "{name} | {type_str} | {null_str} | {default_str} | {uses} | {desc}\n"
+        ));
+    }
+
+    // Section 2: most common column types
+    b.push_str("\n#### Most Common Column Types\n\n");
+    b.push_str("TYPE | COLUMNS | WITH DOMAIN | WITHOUT DOMAIN\n");
+    b.push_str("--- | --- | --- | ---\n");
+    let mut suggestions: Vec<(String, i64)> = Vec::new();
+    for row in &types.rows {
+        let type_str = format_column_type(
+            cell_int(row, 0),
+            cell_int(row, 1),
+            cell_int(row, 2),
+            cell_int(row, 3),
+            cell_int(row, 4),
+        );
+        let cols = cell_int(row, 5);
+        let with_domain = cell_int(row, 6);
+        let without = cols - with_domain;
+        b.push_str(&format!(
+            "{type_str} | {cols} | {with_domain} | {without}\n"
+        ));
+        // Suggest a domain for common types (>= 3 columns) that lack one
+        if without >= 3 {
+            suggestions.push((type_str, without));
+        }
+    }
+
+    // Section 3: suggestions
+    if suggestions.is_empty() {
+        b.push_str("\n#### Suggestions\n\n");
+        b.push_str("✅ All common column types already have a domain.\n");
+    } else {
+        b.push_str("\n#### Suggestions — common types without a domain\n\n");
+        for (type_str, count) in &suggestions {
+            b.push_str(&format!(
+                "- **{type_str}** ({count} columns) — consider creating a domain, e.g. `CREATE DOMAIN D_{type_str} AS {type_str};`\n"
+            ));
+        }
+    }
+
+    Ok(b)
+}
+
 /// Finds columns by name pattern (supports % wildcards) across all tables.
 pub fn handle_find_column(cfg: &Config, args: &Value) -> Result<String, String> {
     let pattern = arg_str(args, "column")

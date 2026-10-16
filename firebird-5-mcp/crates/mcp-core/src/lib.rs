@@ -18,17 +18,15 @@
 //! same tool set as the Go implementation.
 
 pub mod client;
+pub mod codegen;
 pub mod config;
 pub mod ddl;
 pub mod explain;
-pub mod generator;
-pub mod lazarus;
 pub mod metadata;
 pub mod query;
 pub mod schema;
-pub mod svelte;
+pub mod stats;
 pub mod types;
-pub mod view_dto;
 
-pub use client::FirebirdClient;
+pub use client::{FirebirdClient, IsolationPreset};
 pub use config::{Config, DatabaseConfig, ServerConfig};

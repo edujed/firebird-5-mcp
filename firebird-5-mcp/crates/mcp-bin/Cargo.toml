@@ -5,14 +5,17 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "MCP server (JSON-RPC over stdio) exposing Firebird tools"
+authors = [ "Eduardo Jedliczka <edujed@gmail.com>"]
 
 [dependencies]
 firebird-5-mcp-core = { path = "../mcp-core" }
 serde_json = { workspace = true }
 
 # Configuração para Linux ARM64
+# Usamos o linker diretamente (não o driver gcc) para evitar que o Rust
+# passe flags AArch64 (ex: --fix-cortex-a53-843419) que o gcc não suporta.
 [target.aarch64-unknown-linux-gnu]
-linker = "aarch64-linux-gnu-gcc"
+linker = "aarch64-linux-gnu-ld"
 
 # Configuração para Windows AMD64 (usando MinGW)
 [target.x86_64-pc-windows-gnu]

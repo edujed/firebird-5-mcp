@@ -94,11 +94,12 @@ pub fn format_column_type(
             }
         }
         "BLOB" => {
-            // For BLOB types (type_num 261), sub_type indicates the blob sub-type:
-            // 1 = BINARY, 2 = TEXT, 3 = BLOB (generic)
-            if sub_type == 2 {
+            // For BLOB types (type_num 261), RDB$FIELD_SUB_TYPE indicates the
+            // blob sub-type: 1 = TEXT, 2 = BINARY (per the Firebird docs and
+            // RDB$FIELDS). 0/other = generic BLOB.
+            if sub_type == 1 {
                 return "BLOB SUB_TYPE TEXT".to_string();
-            } else if sub_type == 1 {
+            } else if sub_type == 2 {
                 return "BLOB SUB_TYPE BINARY".to_string();
             }
             return "BLOB".to_string();

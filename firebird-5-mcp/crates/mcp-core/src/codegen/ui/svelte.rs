@@ -4,10 +4,10 @@
 //! - Page component with PageShell + Table (search by PK/FK)
 //! - Form component with form fields (no event handling logic)
 
-use crate::generator::to_camel_case;
+use crate::codegen::naming::to_camel_case;
+use crate::codegen::view_dto::ViewField;
 use crate::schema::ColumnInfo;
 use crate::types::format_column_type;
-use crate::view_dto::ViewField;
 
 /// A field in a Svelte form.
 #[derive(Debug, Clone)]

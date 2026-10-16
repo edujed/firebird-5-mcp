@@ -130,28 +130,45 @@ build_rust() {
   fi
 
   local out_name="firebird-5-mcp"
-  if [[ "${os}" == "windows" ]]; then
-    out_name="${out_name}.exe"
-  fi
-
   local out_file="${BIN_DIR}/${out_name}"
   if [[ "${platform}" != "current" ]]; then
     out_file="${BIN_DIR}/${out_name}-${os}-${arch}"
-    if [[ "${os}" == "windows" ]]; then
-      out_file="${out_file}.exe"
-    fi
+  fi
+  if [[ "${os}" == "windows" ]]; then
+    out_file="${out_file}.exe"
   fi
 
   echo "==> Building Rust ${os}/${arch} (${target}) -> ${out_file}"
   (
     cd "${RUST_DIR}"
+
+    # For cross-compiling to aarch64-linux, we need to set the linker
+    # explicitly via env var (the [target.*] linker in Cargo.toml is not
+    # respected by rustc for cross-targets — it uses rust-lld which doesn't
+    # support AArch64-specific flags on an x86_64 host).
+    if [[ "${target}" == "aarch64-unknown-linux-gnu" ]]; then
+      if command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
+        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+      else
+        echo "==> SKIP Rust ${os}/${arch}: aarch64-linux-gnu-gcc not found"
+        return 0
+      fi
+    fi
+
     if ! cargo build --release --target "${target}"; then
       echo "==> SKIP Rust ${os}/${arch}: cross-compile failed (target ${target})"
       return 0
     fi
+
+    # The binary name in the target dir may or may not have .exe depending
+    # on the target. Check both.
+    local src="target/${target}/release/firebird-5-mcp"
+    if [[ ! -f "${src}" && "${os}" == "windows" ]]; then
+      src="target/${target}/release/firebird-5-mcp.exe"
+    fi
+
     # Copy the binary. Skip if it's the same file (hardlink) or if the
     # destination is already up to date (Zed may have the binary open).
-    local src="target/${target}/release/firebird-5-mcp"
     if [[ "$(realpath "${src}")" == "$(realpath "${out_file}")" ]]; then
       : # same inode — nothing to do
     elif [[ -f "${out_file}" ]] && cmp -s "${src}" "${out_file}"; then
@@ -200,8 +217,8 @@ main() {
   echo "Binaries in: ${BIN_DIR}"
   ls -lh "${BIN_DIR}"
   echo ""
-  echo "Archives in: ${DIST_DIR}"
-  ls -lh "${DIST_DIR}"
+  echo "Archives in: ${ROOT}/dist"
+  ls -lh "${ROOT}/dist"
 }
 
 # Package built binaries into dist/ as compressed archives:

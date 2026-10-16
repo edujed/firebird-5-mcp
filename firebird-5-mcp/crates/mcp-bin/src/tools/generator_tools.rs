@@ -1,10 +1,9 @@
 //! Handler for the `firebird_generate_dev` tool.
 
+use firebird_5_mcp_core::codegen::ui::{lazarus, svelte};
+use firebird_5_mcp_core::codegen::{GenOptions, Language, generator};
 use firebird_5_mcp_core::config::Config;
-use firebird_5_mcp_core::generator::{self, GenOptions, Language};
-use firebird_5_mcp_core::lazarus;
 use firebird_5_mcp_core::schema;
-use firebird_5_mcp_core::svelte;
 use serde_json::Value;
 
 use super::common::{arg_bool, arg_str, open_client};

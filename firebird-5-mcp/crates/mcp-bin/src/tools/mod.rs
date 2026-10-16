@@ -12,6 +12,7 @@ mod definitions;
 mod generator_tools;
 mod query_tools;
 mod schema_tools;
+mod stats_tools;
 mod view_dto_tools;
 
 pub use ddl_tools::*;
@@ -19,6 +20,7 @@ pub use definitions::*;
 pub use generator_tools::*;
 pub use query_tools::*;
 pub use schema_tools::*;
+pub use stats_tools::*;
 pub use view_dto_tools::*;
 
 /// Dispatches a tool call to the appropriate handler.
@@ -40,8 +42,14 @@ pub fn dispatch(cfg: &Config, name: &str, args: &Value) -> Result<String, String
         "firebird_list" => handle_list(cfg, args),
         "firebird_find_column" => handle_find_column(cfg, args),
         "firebird_check_duplicates" => handle_check_duplicates(cfg, args),
+        "firebird_domains" => handle_domains(cfg, args),
         "firebird_get_databases" => handle_get_databases(cfg),
         "firebird_metadata_extract" => handle_metadata_extract(cfg, args),
+
+        // Stats tools
+        "firebird_crypt_state" => handle_crypt_state(cfg, args),
+        "firebird_database_stats" => handle_database_stats(cfg, args),
+        "firebird_query_history" => handle_query_history(cfg, args),
 
         // Generator tools
         "firebird_generate_dev" => handle_generate_dev(cfg, args),

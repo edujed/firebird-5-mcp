@@ -16,12 +16,14 @@ pub fn tool_definitions() -> Vec<Value> {
     vec![
         tool(
             "firebird_query",
-            "Executes a single SQL statement against the Firebird database. Use for SELECT queries, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, DROP, etc. For DML/DDL the execution plan is appended to the result (the statement is executed once to obtain it).",
+            "Executes a single SQL statement against the Firebird database. Use for SELECT queries, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, DROP, etc. SELECT results are bounded to 100 rows by default (hard cap: 1000); use max_rows and skip to paginate. For DML/DDL the execution plan is appended to the result.",
             json!({
                 "type": "object",
                 "properties": {
                     "sql": { "type": "string", "description": "The raw SQL statement to execute. Single statement only — no SET TERM, no multiple statements." },
-                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
+                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
+                    "max_rows": { "type": "string", "description": "Maximum rows to return for SELECT (default: 100, hard cap: 1000). Ignored for DML/DDL." },
+                    "skip": { "type": "string", "description": "Number of rows to skip (for pagination). Use the value suggested in the truncation hint. Default: 0." }
                 },
                 "required": ["sql"]
             }),
@@ -51,6 +53,16 @@ pub fn tool_definitions() -> Vec<Value> {
             }),
         ),
         tool(
+            "firebird_domains",
+            "Analyzes user-defined domains: lists each domain with its type, nullability, default, and usage count (how many columns use it), shows the most common column type signatures, and suggests domains that could be created for common types that lack one.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
+                }
+            }),
+        ),
+        tool(
             "firebird_check_duplicates",
             "Checks for duplicate values in one or more columns. Use this BEFORE creating a unique index or constraint to verify data integrity. Supports composite keys (multiple columns). Returns sample duplicate rows if found.",
             json!({
@@ -71,24 +83,27 @@ pub fn tool_definitions() -> Vec<Value> {
         ),
         tool(
             "firebird_create_database",
-            "Creates a new Firebird database file (.fdb) with a fixed page size of 4096 bytes. The path must be within one of the allowed_paths directories defined in config.json.",
+            "Creates a new Firebird database file (.fdb). The path must be within one of the allowed_paths directories defined in config.json. Page size is configurable (default: 8192); valid values are 1024, 2048, 4096, 8192, 16384 or 32768.",
             json!({
                 "type": "object",
                 "properties": {
-                    "path": { "type": "string", "description": "Full path for the new .fdb file. Must be inside an allowed path from config.json." }
+                    "path": { "type": "string", "description": "Full path for the new .fdb file. Must be inside an allowed path from config.json." },
+                    "page_size": { "type": "string", "description": "Page size in bytes. Must be a power of two between 1024 and 32768 (1K, 2K, 4K, 8K, 16K or 32K). Default: 8192." }
                 },
                 "required": ["path"]
             }),
         ),
         tool(
             "firebird_run_script",
-            "Executes a SQL script (multiple statements) in a single transaction. Statements are separated by semicolons. If any statement fails, the entire transaction is rolled back.",
+            "Executes a SQL script (multiple statements) in a single transaction. Handles SET TERM blocks, BEGIN/END nesting, strings, and comments correctly. If any statement fails, the entire transaction is rolled back. The isolation level and lock-wait timeout are configurable (defaults: read-committed, 10s).",
             json!({
                 "type": "object",
                 "properties": {
                     "database": { "type": "string", "description": "Database name (as defined in config.json). This argument is required to avoid ambiguity." },
-                    "script": { "type": "string", "description": "The SQL script to execute. Multiple statements separated by semicolons." },
-                    "path": { "type": "string", "description": "Path to a .sql file to execute. Alternative to providing the script inline." }
+                    "script": { "type": "string", "description": "The SQL script to execute. Supports SET TERM ^ blocks, EXECUTE BLOCK, CREATE PROCEDURE, etc." },
+                    "path": { "type": "string", "description": "Path to a .sql file to execute. Alternative to providing the script inline." },
+                    "isolation": { "type": "string", "enum": ["read-committed", "snapshot", "consistency", "readonly"], "description": "Transaction isolation level. Default: read-committed. 'snapshot' = consistent read-rewrite; 'consistency' = table locking (strictest); 'readonly' = audit scripts that must not write." },
+                    "lock_wait": { "type": "string", "description": "Maximum seconds to wait for a lock before failing. Default: 10. Use '0' or omit for indefinite wait." }
                 },
                 "required": ["database"]
             }),
@@ -314,6 +329,39 @@ pub fn tool_definitions() -> Vec<Value> {
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
                 },
                 "required": ["views", "language"]
+            }),
+        ),
+        tool(
+            "firebird_crypt_state",
+            "Returns the at-rest encryption state of the database (MON$DATABASE.MON$CRYPT_STATE, Firebird 3.0+). Values: unencrypted, encrypted, decrypt in progress, encrypt in progress. Also reports the engine version.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
+                }
+            }),
+        ),
+        tool(
+            "firebird_database_stats",
+            "Returns a snapshot of database statistics: MON$DATABASE (size, page size, ODS, dialect, owner, creation date, read-only/forced-writes flags, backup/shutdown state), transaction counters (OIT/OAT/OST/next/sweep), cumulative I/O (reads/writes/fetches/marks), live attachments (MON$ATTACHMENTS), and active statements (MON$STATEMENTS).",
+            json!({
+                "type": "object",
+                "properties": {
+                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
+                }
+            }),
+        ),
+        tool(
+            "firebird_query_history",
+            "Returns the query history: all active statements from MON$STATEMENTS, joined with MON$ATTACHMENTS for user and remote address. Useful for seeing what queries are currently running or idle on the database. Filter by state (0=idle, 1=active, 2=stalled) and/or user name. Results are bounded to 100 rows by default (hard cap: 1000).",
+            json!({
+                "type": "object",
+                "properties": {
+                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
+                    "state": { "type": "string", "description": "Filter by statement state: 0=idle, 1=active, 2=stalled. Omit to include all states." },
+                    "user": { "type": "string", "description": "Filter by user name (case-insensitive). Omit to include all users." },
+                    "limit": { "type": "string", "description": "Maximum number of rows to return (default: 100, hard cap: 1000)." }
+                }
             }),
         ),
     ]

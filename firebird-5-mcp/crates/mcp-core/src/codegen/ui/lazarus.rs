@@ -4,7 +4,8 @@
 //! DB components (TDBEdit, TDBMemo, TDBDateTimePicker, TDBCheckBox)
 //! for tables and views.
 
-use crate::generator::to_pascal_case;
+use crate::codegen::naming::to_pascal_case;
+use crate::codegen::view_dto::ViewField;
 use crate::schema::ColumnInfo;
 use crate::types::format_column_type;
 
@@ -192,7 +193,7 @@ pub fn from_column_info(col: &ColumnInfo) -> LazarusField {
 }
 
 /// Creates a LazarusField from a ViewField (for views).
-pub fn from_view_field(view_field: &crate::view_dto::ViewField) -> LazarusField {
+pub fn from_view_field(view_field: &ViewField) -> LazarusField {
     // Parse size from type string (e.g., "VARCHAR(100)" → 100)
     let size = parse_size_from_type(&view_field.type_str);
     LazarusField {

@@ -1,8 +1,8 @@
 //! Handler for the `firebird_generate_view_dto` tool.
 
 use firebird_5_mcp_core::config::Config;
-use firebird_5_mcp_core::generator::Language;
-use firebird_5_mcp_core::view_dto;
+use firebird_5_mcp_core::codegen::Language;
+use firebird_5_mcp_core::codegen::view_dto;
 use serde_json::Value;
 
 use super::common::{arg_str, open_client};

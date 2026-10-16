@@ -1,22 +1,54 @@
 //! Query-related tool handlers.
 
 use firebird_5_mcp_core::types::is_valid_identifier;
-use firebird_5_mcp_core::{Config, FirebirdClient, explain, query};
+use firebird_5_mcp_core::{Config, FirebirdClient, IsolationPreset, explain, query};
 use serde_json::Value;
 
 use super::common::*;
 
 /// Executes a SQL statement (SELECT, INSERT, UPDATE, DELETE, DDL).
+///
+/// For SELECT statements, results are bounded to 1000 rows by default.
+/// Use `max_rows` and `skip` to paginate large result sets.
 pub fn handle_query(cfg: &Config, args: &Value) -> Result<String, String> {
     let sql = arg_str(args, "sql")
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "The 'sql' argument is required and must be a string.".to_string())?;
 
+    let max_rows = arg_str(args, "max_rows")
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(query::DEFAULT_ROWS)
+        .min(query::MAX_ROWS);
+    let skip = arg_str(args, "skip")
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0);
+
     let mut client = open_client(cfg, args)?;
-    let (result, message) = query::execute(&mut client, &sql).map_err(|e| e.to_string())?;
+
+    // For SELECT/WITH, use the bounded query path.
+    // For everything else, fall back to the execute path.
+    let is_select = query::accepts_row_limit(&sql);
+    let (result, message) = if is_select {
+        match query::query_with_limit(&mut client, &sql, max_rows, skip) {
+            Ok(r) => (Some(r), String::new()),
+            Err(e) => return Err(e.to_string()),
+        }
+    } else {
+        query::execute(&mut client, &sql).map_err(|e| e.to_string())?
+    };
 
     match result {
-        Some(result) => Ok(result_to_text(&result)),
+        Some(result) => {
+            let mut text = result_to_text(&result);
+            // Hint for pagination when the result is full.
+            if result.rows.len() as u32 >= max_rows {
+                let next_skip = skip + max_rows;
+                text.push_str(&format!(
+                    "\n\n---\nResults truncated at {max_rows} rows. Use `skip: \"{next_skip}\"` to fetch the next page."
+                ));
+            }
+            Ok(text)
+        }
         None => {
             // Opção B: anexar o plano de execução ao resultado de DML/DDL.
             match explain::explain_plan(&mut client, &sql) {
@@ -135,11 +167,25 @@ pub fn handle_run_script(cfg: &Config, args: &Value) -> Result<String, String> {
         return Err("Either 'script' or 'path' argument is required.".to_string());
     };
 
+    let preset = match arg_str(args, "isolation") {
+        Some(s) => IsolationPreset::parse(&s).ok_or_else(|| {
+            format!(
+                "Invalid isolation level: '{s}'. Valid values: read-committed, snapshot, consistency, readonly."
+            )
+        })?,
+        None => IsolationPreset::default(),
+    };
+    let lock_wait = arg_str(args, "lock_wait").and_then(|s| s.parse::<u32>().ok());
+
     let mut client = FirebirdClient::new(&cfg.server, &db.path).map_err(|e| e.to_string())?;
-    let executed = query::run_script(&mut client, &script).map_err(|e| e.to_string())?;
-    Ok(format!(
-        "Script executed successfully. {executed} statements committed."
-    ))
+    let executed =
+        query::run_script(&mut client, &script, preset, lock_wait).map_err(|e| e.to_string())?;
+
+    let mut msg = format!("Script executed successfully. {executed} statements committed.");
+    if preset != IsolationPreset::default() {
+        msg.push_str(&format!(" (isolation: {})", preset.label()));
+    }
+    Ok(msg)
 }
 
 /// Executes a SQL statement that may contain SET TERM blocks.
