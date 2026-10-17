@@ -9,38 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `firebird_table_stats` — per-table row counts. For a single table, uses
-  `SELECT COUNT(*) FROM <table>`. For all tables, uses an `EXECUTE BLOCK`
-  with `EXECUTE STATEMENT` to dynamically count each table (Firebird does
-  not support dynamic table references in subqueries).
-- `firebird_users` — lists all users with access to the database, combining
-  `RDB$DB_CREATORS` (database owners) with `RDB$USER_PRIVILEGES` (users with
-  explicit grants).
-- `firebird_grants` — shows GRANTs for a specific table or for all tables,
-  using `RDB$USER_PRIVILEGES` (available in all Firebird versions 2.5+).
-- `firebird_blob_info` — lists BLOB columns with subtype (TEXT/BINARY),
-  joining `RDB$RELATION_FIELDS` with `RDB$FIELDS` to get field type info.
-- `firebird_index_usage` — shows all indexes with columns, uniqueness, and
-  type. Uses `LIST()` window function to concatenate column names per index.
-- **GraphQL code generation** — new `graphql` target for
-  `firebird_generate_dev` and `firebird_generate_view_dto`. Generates a
-  GraphQL schema (types + Query) and a minimal Node.js/Express resolver
-  ("Option B": schema + working resolvers using `graphql` + `express` +
-  `cors`).
-- **`GenOptions` struct** — code generation options unified into a single
-  struct (`include_fks`, `database`, etc.) passed to all targets, replacing
-  scattered individual parameters.
-- **DTO unification** — `firebird_generate_view_dto` now shares the same
-  `Target` trait and `GenOptions` as `firebird_generate_dev`, with
-  `dto_type_for()` for read-only type resolution.
-- **`examples/` folder** — ready-to-use examples for calling the MCP server
-  outside an IDE:
-  - `mcp-call.sh` / `mcp-call.bat` — shell scripts (Linux/macOS/Windows)
-    that wrap the JSON-RPC call with a `python3` one-liner to extract
-    `result.content[0].text`.
-  - `freePascal/` — Free Pascal / Lazarus MCP client (`uMCP.pas` +
-    `test_mcp.pas`) using raw POSIX pipes (`fork`/`exec`/`read`/`write`)
-    instead of `TProcess` (which has a limited API in FPC 3.2.2). Tested
-    on FPC 3.2.2 / Linux x86_64.
+  `SELECT COUNT(*) FROM <table>`. For all tables, uses an `EXECUTE BLOCK` with `EXECUTE STATEMENT` to dynamically count each table.
+- `firebird_users` — lists all users with access to the database, combining   `RDB$DB_CREATORS` (database owners) with `RDB$USER_PRIVILEGES` (users with explicit grants).
+- `firebird_grants` — shows GRANTs for a specific table or for all tables, using `RDB$USER_PRIVILEGES` (available in all Firebird versions 2.5+).
+- `firebird_blob_info` — lists BLOB columns with subtype (TEXT/BINARY), joining `RDB$RELATION_FIELDS` with `RDB$FIELDS` to get field type info.
+- `firebird_index_usage` — shows all indexes with columns, uniqueness, and type. Uses `LIST()` window function to concatenate column names per index.
+- **GraphQL code generation** — new `graphql` target for  `firebird_generate_dev` and `firebird_generate_view_dto`. Generates a GraphQL schema (types + Query) and a minimal Node.js/Express resolver (`graphql` + `express` + `cors`).
+- **`GenOptions` struct** — code generation options unified into a single struct (`include_fks`, `database`, etc.) passed to all targets, replacing scattered individual parameters.
+- **DTO unification** — `firebird_generate_view_dto` now shares the same `Target` trait and `GenOptions` as `firebird_generate_dev`, with `dto_type_for()` for read-only type resolution.
+- **`examples/` folder** — ready-to-use examples for calling the MCP server outside an IDE:
+  - `mcp-call.sh` / `mcp-call.bat` — shell scripts (Linux/macOS/Windows) that wrap the JSON-RPC call with a `python3` one-liner to extract `result.content[0].text`.
+  - `freePascal/` — Free Pascal / Lazarus MCP client (`uMCP.pas` +   `test_mcp.pas`) using raw POSIX pipes (`fork`/`exec`/`read`/`write`) instead of `TProcess` (which has a limited API in FPC 3.2.2). 
+    Tested on FPC 3.2.2 / Linux x86_64.
 - **Editor registration docs** — README sections for VS CODE,  Cursor (`.cursor/mcp.json`) and JetBrains AI Assistant (`~/.jetbrains/mcp.json`) with `FIREBIRD_CONFIG` environment variable.
 
 ### Changed
