@@ -22,10 +22,13 @@ pub mod codegen;
 pub mod config;
 pub mod ddl;
 pub mod explain;
+pub mod log;
 pub mod metadata;
+pub mod paths;
 pub mod query;
 pub mod schema;
 pub mod stats;
+pub mod storage;
 pub mod types;
 
 pub use client::{FirebirdClient, IsolationPreset};

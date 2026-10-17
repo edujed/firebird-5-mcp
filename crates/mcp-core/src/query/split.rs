@@ -1,204 +1,444 @@
-//! SQL statement splitting: `SET TERM`, `BEGIN`/`END` nesting, strings, comments.
+//! SQL statement splitting: `SET TERM`, strings, comments.
 //!
-//! Ported from Plamenix (`plamenix-db/src/query.rs`).
+//! Two modes:
+//! - **No `SET TERM`:** strip comments, split by `;` (respecting strings and
+//!   `BEGIN`/`END` blocks).
+//! - **With `SET TERM`:** validate open/close pairs, isolate blocks terminated
+//!   by the custom terminator. Each block becomes a separate statement.
 
-/// Splits a SQL batch into individual statements at the active terminator.
+/// Splits a SQL batch into individual statements.
 ///
-/// Honours Firebird string and identifier quoting (`'foo''bar'` and
-/// `"id \"\"esc\"\""`), line comments (`-- to end of line`), and block
-/// comments (`/* ... */`). Comment-only or whitespace-only statements
-/// are dropped.
-///
-/// Procedural SQL needs two extra rules:
-///
-/// * **`SET TERM`** switches the terminator, exactly as `isql` and
-///   IBExpert scripts expect. The directive is consumed rather than
-///   emitted — it is a client instruction the server has never heard of.
-/// * **`BEGIN` / `END` nesting** means a semicolon inside a PSQL body is
-///   just a statement separator within that body, so a block stays whole
-///   even when the script never sets a terminator. `CASE` counts as an
-///   opener too, since it also closes with `END`.
-#[must_use]
-pub fn split_statements(sql: &str) -> Vec<String> {
-    enum State {
-        Normal,
-        SingleQuote,
-        DoubleQuote,
-        LineComment,
-        BlockComment,
+/// Returns `Ok(Vec<String>)` on success, or `Err(String)` if the script has
+/// unbalanced `SET TERM` directives.
+pub fn split_statements(sql: &str) -> Result<Vec<String>, String> {
+    if contains_set_term(sql) {
+        split_with_set_term(sql)
+    } else {
+        Ok(split_without_set_term(sql))
     }
+}
 
+/// Checks if the script contains any `SET TERM` directive (outside strings/comments).
+fn contains_set_term(sql: &str) -> bool {
     let bytes = sql.as_bytes();
-    let mut state = State::Normal;
-    let mut start = 0usize;
-    let mut has_content = false;
-    let mut out = Vec::new();
-    let mut terminator: String = ";".to_string();
-    let mut depth = 0u32;
     let mut i = 0;
     while i < bytes.len() {
-        let c = bytes[i];
-        match state {
-            State::Normal => {
-                if !has_content {
-                    if let Some((new_term, consumed)) = parse_set_term(sql, i, &terminator) {
-                        terminator = new_term;
-                        i = consumed;
-                        start = i;
-                        continue;
+        // Skip strings
+        if bytes[i] == b'\'' {
+            i = skip_string(bytes, i, b'\'');
+            continue;
+        }
+        if bytes[i] == b'"' {
+            i = skip_string(bytes, i, b'"');
+            continue;
+        }
+        // Skip line comments
+        if bytes[i] == b'-' && bytes.get(i + 1) == Some(&b'-') {
+            i = skip_line_comment(bytes, i);
+            continue;
+        }
+        // Skip block comments
+        if bytes[i] == b'/' && bytes.get(i + 1) == Some(&b'*') {
+            i = skip_block_comment(bytes, i);
+            continue;
+        }
+        // Check for SET TERM
+        if bytes[i].is_ascii_alphabetic() {
+            let word = extract_word(sql, i);
+            if word.eq_ignore_ascii_case("SET") {
+                let next_i = i + word.len();
+                if next_i < sql.len() {
+                    let next_word = extract_word(sql, next_i);
+                    if next_word.eq_ignore_ascii_case("TERM") {
+                        return true;
                     }
-                }
-                match c {
-                    b'\'' => {
-                        state = State::SingleQuote;
-                        has_content = true;
-                    }
-                    b'"' => {
-                        state = State::DoubleQuote;
-                        has_content = true;
-                    }
-                    b'-' if bytes.get(i + 1).copied() == Some(b'-') => {
-                        state = State::LineComment;
-                        i += 1;
-                    }
-                    b'/' if bytes.get(i + 1).copied() == Some(b'*') => {
-                        state = State::BlockComment;
-                        i += 1;
-                    }
-                    _ => {
-                        if depth == 0 && sql[i..].starts_with(terminator.as_str()) {
-                            if has_content {
-                                out.push(sql[start..i].trim().to_string());
-                            }
-                            i += terminator.len();
-                            start = i;
-                            has_content = false;
-                            continue;
-                        }
-                        if let Some(word_len) = keyword_at(sql, bytes, i) {
-                            match &sql[i..i + word_len].to_ascii_uppercase()[..] {
-                                "BEGIN" | "CASE" => depth += 1,
-                                "END" => depth = depth.saturating_sub(1),
-                                _ => {}
-                            }
-                            has_content = true;
-                            i += word_len;
-                            continue;
-                        }
-                        if !c.is_ascii_whitespace() {
-                            has_content = true;
-                        }
-                    }
-                }
-            }
-            State::SingleQuote => {
-                if c == b'\'' {
-                    if bytes.get(i + 1).copied() == Some(b'\'') {
-                        i += 1;
-                    } else {
-                        state = State::Normal;
-                    }
-                }
-            }
-            State::DoubleQuote => {
-                if c == b'"' {
-                    if bytes.get(i + 1).copied() == Some(b'"') {
-                        i += 1;
-                    } else {
-                        state = State::Normal;
-                    }
-                }
-            }
-            State::LineComment => {
-                if c == b'\n' {
-                    state = State::Normal;
-                }
-            }
-            State::BlockComment => {
-                if c == b'*' && bytes.get(i + 1).copied() == Some(b'/') {
-                    state = State::Normal;
-                    i += 1;
                 }
             }
         }
         i += 1;
     }
-    if has_content {
-        out.push(sql[start..].trim().to_string());
-    }
-    out
+    false
 }
 
-/// Length of the identifier-like word starting at `i`, or `None` when
-/// `i` is not on a word boundary.
-fn keyword_at(sql: &str, bytes: &[u8], i: usize) -> Option<usize> {
-    fn is_word_byte(b: u8) -> bool {
-        b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
+/// Skips a string starting at `i` (which is the opening quote).
+/// Returns the index just past the closing quote.
+fn skip_string(bytes: &[u8], i: usize, quote: u8) -> usize {
+    let mut j = i + 1;
+    while j < bytes.len() {
+        if bytes[j] == quote {
+            if bytes.get(j + 1) == Some(&quote) {
+                j += 2; // escaped quote
+            } else {
+                return j + 1;
+            }
+        } else {
+            j += 1;
+        }
     }
-    if !bytes[i].is_ascii_alphabetic() {
-        return None;
-    }
-    if i > 0 && is_word_byte(bytes[i - 1]) {
-        return None;
-    }
-    let len = sql[i..].bytes().take_while(|b| is_word_byte(*b)).count();
-    Some(len)
+    j
 }
 
-/// Recognises a `SET TERM <new> <current>` directive at `i`.
+/// Skips a line comment starting at `i`.
+/// Returns the index just past the newline.
+fn skip_line_comment(bytes: &[u8], i: usize) -> usize {
+    let mut j = i;
+    while j < bytes.len() && bytes[j] != b'\n' {
+        j += 1;
+    }
+    if j < bytes.len() {
+        j + 1 // include the newline
+    } else {
+        j
+    }
+}
+
+/// Skips a block comment starting at `i`.
+/// Returns the index just past the closing `*/`.
+fn skip_block_comment(bytes: &[u8], i: usize) -> usize {
+    let mut j = i + 2; // skip `/*`
+    while j + 1 < bytes.len() {
+        if bytes[j] == b'*' && bytes[j + 1] == b'/' {
+            return j + 2;
+        }
+        j += 1;
+    }
+    j
+}
+
+/// Extracts the word starting at `i`, skipping leading whitespace.
+/// Returns the word (without whitespace).
+fn extract_word(sql: &str, i: usize) -> &str {
+    if i >= sql.len() {
+        return "";
+    }
+    let rest = &sql[i..];
+    let trimmed = rest.trim_start();
+    let word_len = trimmed
+        .bytes()
+        .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'$')
+        .count();
+    &trimmed[..word_len]
+}
+
+/// Splits a script without `SET TERM`: strip comments, split by `;`.
+/// Respects `BEGIN`/`END` blocks (semicolons inside are not separators).
+fn split_without_set_term(sql: &str) -> Vec<String> {
+    // Step 1: Strip comments (replace with spaces to preserve positions)
+    let stripped = strip_comments(sql);
+
+    // Step 2: Split by `;` respecting strings and BEGIN/END blocks
+    let mut statements = Vec::new();
+    let bytes = stripped.as_bytes();
+    let mut start = 0;
+    let mut i = 0;
+    let mut depth = 0u32;
+
+    while i < bytes.len() {
+        if bytes[i] == b'\'' {
+            i = skip_string(bytes, i, b'\'');
+            continue;
+        }
+        if bytes[i] == b'"' {
+            i = skip_string(bytes, i, b'"');
+            continue;
+        }
+
+        // Track BEGIN/END depth
+        if bytes[i].is_ascii_alphabetic() {
+            let word = extract_word(&stripped, i);
+            let word_upper = word.to_ascii_uppercase();
+            if word_upper == "BEGIN" || word_upper == "CASE" {
+                depth += 1;
+                i += word.len();
+                continue;
+            }
+            if word_upper == "END" {
+                depth = depth.saturating_sub(1);
+                i += word.len();
+                continue;
+            }
+            // EXECUTE BLOCK starts a block that ends with END
+            if word_upper == "EXECUTE" {
+                let next_i = i + word.len();
+                if next_i < stripped.len() {
+                    let next_word = extract_word(&stripped, next_i);
+                    if next_word.to_ascii_uppercase() == "BLOCK" {
+                        depth += 1;
+                        i += word.len();
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if bytes[i] == b';' && depth == 0 {
+            let stmt = stripped[start..i].trim();
+            if !stmt.is_empty() {
+                statements.push(stmt.to_string());
+            }
+            start = i + 1;
+        }
+        i += 1;
+    }
+    // Last statement (no trailing semicolon)
+    let stmt = stripped[start..].trim();
+    if !stmt.is_empty() {
+        statements.push(stmt.to_string());
+    }
+    statements
+}
+
+/// Strips line and block comments, replacing them with spaces.
+fn strip_comments(sql: &str) -> String {
+    let bytes = sql.as_bytes();
+    let mut result = String::with_capacity(sql.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        // Skip strings (keep them as-is)
+        if bytes[i] == b'\'' {
+            let end = skip_string(bytes, i, b'\'');
+            result.push_str(&sql[i..end]);
+            i = end;
+            continue;
+        }
+        if bytes[i] == b'"' {
+            let end = skip_string(bytes, i, b'"');
+            result.push_str(&sql[i..end]);
+            i = end;
+            continue;
+        }
+        // Line comment
+        if bytes[i] == b'-' && bytes.get(i + 1) == Some(&b'-') {
+            let end = skip_line_comment(bytes, i);
+            // Replace comment with spaces (preserve newlines)
+            for j in i..end {
+                if bytes[j] == b'\n' {
+                    result.push('\n');
+                } else {
+                    result.push(' ');
+                }
+            }
+            i = end;
+            continue;
+        }
+        // Block comment
+        if bytes[i] == b'/' && bytes.get(i + 1) == Some(&b'*') {
+            let end = skip_block_comment(bytes, i);
+            // Replace comment with spaces (preserve newlines)
+            for j in i..end {
+                if bytes[j] == b'\n' {
+                    result.push('\n');
+                } else {
+                    result.push(' ');
+                }
+            }
+            i = end;
+            continue;
+        }
+        result.push(sql.as_bytes()[i] as char);
+        i += 1;
+    }
+    result
+}
+
+/// Splits a script with `SET TERM` directives.
 ///
-/// Returns the new terminator and the offset just past the directive,
-/// or `None` when this is ordinary SQL.
-fn parse_set_term(sql: &str, i: usize, current: &str) -> Option<(String, usize)> {
+/// Validates that each `SET TERM <new> ;` has a matching `SET TERM ; <new>`.
+/// Each block terminated by the custom terminator becomes a separate statement.
+fn split_with_set_term(sql: &str) -> Result<Vec<String>, String> {
+    let bytes = sql.as_bytes();
+    let mut statements = Vec::new();
+    let mut i = 0;
+    let mut current_terminator = ";".to_string();
+    let mut pending_set_term: Option<String> = None;
+    let mut stmt_start = 0;
+
+    while i < bytes.len() {
+        // Skip strings
+        if bytes[i] == b'\'' {
+            i = skip_string(bytes, i, b'\'');
+            continue;
+        }
+        if bytes[i] == b'"' {
+            i = skip_string(bytes, i, b'"');
+            continue;
+        }
+        // Skip line comments (update stmt_start if we're at the beginning of a statement)
+        if bytes[i] == b'-' && bytes.get(i + 1) == Some(&b'-') {
+            let end = skip_line_comment(bytes, i);
+            // If this comment is at the start of the current statement, advance stmt_start
+            if sql[stmt_start..i].trim().is_empty() {
+                stmt_start = end;
+            }
+            i = end;
+            continue;
+        }
+        // Skip block comments (update stmt_start if we're at the beginning of a statement)
+        if bytes[i] == b'/' && bytes.get(i + 1) == Some(&b'*') {
+            let end = skip_block_comment(bytes, i);
+            // If this comment is at the start of the current statement, advance stmt_start
+            if sql[stmt_start..i].trim().is_empty() {
+                stmt_start = end;
+            }
+            i = end;
+            continue;
+        }
+
+        // Check for the current terminator FIRST (before SET TERM)
+        // This ensures that terminators inside SET TERM directives are not processed
+        if sql[i..].starts_with(current_terminator.as_str()) {
+            let stmt = sql[stmt_start..i].trim();
+            if !stmt.is_empty() {
+                statements.push(stmt.to_string());
+            }
+            i += current_terminator.len();
+            stmt_start = i;
+            continue;
+        }
+
+        // Check for SET TERM
+        if bytes[i].is_ascii_alphabetic() {
+            let word = extract_word(sql, i);
+            if word.eq_ignore_ascii_case("SET") {
+                // Find the start of the next word (skip whitespace)
+                let mut next_i = i + word.len();
+                while next_i < sql.len() && sql.as_bytes()[next_i].is_ascii_whitespace() {
+                    next_i += 1;
+                }
+                if next_i < sql.len() {
+                    let next_word = extract_word(sql, next_i);
+                    if next_word.eq_ignore_ascii_case("TERM") {
+                        // Parse the SET TERM directive
+                        let (new_term, consumed) = parse_set_term_directive(sql, i)?;
+
+                        // Determine if this is opening or closing
+                        // If we're already in a SET TERM block (pending_set_term is Some),
+                        // and the new terminator is ";", this is a closing SET TERM.
+                        let is_closing = pending_set_term.is_some() && new_term == ";";
+
+                        if is_closing {
+                            // This is a closing SET TERM: emit the pending statement
+                            // But first, check if the current terminator appears before this SET TERM
+                            // If it does, we should have split on it instead
+                            let pending_term = pending_set_term.as_ref().unwrap();
+                            let search_region = &sql[stmt_start..i];
+                            if let Some(term_pos) = search_region.find(pending_term) {
+                                // The terminator appears before the SET TERM, so we should split on it
+                                let stmt = search_region[..term_pos].trim();
+                                if !stmt.is_empty() {
+                                    statements.push(stmt.to_string());
+                                }
+                                // The terminator appears before the SET TERM, so we split on it.
+                                // We can't re-process from after the terminator (we're mid SET TERM
+                                // block), so we emit the statement and continue from the directive.
+                                pending_set_term = None;
+                                current_terminator = ";".to_string();
+                                stmt_start = consumed;
+                                i = consumed;
+                                continue;
+                            }
+
+                            let stmt = sql[stmt_start..i].trim();
+                            if !stmt.is_empty() {
+                                statements.push(stmt.to_string());
+                            }
+                            pending_set_term = None;
+                            current_terminator = ";".to_string();
+                            stmt_start = consumed;
+                            i = consumed;
+                            continue;
+                        } else {
+                            // This is an opening SET TERM
+                            if pending_set_term.is_some() {
+                                return Err(format!(
+                                    "Nested SET TERM directives are not allowed. \
+                                     Found 'SET TERM {}' while already inside a SET TERM block.",
+                                    new_term
+                                ));
+                            }
+                            current_terminator = new_term.clone();
+                            pending_set_term = Some(new_term);
+                            stmt_start = consumed;
+                            i = consumed;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        i += 1;
+    }
+
+    // If we still have a pending SET TERM, it was never closed
+    if let Some(term) = pending_set_term {
+        return Err(format!(
+            "Unbalanced SET TERM: found 'SET TERM {} ;' but no matching 'SET TERM ; {}' before end of script.",
+            term, term
+        ));
+    }
+
+    // Handle any trailing content
+    let stmt = sql[stmt_start..].trim();
+    if !stmt.is_empty() {
+        statements.push(stmt.to_string());
+    }
+
+    Ok(statements)
+}
+
+/// Parses a `SET TERM <new> ;` or `SET TERM ; <old>` directive at position `i`.
+/// Returns the new terminator and the offset just past the directive.
+fn parse_set_term_directive(sql: &str, i: usize) -> Result<(String, usize), String> {
     let rest = &sql[i..];
     let mut cursor = 0usize;
 
-    let expect_word = |word: &str, cursor: &mut usize| -> bool {
-        let tail = &rest[*cursor..];
-        let trimmed = tail.trim_start();
-        let skipped = tail.len() - trimmed.len();
-        if trimmed.len() < word.len() || !trimmed[..word.len()].eq_ignore_ascii_case(word) {
-            return false;
-        }
-        let after = trimmed.as_bytes().get(word.len()).copied();
-        if after.is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$') {
-            return false;
-        }
-        *cursor += skipped + word.len();
-        true
-    };
+    // Skip "SET TERM"
+    let set_term_len = "SET TERM".len();
+    cursor += set_term_len;
 
-    if !expect_word("SET", &mut cursor) || !expect_word("TERM", &mut cursor) {
-        return None;
+    // Skip whitespace
+    while cursor < rest.len() && rest.as_bytes()[cursor].is_ascii_whitespace() {
+        cursor += 1;
     }
 
-    let tail = &rest[cursor..];
-    let trimmed = tail.trim_start();
-    cursor += tail.len() - trimmed.len();
-    let token_len = trimmed
-        .bytes()
-        .take_while(|b| !b.is_ascii_whitespace())
-        .count();
-    if token_len == 0 {
-        return None;
+    // Read the first token (could be the new terminator or `;`)
+    let token_start = cursor;
+    while cursor < rest.len() && !rest.as_bytes()[cursor].is_ascii_whitespace() {
+        cursor += 1;
     }
-    let token = &trimmed[..token_len];
-    cursor += token_len;
+    let token1 = &rest[token_start..cursor];
 
-    let new_term = match token.strip_suffix(current) {
-        Some(prefix) if !prefix.is_empty() => prefix.to_string(),
-        _ => {
-            let tail = &rest[cursor..];
-            let trimmed = tail.trim_start();
-            cursor += tail.len() - trimmed.len();
-            if trimmed.starts_with(current) {
-                cursor += current.len();
-            }
-            token.to_string()
-        }
+    // Skip whitespace
+    while cursor < rest.len() && rest.as_bytes()[cursor].is_ascii_whitespace() {
+        cursor += 1;
+    }
+
+    // Read the second token (could be the old terminator or `;`)
+    let token2_start = cursor;
+    while cursor < rest.len() && !rest.as_bytes()[cursor].is_ascii_whitespace() {
+        cursor += 1;
+    }
+    let token2 = &rest[token2_start..cursor];
+
+    // Determine which is the new terminator
+    // For "SET TERM <new> ;" (opening): token1 is the new terminator, token2 is ";"
+    // For "SET TERM ; <old>" (closing): token1 is ";", token2 is the old terminator
+    // We always return the terminator that will be used going forward.
+    let new_term = if token1 == ";" {
+        // Format: SET TERM ; <old> (closing) → new terminator is ";"
+        ";".to_string()
+    } else if token2 == ";" {
+        // Format: SET TERM <new> ; (opening) → new terminator is token1
+        token1.to_string()
+    } else {
+        return Err(format!(
+            "Invalid SET TERM syntax: expected 'SET TERM <new> ;' or 'SET TERM ; <old>', got 'SET TERM {} {}'",
+            token1, token2
+        ));
     };
 
-    Some((new_term, i + cursor))
+    Ok((new_term, i + cursor))
 }
 
 #[cfg(test)]
@@ -207,40 +447,50 @@ mod tests {
 
     #[test]
     fn two_simple_statements() {
-        let stmts = split_statements("SELECT 1; UPDATE t SET c = 2;");
-        assert_eq!(stmts, vec!["SELECT 1", "UPDATE t SET c = 2"]);
+        let stmts = split_statements("SELECT 1 from RDB$Database; UPDATE t SET c = 2;").unwrap();
+        assert_eq!(
+            stmts,
+            vec!["SELECT 1 from RDB$Database", "UPDATE t SET c = 2"]
+        );
     }
 
     #[test]
     fn semicolon_inside_string_is_not_a_separator() {
-        let stmts = split_statements(r"UPDATE t SET c = 'a;b' WHERE id = 1;");
+        let stmts = split_statements(r"UPDATE t SET c = 'a;b' WHERE id = 1;").unwrap();
         assert_eq!(stmts.len(), 1);
         assert!(stmts[0].contains("a;b"));
     }
 
     #[test]
     fn escaped_quotes_in_strings() {
-        let stmts = split_statements(r"UPDATE t SET c = 'it''s; fine' WHERE id = 1;");
+        let stmts = split_statements(r"UPDATE t SET c = 'it''s; fine' WHERE id = 1;").unwrap();
         assert_eq!(stmts.len(), 1);
     }
 
     #[test]
-    fn line_comments_swallow_semicolons() {
-        let stmts = split_statements("SELECT 1; -- comment; with semicolon\nUPDATE t SET c = 2;");
+    fn line_comments_are_stripped() {
+        let stmts = split_statements(
+            "SELECT 1 from RDB$Database; -- comment; with semicolon\nUPDATE t SET c = 2;",
+        )
+        .unwrap();
         assert_eq!(stmts.len(), 2);
+        assert!(!stmts[0].contains("comment"));
     }
 
     #[test]
-    fn block_comments_swallow_semicolons() {
-        let stmts = split_statements("SELECT 1; /* comment; with semicolon */ UPDATE t SET c = 2;");
+    fn block_comments_are_stripped() {
+        let stmts = split_statements(
+            "SELECT 1 from RDB$Database; /* comment; with semicolon */ UPDATE t SET c = 2;",
+        )
+        .unwrap();
         assert_eq!(stmts.len(), 2);
+        assert!(!stmts[0].contains("comment"));
     }
 
     #[test]
     fn set_term_switches_terminator() {
-        let script =
-            "SET TERM ^ ;\nCREATE PROCEDURE SP_TEST AS BEGIN SELECT 1; END ^\nSET TERM ; ^";
-        let stmts = split_statements(script);
+        let script = "SET TERM ^ ;\nCREATE PROCEDURE SP_TEST AS BEGIN SELECT 1 from RDB$Database; END ^\nSET TERM ; ^";
+        let stmts = split_statements(script).unwrap();
         assert_eq!(stmts.len(), 1);
         assert!(stmts[0].starts_with("CREATE PROCEDURE"));
         assert!(stmts[0].contains("BEGIN"));
@@ -252,7 +502,8 @@ mod tests {
     #[test]
     fn execute_block_survives_without_set_term() {
         let stmts =
-            split_statements("EXECUTE BLOCK RETURNS (N INTEGER) AS BEGIN N = 1; SUSPEND; END;");
+            split_statements("EXECUTE BLOCK RETURNS (N INTEGER) AS BEGIN N = 1; SUSPEND; END;")
+                .unwrap();
         assert_eq!(stmts.len(), 1);
         assert!(stmts[0].contains("SUSPEND"));
     }
@@ -260,35 +511,52 @@ mod tests {
     #[test]
     fn nested_blocks_stay_whole() {
         let script = "CREATE PROCEDURE SP AS BEGIN IF (x = 1) THEN BEGIN y = 2; END END;";
-        let stmts = split_statements(script);
+        let stmts = split_statements(script).unwrap();
         assert_eq!(stmts.len(), 1);
     }
 
     #[test]
     fn case_counts_as_block_opener() {
         let script = "CREATE PROCEDURE SP AS BEGIN CASE WHEN x = 1 THEN y = 2; END; END;";
-        let stmts = split_statements(script);
+        let stmts = split_statements(script).unwrap();
         assert_eq!(stmts.len(), 1);
     }
 
     #[test]
     fn empty_input_yields_nothing() {
-        assert!(split_statements("").is_empty());
-        assert!(split_statements("   ").is_empty());
-        assert!(split_statements("-- only a comment").is_empty());
+        assert!(split_statements("").unwrap().is_empty());
+        assert!(split_statements("   ").unwrap().is_empty());
+        assert!(split_statements("-- only a comment").unwrap().is_empty());
     }
 
     #[test]
     fn trailing_semicolon_omitted() {
-        let stmts = split_statements("SELECT 1;");
-        assert_eq!(stmts, vec!["SELECT 1"]);
+        let stmts = split_statements("SELECT 1 from RDB$Database;").unwrap();
+        assert_eq!(stmts, vec!["SELECT 1 from RDB$Database"]);
     }
 
     #[test]
     fn multi_character_terminator() {
-        let script = "SET TERM $$ ;\nCREATE PROCEDURE SP AS BEGIN SELECT 1; END $$\nSET TERM ; $$";
-        let stmts = split_statements(script);
+        let script = "SET TERM $$ ;\nCREATE PROCEDURE SP AS BEGIN SELECT 1 from RDB$Database; END $$\nSET TERM ; $$";
+        let stmts = split_statements(script).unwrap();
         assert_eq!(stmts.len(), 1);
         assert!(stmts[0].starts_with("CREATE PROCEDURE"));
+    }
+
+    #[test]
+    fn unbalanced_set_term_returns_error() {
+        let script = "SET TERM ^ ;\nCREATE PROCEDURE SP AS BEGIN SELECT 1 from RDB$Database; END ^";
+        let result = split_statements(script);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unbalanced SET TERM"));
+    }
+
+    #[test]
+    fn create_domain_with_comments() {
+        let script = "-- comment\nCREATE DOMAIN D_BOOLEAN AS BOOLEAN DEFAULT TRUE NOT NULL;\nCREATE DOMAIN D_INTEGER AS INTEGER;";
+        let stmts = split_statements(script).unwrap();
+        assert_eq!(stmts.len(), 2);
+        assert!(stmts[0].starts_with("CREATE DOMAIN D_BOOLEAN"));
+        assert!(stmts[1].starts_with("CREATE DOMAIN D_INTEGER"));
     }
 }

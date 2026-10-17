@@ -4,7 +4,7 @@
 //! - GraphQL schema (`.graphql`) with types, Query, and Mutation
 //! - Node.js resolvers (CommonJS) with Firebird SQL queries
 
-use super::Target;
+use super::{GeneratedFile, Target};
 use crate::codegen::fbtype::FbType;
 use crate::codegen::generator::GenOptions;
 use crate::codegen::naming::{to_camel_case, to_pascal_case};
@@ -20,9 +20,8 @@ impl Target for GraphqlTarget {
     /// Maps a Firebird type to a GraphQL scalar type.
     fn type_for(&self, t: &FbType) -> String {
         match t {
-            FbType::SmallInt | FbType::Integer | FbType::BigInt | FbType::Int128 => {
-                "Int".to_string()
-            }
+            FbType::SmallInt | FbType::Integer => "Int".to_string(),
+            FbType::BigInt | FbType::Int128 => "String".to_string(),
             FbType::Float
             | FbType::DoublePrecision
             | FbType::Numeric { .. }
@@ -46,27 +45,22 @@ impl Target for GraphqlTarget {
         schema: &TableSchema,
         _fks: &[&ForeignKeyInfo],
         opts: &GenOptions,
-    ) -> String {
+    ) -> Vec<GeneratedFile> {
         let type_name = to_pascal_case(&schema.table);
-        let mut b = String::new();
+        let mut schema_b = String::new();
+        let mut resolvers_b = String::new();
 
         // Package comment
         if let Some(pkg) = &opts.package {
-            b.push_str(&format!("// Package: {}\n", pkg));
+            schema_b.push_str(&format!("// Package: {}\n", pkg));
         }
 
         if opts.include_comments {
-            b.push_str(&format!(
-                "// GraphQL schema + resolvers for table {}\n\n",
-                schema.table
-            ));
+            schema_b.push_str(&format!("// GraphQL schema for table {}\n\n", schema.table));
         }
 
-        // === SCHEMA SECTION ===
-        b.push_str("=== SCHEMA (schema.graphql) ===\n\n");
-
         // Type definition
-        b.push_str(&format!("type {} {{\n", type_name));
+        schema_b.push_str(&format!("type {} {{\n", type_name));
         for col in &schema.columns {
             let ft = FbType::from_column(col);
             let field_name = to_camel_case(&col.name);
@@ -75,16 +69,16 @@ impl Target for GraphqlTarget {
 
             if opts.include_comments {
                 if let Some(comment) = schema.comments.get(&col.name) {
-                    b.push_str(&format!("  \"{}\"\n", comment));
+                    schema_b.push_str(&format!("  \"{}\"\n", comment));
                 }
             }
 
-            b.push_str(&format!("  {} {}{}\n", field_name, gql_type, non_null));
+            schema_b.push_str(&format!("  {} {}{}\n", field_name, gql_type, non_null));
         }
-        b.push_str("}\n\n");
+        schema_b.push_str("}\n\n");
 
         // Query type
-        b.push_str("type Query {\n");
+        schema_b.push_str("type Query {\n");
         // Single row by PK
         let pk_cols = find_pk_columns(schema);
         let pk_col_names: Vec<String> = pk_cols.iter().map(|c| c.name.clone()).collect();
@@ -98,7 +92,7 @@ impl Target for GraphqlTarget {
                     format!("{}: {}!", arg_name, gql_type)
                 })
                 .collect();
-            b.push_str(&format!(
+            schema_b.push_str(&format!(
                 "  {}({}): {}\n",
                 to_camel_case(&schema.table),
                 pk_args.join(", "),
@@ -106,16 +100,16 @@ impl Target for GraphqlTarget {
             ));
         }
         // List all
-        b.push_str(&format!(
+        schema_b.push_str(&format!(
             "  {}s: [{}!]!\n",
             to_camel_case(&schema.table),
             type_name
         ));
-        b.push_str("}\n\n");
+        schema_b.push_str("}\n\n");
 
         // Mutation type (only for tables, not views)
         if !opts.is_view {
-            b.push_str("type Mutation {\n");
+            schema_b.push_str("type Mutation {\n");
 
             // Create
             let create_args: Vec<String> = schema
@@ -130,7 +124,7 @@ impl Target for GraphqlTarget {
                     format!("{}: {}{}", arg_name, gql_type, non_null)
                 })
                 .collect();
-            b.push_str(&format!(
+            schema_b.push_str(&format!(
                 "  criar{}({}): {}\n",
                 type_name,
                 create_args.join(", "),
@@ -162,7 +156,7 @@ impl Target for GraphqlTarget {
                 );
                 args
             };
-            b.push_str(&format!(
+            schema_b.push_str(&format!(
                 "  atualizar{}({}): {}\n",
                 type_name,
                 update_args.join(", "),
@@ -179,32 +173,32 @@ impl Target for GraphqlTarget {
                     format!("{}: {}!", arg_name, gql_type)
                 })
                 .collect();
-            b.push_str(&format!(
+            schema_b.push_str(&format!(
                 "  deletar{}({}): Boolean\n",
                 type_name,
                 delete_args.join(", ")
             ));
 
-            b.push_str("}\n");
+            schema_b.push_str("}\n");
         }
 
         // === RESOLVERS SECTION ===
-        b.push_str("\n=== RESOLVERS (resolvers.js) ===\n\n");
-        b.push_str("// Node.js resolvers for Apollo Server\n");
-        b.push_str("// Requires: @apollo/server, express, and a Firebird DB wrapper\n\n");
-        b.push_str("// const { query, exec } = require('../db'); // your Firebird wrapper\n\n");
+        resolvers_b.push_str("// Node.js resolvers for Apollo Server\n");
+        resolvers_b.push_str("// Requires: @apollo/server, express, and a Firebird DB wrapper\n\n");
+        resolvers_b
+            .push_str("// const { query, exec } = require('../db'); // your Firebird wrapper\n\n");
 
         // Query resolvers
-        b.push_str("exports.Query = {\n");
+        resolvers_b.push_str("exports.Query = {\n");
         if !pk_cols.is_empty() {
             let pk_params: Vec<String> =
                 pk_cols.iter().map(|col| to_camel_case(&col.name)).collect();
-            b.push_str(&format!(
+            resolvers_b.push_str(&format!(
                 "  {}: async (_, {{ {} }}) => {{\n",
                 to_camel_case(&schema.table),
                 pk_params.join(", ")
             ));
-            b.push_str(&format!(
+            resolvers_b.push_str(&format!(
                 "    const rows = await query('SELECT * FROM {} WHERE {}', [{}]);\n",
                 schema.table,
                 pk_cols
@@ -214,23 +208,23 @@ impl Target for GraphqlTarget {
                     .join(" AND "),
                 pk_params.join(", ")
             ));
-            b.push_str("    return rows[0] || null;\n");
-            b.push_str("  },\n");
+            resolvers_b.push_str("    return rows[0] || null;\n");
+            resolvers_b.push_str("  },\n");
         }
-        b.push_str(&format!(
+        resolvers_b.push_str(&format!(
             "  {}s: async () => {{\n",
             to_camel_case(&schema.table)
         ));
-        b.push_str(&format!(
+        resolvers_b.push_str(&format!(
             "    return await query('SELECT * FROM {}');\n",
             schema.table
         ));
-        b.push_str("  },\n");
-        b.push_str("};\n\n");
+        resolvers_b.push_str("  },\n");
+        resolvers_b.push_str("};\n\n");
 
         // Mutation resolvers (only for tables, not views)
         if !opts.is_view {
-            b.push_str("exports.Mutation = {\n");
+            resolvers_b.push_str("exports.Mutation = {\n");
 
             // Create
             let insert_cols: Vec<String> = schema
@@ -248,12 +242,12 @@ impl Target for GraphqlTarget {
                 .map(|col| to_camel_case(&col.name))
                 .collect();
 
-            b.push_str(&format!(
+            resolvers_b.push_str(&format!(
                 "  criar{}: async (_, {{ {} }}) => {{\n",
                 type_name,
                 insert_params.join(", ")
             ));
-            b.push_str(&format!(
+            resolvers_b.push_str(&format!(
                 "    await exec('INSERT INTO {} ({}) VALUES ({})', [{}]);\n",
                 schema.table,
                 insert_cols.join(", "),
@@ -262,12 +256,12 @@ impl Target for GraphqlTarget {
             ));
             // Return the created row (by PK if available, else by first non-null field)
             if !pk_cols.is_empty() {
-                b.push_str(&format!(
+                resolvers_b.push_str(&format!(
                     "    // TODO: return the created row (query by PK or use sequence)\n"
                 ));
             }
-            b.push_str("    return null;\n");
-            b.push_str("  },\n");
+            resolvers_b.push_str("    return null;\n");
+            resolvers_b.push_str("  },\n");
 
             // Update
             let update_sets: Vec<String> = schema
@@ -285,13 +279,13 @@ impl Target for GraphqlTarget {
             let update_pk_params: Vec<String> =
                 pk_cols.iter().map(|col| to_camel_case(&col.name)).collect();
 
-            b.push_str(&format!(
+            resolvers_b.push_str(&format!(
                 "  atualizar{}: async (_, {{ {}, {} }}) => {{\n",
                 type_name,
                 update_pk_params.join(", "),
                 update_params.join(", ")
             ));
-            b.push_str(&format!(
+            resolvers_b.push_str(&format!(
                 "    await exec('UPDATE {} SET {} WHERE {}', [{}]);\n",
                 schema.table,
                 update_sets.join(", "),
@@ -304,16 +298,16 @@ impl Target for GraphqlTarget {
                     .concat()
                     .join(", ")
             ));
-            b.push_str("    return null;\n");
-            b.push_str("  },\n");
+            resolvers_b.push_str("    return null;\n");
+            resolvers_b.push_str("  },\n");
 
             // Delete
-            b.push_str(&format!(
+            resolvers_b.push_str(&format!(
                 "  deletar{}: async (_, {{ {} }}) => {{\n",
                 type_name,
                 update_pk_params.join(", ")
             ));
-            b.push_str(&format!(
+            resolvers_b.push_str(&format!(
                 "    await exec('DELETE FROM {} WHERE {}', [{}]);\n",
                 schema.table,
                 pk_cols
@@ -323,13 +317,24 @@ impl Target for GraphqlTarget {
                     .join(" AND "),
                 update_pk_params.join(", ")
             ));
-            b.push_str("    return true;\n");
-            b.push_str("  },\n");
+            resolvers_b.push_str("    return true;\n");
+            resolvers_b.push_str("  },\n");
 
-            b.push_str("};\n");
+            resolvers_b.push_str("};\n");
         }
 
-        b
+        vec![
+            GeneratedFile::new(
+                format!("{}.graphql", schema.table.to_lowercase()),
+                schema_b,
+                "graphql-schema",
+            ),
+            GeneratedFile::new(
+                format!("{}.js", schema.table.to_lowercase()),
+                resolvers_b,
+                "graphql-resolvers",
+            ),
+        ]
     }
 }
 
@@ -424,8 +429,8 @@ mod tests {
         let target = GraphqlTarget;
         assert_eq!(target.type_for(&FbType::SmallInt), "Int");
         assert_eq!(target.type_for(&FbType::Integer), "Int");
-        assert_eq!(target.type_for(&FbType::BigInt), "Int");
-        assert_eq!(target.type_for(&FbType::Int128), "Int");
+        assert_eq!(target.type_for(&FbType::BigInt), "String");
+        assert_eq!(target.type_for(&FbType::Int128), "String");
     }
 
     #[test]
@@ -467,32 +472,60 @@ mod tests {
         assert_eq!(target.type_for(&FbType::Boolean), "Boolean");
     }
 
+    /// Helper: extract the schema file content from generated files.
+    fn schema_content(files: &[GeneratedFile]) -> &str {
+        files
+            .iter()
+            .find(|f| f.format == "graphql-schema")
+            .map(|f| f.content.as_str())
+            .unwrap_or("")
+    }
+
+    /// Helper: extract the resolvers file content from generated files.
+    fn resolvers_content(files: &[GeneratedFile]) -> &str {
+        files
+            .iter()
+            .find(|f| f.format == "graphql-resolvers")
+            .map(|f| f.content.as_str())
+            .unwrap_or("")
+    }
+
+    #[test]
+    fn generate_returns_two_files() {
+        let target = GraphqlTarget;
+        let schema = test_schema();
+        let opts = GenOptions::new(Language::Graphql, false);
+        let files = target.generate(&schema, &[], &opts);
+
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].name, "usuario.graphql");
+        assert_eq!(files[0].format, "graphql-schema");
+        assert_eq!(files[1].name, "usuario.js");
+        assert_eq!(files[1].format, "graphql-resolvers");
+    }
+
     #[test]
     fn generate_includes_type_definition() {
         let target = GraphqlTarget;
         let schema = test_schema();
         let opts = GenOptions::new(Language::Graphql, false);
-        let output = target.generate(&schema, &[], &opts);
+        let files = target.generate(&schema, &[], &opts);
+        let output = schema_content(&files);
 
         assert!(output.contains("type Usuario {"));
-        // ID is nullable in test_schema, so it should be "id Int"
         assert!(output.contains("id Int"), "Missing 'id Int' in output");
-        // NOME is nullable, so it should be "nome String"
         assert!(
             output.contains("nome String"),
             "Missing 'nome String' in output"
         );
-        // EMAIL is nullable, so it should be "email String"
         assert!(
             output.contains("email String"),
             "Missing 'email String' in output"
         );
-        // SALARIO is NOT NULL, so it should be "salario Float!"
         assert!(
             output.contains("salario Float!"),
             "Missing 'salario Float!' in output"
         );
-        // CRIADO_EM is NOT NULL, so it should be "criadoEm String!"
         assert!(
             output.contains("criadoEm String!"),
             "Missing 'criadoEm String!' in output"
@@ -504,7 +537,8 @@ mod tests {
         let target = GraphqlTarget;
         let schema = test_schema();
         let opts = GenOptions::new(Language::Graphql, false);
-        let output = target.generate(&schema, &[], &opts);
+        let files = target.generate(&schema, &[], &opts);
+        let output = schema_content(&files);
 
         assert!(output.contains("type Query {"));
         assert!(output.contains("usuario(id: Int!): Usuario"));
@@ -516,7 +550,8 @@ mod tests {
         let target = GraphqlTarget;
         let schema = test_schema();
         let opts = GenOptions::new(Language::Graphql, false);
-        let output = target.generate(&schema, &[], &opts);
+        let files = target.generate(&schema, &[], &opts);
+        let output = schema_content(&files);
 
         assert!(output.contains("type Mutation {"));
         assert!(output.contains("criarUsuario("));
@@ -530,7 +565,8 @@ mod tests {
         let schema = test_schema();
         let mut opts = GenOptions::new(Language::Graphql, false);
         opts.is_view = true;
-        let output = target.generate(&schema, &[], &opts);
+        let files = target.generate(&schema, &[], &opts);
+        let output = schema_content(&files);
 
         assert!(!output.contains("type Mutation {"));
         assert!(!output.contains("criarUsuario"));
@@ -543,7 +579,8 @@ mod tests {
         let target = GraphqlTarget;
         let schema = test_schema();
         let opts = GenOptions::new(Language::Graphql, false);
-        let output = target.generate(&schema, &[], &opts);
+        let files = target.generate(&schema, &[], &opts);
+        let output = resolvers_content(&files);
 
         assert!(output.contains("exports.Query = {"));
         assert!(output.contains("exports.Mutation = {"));
@@ -559,13 +596,9 @@ mod tests {
         let target = GraphqlTarget;
         let schema = test_schema();
         let opts = GenOptions::new(Language::Graphql, false);
-        let output = target.generate(&schema, &[], &opts);
+        let files = target.generate(&schema, &[], &opts);
+        let output = resolvers_content(&files);
 
-        // Debug: print the UPDATE line
-        let update_line = output
-            .lines()
-            .find(|l| l.contains("UPDATE USUARIO SET"))
-            .unwrap_or("NOT FOUND");
         // Must NOT have nested array [[...]]
         assert!(
             !output.contains("[["),
@@ -573,7 +606,6 @@ mod tests {
             output
         );
         // Must have flat array [cols, pk] (matching SQL: SET cols WHERE pk)
-        // Test schema has: NOME, EMAIL, SALARIO, CRIADO_EM (non-PK) + ID (PK)
         assert!(output.contains("[nome, email, salario, criadoEm, id]"));
     }
 
@@ -583,7 +615,8 @@ mod tests {
         let schema = test_schema();
         let mut opts = GenOptions::new(Language::Graphql, false);
         opts.is_view = true;
-        let output = target.generate(&schema, &[], &opts);
+        let files = target.generate(&schema, &[], &opts);
+        let output = resolvers_content(&files);
 
         assert!(output.contains("exports.Query = {"));
         assert!(!output.contains("exports.Mutation = {"));
@@ -598,7 +631,8 @@ mod tests {
         let schema = test_schema();
         let mut opts = GenOptions::new(Language::Graphql, false);
         opts.package = Some("com.app.graphql".to_string());
-        let output = target.generate(&schema, &[], &opts);
+        let files = target.generate(&schema, &[], &opts);
+        let output = schema_content(&files);
 
         assert!(output.contains("// Package: com.app.graphql"));
     }
@@ -609,9 +643,10 @@ mod tests {
         let schema = test_schema();
         let mut opts = GenOptions::new(Language::Graphql, false);
         opts.include_comments = false;
-        let output = target.generate(&schema, &[], &opts);
+        let files = target.generate(&schema, &[], &opts);
+        let output = schema_content(&files);
 
-        assert!(!output.contains("// GraphQL schema + resolvers for table"));
+        assert!(!output.contains("// GraphQL schema for table"));
     }
 
     #[test]

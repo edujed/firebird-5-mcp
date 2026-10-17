@@ -10,3 +10,4 @@ authors = [ "Eduardo Jedliczka <edujed@gmail.com>"]
 [dependencies]
 firebird-5-mcp-core = { path = "../mcp-core" }
 serde_json = { workspace = true }
+chrono = { workspace = true }

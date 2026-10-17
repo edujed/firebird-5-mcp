@@ -17,8 +17,7 @@ uses
   SysUtils, fpjson, jsonparser;
 
 const
-  MCP_BINARY  = '/home/edujed/github/plamenix/jed-personal-mcp/target/release/firebird-5-mcp';
-  MCP_CONFIG  = '/home/edujed/github/plamenix/jed-personal-mcp/config.json';
+  MCP_BINARY  = '/home/edujed/github/plamenix/jed-personal-mcp/bin/firebird-5-mcp-linux-amd64';
 
 /// Calls an MCP tool and returns the text result.
 function MCPCall(const AToolName, AArgsJSON: string): string;
@@ -48,9 +47,6 @@ function close(aFd: Integer): Integer; cdecl; external 'libc';
 function read(aFd: Integer; var aBuf; aCount: LongInt): LongInt; cdecl; external 'libc';
 function write(aFd: Integer; const aBuf; aCount: LongInt): LongInt; cdecl; external 'libc';
 function waitpid(aPid: LongInt; var aStatus: Integer; aOptions: Integer): LongInt; cdecl; external 'libc';
-function setenv(const aName, aValue: PChar; aOverwrite: Integer): Integer; cdecl; external 'libc';
-function WIFEXITED(aStatus: Integer): Boolean; cdecl; external 'libc';
-function WEXITSTATUS(aStatus: Integer): Integer; cdecl; external 'libc';
 
 // --- Internal helper: execute MCP binary with a JSON-RPC request ---
 function ExecuteMCP(const ARequest: string): string;
@@ -64,9 +60,6 @@ var
   args: array[0..1] of PChar;
 begin
   Result := '';
-
-  // Set FIREBIRD_CONFIG in the environment (inherited by child)
-  setenv('FIREBIRD_CONFIG', MCP_CONFIG, 1);
 
   // Create pipes: pipeIn[1] = write end (parent writes request),
   //               pipeOut[0] = read end (parent reads response)

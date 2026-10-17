@@ -109,7 +109,14 @@ pub fn handle_describe_table(cfg: &Config, args: &Value) -> Result<String, Strin
     Ok(format_schema(&schema))
 }
 
-pub fn handle_get_databases(cfg: &Config) -> Result<String, String> {
+pub fn handle_get_databases(_cfg: &Config) -> Result<String, String> {
+    // Reload config from disk to pick up external changes
+    // (e.g. databases registered by firebird_create_database in a previous session)
+    let cfg = match Config::reload() {
+        Ok(c) => c,
+        Err(_) => return Err("Failed to reload config from disk".to_string()),
+    };
+
     let mut b = String::new();
     b.push_str(&format!(
         "### Configured Databases ({})\n\n",
@@ -130,6 +137,7 @@ pub fn handle_get_databases(cfg: &Config) -> Result<String, String> {
             db.name, desc, db.path, default_mark
         ));
     }
+    b.push_str(&format!("\n**MCP Build Time:** {}\n", crate::build_time()));
     Ok(b)
 }
 

@@ -1,6 +1,6 @@
 //! OpenAPI 3.2.0 target.
 
-use super::Target;
+use super::{GeneratedFile, Target};
 use crate::codegen::fbtype::FbType;
 use crate::codegen::generator::GenOptions;
 use crate::codegen::naming::{to_camel_case, to_pascal_case};
@@ -21,7 +21,12 @@ impl Target for OpenApiTarget {
         openapi_type(t).0
     }
 
-    fn generate(&self, schema: &TableSchema, fks: &[&ForeignKeyInfo], opts: &GenOptions) -> String {
+    fn generate(
+        &self,
+        schema: &TableSchema,
+        fks: &[&ForeignKeyInfo],
+        opts: &GenOptions,
+    ) -> Vec<GeneratedFile> {
         let schema_name = to_pascal_case(&schema.table);
         let mut b = String::new();
 
@@ -89,7 +94,11 @@ impl Target for OpenApiTarget {
             }
         }
 
-        b
+        vec![GeneratedFile::new(
+            format!("{}.yaml", schema.table.to_lowercase()),
+            b,
+            "openapi",
+        )]
     }
 }
 
@@ -97,9 +106,7 @@ fn openapi_type(t: &FbType) -> (String, Option<String>) {
     match t {
         FbType::BlobText => ("string".to_string(), None),
         FbType::BlobBinary | FbType::Blob => ("string".to_string(), Some("binary".to_string())),
-        FbType::Numeric { .. } | FbType::Decimal { .. } => {
-            ("number".to_string(), Some("decimal".to_string()))
-        }
+        FbType::Numeric { .. } | FbType::Decimal { .. } => ("string".to_string(), None),
         FbType::Float | FbType::DoublePrecision => {
             ("number".to_string(), Some("double".to_string()))
         }

@@ -1,6 +1,6 @@
 //! Go (sqlx) target.
 
-use super::Target;
+use super::{GeneratedFile, Target};
 use crate::codegen::fbtype::FbType;
 use crate::codegen::generator::GenOptions;
 use crate::codegen::naming::{to_camel_case, to_pascal_case};
@@ -29,7 +29,7 @@ impl Target for GoTarget {
             FbType::Cstring => "string".to_string(),
             FbType::Date | FbType::Time | FbType::Timestamp => "time.Time".to_string(),
             FbType::Boolean => "bool".to_string(),
-            FbType::DecFloat16 | FbType::DecFloat34 => "float64".to_string(),
+            FbType::DecFloat16 | FbType::DecFloat34 => "decimal.Decimal".to_string(),
             FbType::Unknown(_) => "interface{}".to_string(),
         }
     }
@@ -38,7 +38,12 @@ impl Target for GoTarget {
         go_null_type(&self.type_for(t))
     }
 
-    fn generate(&self, schema: &TableSchema, fks: &[&ForeignKeyInfo], opts: &GenOptions) -> String {
+    fn generate(
+        &self,
+        schema: &TableSchema,
+        fks: &[&ForeignKeyInfo],
+        opts: &GenOptions,
+    ) -> Vec<GeneratedFile> {
         let struct_name = to_pascal_case(&schema.table);
         let mut b = String::new();
 
@@ -113,9 +118,17 @@ impl Target for GoTarget {
                 "// var rows []{}; db.Select(&rows, query)\n",
                 struct_name
             ));
+            b.push_str(&format!(
+                "// var rows []{}; db.Select(&rows, query)\n",
+                struct_name
+            ));
         }
 
-        b
+        vec![GeneratedFile::new(
+            format!("{}.go", struct_name.to_lowercase()),
+            b,
+            "go",
+        )]
     }
 }
 
@@ -131,9 +144,10 @@ fn go_imports(schema: &TableSchema) -> Vec<&'static str> {
         let ft = FbType::from_column(col);
         match ft {
             FbType::Date | FbType::Time | FbType::Timestamp => imports.push("time"),
-            FbType::Numeric { .. } | FbType::Decimal { .. } => {
-                imports.push("github.com/shopspring/decimal")
-            }
+            FbType::Numeric { .. }
+            | FbType::Decimal { .. }
+            | FbType::DecFloat16
+            | FbType::DecFloat34 => imports.push("github.com/shopspring/decimal"),
             _ => {}
         }
     }

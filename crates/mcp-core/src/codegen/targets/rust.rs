@@ -1,6 +1,6 @@
 //! Rust (sqlx) target.
 
-use super::Target;
+use super::{GeneratedFile, Target};
 use crate::codegen::fbtype::FbType;
 use crate::codegen::generator::GenOptions;
 use crate::codegen::naming::{to_pascal_case, to_snake_case};
@@ -31,8 +31,8 @@ impl Target for RustTarget {
             FbType::Time => "NaiveTime".to_string(),
             FbType::Timestamp => "NaiveDateTime".to_string(),
             FbType::Boolean => "bool".to_string(),
-            FbType::DecFloat16 | FbType::DecFloat34 => "f64".to_string(),
-            FbType::Unknown(_) => "i32".to_string(),
+            FbType::DecFloat16 | FbType::DecFloat34 => "Decimal".to_string(),
+            FbType::Unknown(_) => "i64".to_string(),
         }
     }
 
@@ -40,7 +40,12 @@ impl Target for RustTarget {
         format!("Option<{}>", self.type_for(t))
     }
 
-    fn generate(&self, schema: &TableSchema, fks: &[&ForeignKeyInfo], opts: &GenOptions) -> String {
+    fn generate(
+        &self,
+        schema: &TableSchema,
+        fks: &[&ForeignKeyInfo],
+        opts: &GenOptions,
+    ) -> Vec<GeneratedFile> {
         let struct_name = to_pascal_case(&schema.table);
         let mut b = String::new();
 
@@ -108,9 +113,17 @@ impl Target for RustTarget {
                 "// let rows: Vec<{}> = conn.query(sql, ({{}}))?;\n",
                 struct_name
             ));
+            b.push_str(&format!(
+                "// let rows: Vec<{}> = conn.query(sql, ({{}}))?;\n",
+                struct_name
+            ));
         }
 
-        b
+        vec![GeneratedFile::new(
+            format!("{}.rs", struct_name.to_lowercase()),
+            b,
+            "rust",
+        )]
     }
 }
 
@@ -125,9 +138,10 @@ fn rust_imports(schema: &TableSchema) -> Vec<&'static str> {
             FbType::Date => imports.push("chrono::NaiveDate"),
             FbType::Time => imports.push("chrono::NaiveTime"),
             FbType::Timestamp => imports.push("chrono::NaiveDateTime"),
-            FbType::Numeric { .. } | FbType::Decimal { .. } => {
-                imports.push("bigdecimal::BigDecimal")
-            }
+            FbType::Numeric { .. }
+            | FbType::Decimal { .. }
+            | FbType::DecFloat16
+            | FbType::DecFloat34 => imports.push("bigdecimal::BigDecimal"),
             _ => {}
         }
     }

@@ -1,6 +1,6 @@
 //! Protobuf (Connect-RPC / gRPC) target.
 
-use super::Target;
+use super::{GeneratedFile, Target};
 use crate::codegen::fbtype::FbType;
 use crate::codegen::generator::GenOptions;
 use crate::codegen::naming::{to_pascal_case, to_snake_case};
@@ -19,9 +19,9 @@ impl Target for ProtobufTarget {
             FbType::BlobBinary | FbType::Blob => "bytes".to_string(),
             FbType::Numeric { .. } | FbType::Decimal { .. } => "string".to_string(), // precision
             FbType::Float | FbType::DoublePrecision => "double".to_string(),
-            FbType::SmallInt | FbType::Integer | FbType::BigInt | FbType::Int128 => {
-                "int32".to_string()
-            }
+            FbType::SmallInt | FbType::Integer => "int32".to_string(),
+            FbType::BigInt => "int64".to_string(),
+            FbType::Int128 => "string".to_string(),
             FbType::Char { .. } | FbType::Varchar { .. } | FbType::Nvarchar { .. } => {
                 "string".to_string()
             }
@@ -33,7 +33,12 @@ impl Target for ProtobufTarget {
         }
     }
 
-    fn generate(&self, schema: &TableSchema, fks: &[&ForeignKeyInfo], opts: &GenOptions) -> String {
+    fn generate(
+        &self,
+        schema: &TableSchema,
+        fks: &[&ForeignKeyInfo],
+        opts: &GenOptions,
+    ) -> Vec<GeneratedFile> {
         let message_name = to_pascal_case(&schema.table);
         let mut b = String::new();
 
@@ -91,6 +96,11 @@ impl Target for ProtobufTarget {
         }
 
         b.push_str("}");
-        b
+
+        vec![GeneratedFile::new(
+            format!("{}.proto", schema.table.to_lowercase()),
+            b,
+            "protobuf",
+        )]
     }
 }

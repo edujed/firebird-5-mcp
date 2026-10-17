@@ -1,6 +1,6 @@
 //! TypeScript target.
 
-use super::Target;
+use super::{GeneratedFile, Target};
 use crate::codegen::fbtype::FbType;
 use crate::codegen::generator::GenOptions;
 use crate::codegen::naming::{to_camel_case, to_pascal_case};
@@ -19,9 +19,8 @@ impl Target for TypeScriptTarget {
             FbType::BlobBinary | FbType::Blob => "string".to_string(), // base64
             FbType::Numeric { .. } | FbType::Decimal { .. } => "number".to_string(),
             FbType::Float | FbType::DoublePrecision => "number".to_string(),
-            FbType::SmallInt | FbType::Integer | FbType::BigInt | FbType::Int128 => {
-                "number".to_string()
-            }
+            FbType::SmallInt | FbType::Integer | FbType::BigInt => "number".to_string(),
+            FbType::Int128 => "string".to_string(),
             FbType::Char { .. } | FbType::Varchar { .. } | FbType::Nvarchar { .. } => {
                 "string".to_string()
             }
@@ -33,7 +32,12 @@ impl Target for TypeScriptTarget {
         }
     }
 
-    fn generate(&self, schema: &TableSchema, fks: &[&ForeignKeyInfo], opts: &GenOptions) -> String {
+    fn generate(
+        &self,
+        schema: &TableSchema,
+        fks: &[&ForeignKeyInfo],
+        opts: &GenOptions,
+    ) -> Vec<GeneratedFile> {
         let interface_name = to_pascal_case(&schema.table);
         let mut b = String::new();
 
@@ -85,8 +89,16 @@ impl Target for TypeScriptTarget {
                 "// const rows: {}[] = await db.query(sql);\n",
                 interface_name
             ));
+            b.push_str(&format!(
+                "// const rows: {}[] = await db.query(sql);\n",
+                interface_name
+            ));
         }
 
-        b
+        vec![GeneratedFile::new(
+            format!("{}.ts", interface_name),
+            b,
+            "typescript",
+        )]
     }
 }

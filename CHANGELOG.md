@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `arg_u32` helper in `mcp-bin` — numeric tool arguments now accept both JSON
+  numbers and numeric strings, so LLMs that send `5` instead of `"5"` no longer
+  fail. Applied to `max_rows`, `skip`, `limit`, `page_size`, `lock_wait`, and
+  `state`.
+- **Centralized path resolution** (`mcp-core/src/paths.rs`) — all file paths
+  (config, output, logs) now derive from a single base directory:
+  ```
+  ~/.firebird-mcp/          (override: $FIREBIRD_MCP_HOME)
+  ├── config.json           — server configuration
+  ├── output/               — generated code files
+  └── logs/                 — daily log files (yyyy-mm-dd.log)
+  ```
+- **File logging** — the MCP server now writes its logs to
+  `~/.firebird-mcp/logs/yyyy-mm-dd.log` (one file per day).
+- **`save_to` / output directory** — code generation tools
+  (`firebird_generate_dev`, `firebird_generate_view_dto`) now write generated
+  files to `~/.firebird-mcp/output/` by default (or to a caller-specified
+  `save_to` path). The response contains a summary with file paths and
+  previews instead of the full inline content.
+- **`examples/test-mcp/`** — self-contained test database with 4 idempotent
+  SQL scripts (`01_drop_schema.sql`, `02_create_schema.sql`,
+  `03_create_triggers.sql`, `04_poulate.sql`) and a `create_test_db.sh`
+  orchestrator. 12 tables, 2 views, 4 triggers, 2 procedures, 1 function,
+  2 sequences, 5 domains, 122 rows of sample data.
+
+### Changed
+- MCP stdio loop now handles `notifications/initialized` (acknowledged silently,
+  no response) and other notifications, per the MCP spec. Malformed JSON lines
+  are logged to stderr instead of being dropped silently.
+- Tool schemas declare numeric arguments as `["number", "string"]` so clients
+  and LLMs can send either form.
+- **Config auto-resolution** — the binary now resolves `config.json`
+  automatically from `~/.firebird-mcp/config.json` (or `$FIREBIRD_MCP_HOME`).
+  The `FIREBIRD_CONFIG` environment variable is no longer needed. Example
+  scripts (`mcp-call.sh`, `mcp-call.bat`, `freePascal/uMCP.pas`) updated to
+  remove the obsolete `MCP_CONFIG` reference.
+- **`firebird_get_databases`** now reloads `config.json` from disk on every
+  call, so newly registered databases (via `firebird_create_database` with
+  `register=true`) appear immediately without restarting the server.
+
+### Fixed
+- `firebird_run_script` with a `path` argument now enforces the configured
+  `allowed_paths` (same containment rule as `firebird_create_database`),
+  preventing the server from reading arbitrary files off the host.
+- **Crash on empty databases list** — `Config::default_database()` panicked
+  when the `databases` array was empty. Now returns an empty string safely.
+
 ## [1.2.0]
 
 ### Added

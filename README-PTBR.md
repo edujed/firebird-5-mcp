@@ -164,9 +164,6 @@ Adicione nas configurações do Zed (`~/.config/zed/settings.json`):
     "firebird-5-mcp": {
       "command": "/caminho/para/firebird-5-mcp",
       "enabled": true,
-      "env": {
-        "FIREBIRD_CONFIG": "/caminho/para/config.json"
-      },
       "timeout": 30000
     }
   }
@@ -190,9 +187,6 @@ e digitar
 			"type": "local",
 			"command": "/caminho/para/firebird-5-mcp",
 			"args": [],
-			"env": {
-        "FIREBIRD_CONFIG": "/caminho/para/config.json"
-      },
 			"tools": ["*"]	
 		}
 	}
@@ -208,10 +202,7 @@ Crie um arquivo `.cursor/mcp.json` na raiz do projeto (ou `~/.cursor/mcp.json` p
   "mcpServers": {
     "firebird-5-mcp": {
       "command": "/caminho/para/firebird-5-mcp",
-      "args": [],
-      "env": {
-        "FIREBIRD_CONFIG": "/caminho/para/config.json"
-      }
+      "args": []
     }
   }
 }
@@ -222,7 +213,6 @@ Crie um arquivo `.cursor/mcp.json` na raiz do projeto (ou `~/.cursor/mcp.json` p
 Nas configurações do AI Assistant, adicione um novo servidor MCP:
 
 - **Command:** `/caminho/para/firebird-5-mcp`
-- **Variáveis de ambiente:** `FIREBIRD_CONFIG=/caminho/para/config.json`
 
 Ou edite o arquivo de configuração MCP (`~/.jetbrains/mcp.json` ou `.mcp.json` no projeto):
 
@@ -231,14 +221,13 @@ Ou edite o arquivo de configuração MCP (`~/.jetbrains/mcp.json` ou `.mcp.json`
   "mcpServers": {
     "firebird-5-mcp": {
       "command": "/caminho/para/firebird-5-mcp",
-      "args": [],
-      "env": {
-        "FIREBIRD_CONFIG": "/caminho/para/config.json"
-      }
+      "args": []
     }
   }
 }
 ```
+
+> **Nota:** O binário resolve o `config.json` automaticamente de `~/.firebird-mcp/config.json` (ou via variáveis `FIREBIRD_CONFIG` / `FIREBIRD_MCP_HOME`). Não é necessário definir variáveis de ambiente na configuração do editor, a menos que use um caminho não-padrão.
 
 ## Uso pela Linha de Comando (Sem IDE)
 
@@ -257,19 +246,19 @@ Scripts prontos para uso estão em [`examples/`](examples/):
 
 ```bash
 # Listar tabelas
-./examples/mcp-call.sh firebird_list '{"type":"TABLES"}'
+./examples/mcp-call.sh firebird_list '{"type":"TABLES","database":"test-mcp"}'
 
 # Consultar dados
-./examples/mcp-call.sh firebird_query '{"sql":"SELECT * FROM USER"}'
+./examples/mcp-call.sh firebird_query '{"sql":"SELECT * FROM USERS","database":"test-mcp"}'
 
 # Descrever uma tabela
-./examples/mcp-call.sh firebird_describe_table '{"table_name":"USER"}'
+./examples/mcp-call.sh firebird_describe_table '{"table_name":"USERS","database":"test-mcp"}'
 
 # Gerar código (OpenAPI)
-./examples/mcp-call.sh firebird_generate_dev '{"tables":["USER"],"language":"openapi"}'
+./examples/mcp-call.sh firebird_generate_dev '{"tables":["USERS"],"language":"openapi","database":"test-mcp"}'
 ```
 
-Defina `MCP_BINARY` e `MCP_CONFIG` no script (ou como variáveis de ambiente) para apontar para o binário e o arquivo de configuração.
+Defina `MCP_BINARY` no script (ou como variável de ambiente) para apontar para o binário. O arquivo de configuração é resolvido automaticamente pelo binário (`~/.firebird-mcp/config.json` por padrão).
 
 ### Como funciona
 
@@ -349,12 +338,16 @@ Cada entrada no array `databases`:
 O servidor procura o `config.json` nesta ordem:
 1. Variável de ambiente `FIREBIRD_CONFIG` (caminho completo)
 2. `./config.json` (diretório de trabalho atual)
+3. `~/.firebird-mcp/config.json` (padrão)
+
+O diretório base pode ser sobrescrito com `FIREBIRD_MCP_HOME` (ex.: para testes ou instalações não-padrão).
 
 ### Variáveis de ambiente
 
 | Variável | Descrição |
 |----------|-----------|
-| `FIREBIRD_CONFIG` | Caminho para config.json |
+| `FIREBIRD_CONFIG` | Caminho completo para `config.json` (maior prioridade) |
+| `FIREBIRD_MCP_HOME` | Sobrescreve o diretório base (padrão: `~/.firebird-mcp`) |
 
 ## Ferramentas
 

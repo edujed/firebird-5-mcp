@@ -5,29 +5,30 @@ REM Usage:
 REM   mcp-call.bat <tool_name> <json_arguments>
 REM
 REM Examples:
-REM   mcp-call.bat firebird_list {"type":"TABLES"}
-REM   mcp-call.bat firebird_query {"sql":"SELECT * FROM USER"}
-REM   mcp-call.bat firebird_describe_table {"table_name":"USER"}
-REM   mcp-call.bat firebird_count {"table":"USER"}
-REM   mcp-call.bat firebird_generate_dev {"tables":["USER"],"language":"openapi"}
+REM   mcp-call.bat firebird_list {"type":"TABLES","database":"test-mcp"}
+REM   mcp-call.bat firebird_query {"sql":"SELECT * FROM USERS","database":"test-mcp"}
+REM   mcp-call.bat firebird_describe_table {"table_name":"USERS","database":"test-mcp"}
+REM   mcp-call.bat firebird_count {"table":"USERS","database":"test-mcp"}
+REM   mcp-call.bat firebird_generate_dev {"tables":["USERS"],"language":"openapi","database":"test-mcp"}
+REM   mcp-call.bat firebird_generate_dev {"tables":["USERS"],"language":"java","database":"test-mcp","save_to":"C:\\tmp\\mcp-out"}
 REM
 REM Configuration:
-REM   Set MCP_BINARY and MCP_CONFIG below, or override via environment:
+REM   Set MCP_BINARY below, or override via environment:
 REM   set MCP_BINARY=C:\path\to\firebird-5-mcp.exe
-REM   set MCP_CONFIG=C:\path\to\config.json
+REM   (config.json is auto-loaded from %USERPROFILE%\.firebird-mcp\config.json by the binary)
 
 setlocal
 
-if "%MCP_BINARY%"=="" set MCP_BINARY=C:\path\to\firebird-5-mcp.exe
-if "%MCP_CONFIG%"=="" set MCP_CONFIG=C:\path\to\config.json
+if "%MCP_BINARY%"=="" set MCP_BINARY=%~dp0bin\firebird-5-mcp-windows-amd64.exe
 
 if "%~1"=="" (
     echo Usage: %~nx0 ^<tool_name^> ^<json_arguments^>
     echo.
     echo Examples:
-    echo   %~nx0 firebird_list {"type":"TABLES"}
-    echo   %~nx0 firebird_query {"sql":"SELECT * FROM USER"}
-    echo   %~nx0 firebird_generate_dev {"tables":["USER"],"language":"openapi"}
+    echo   %~nx0 firebird_list {"type":"TABLES","database":"test-mcp"}
+    echo   %~nx0 firebird_query {"sql":"SELECT * FROM USERS","database":"test-mcp"}
+    echo   %~nx0 firebird_generate_dev {"tables":["USERS"],"language":"openapi","database":"test-mcp"}
+    echo   %~nx0 firebird_generate_dev {"tables":["USERS"],"language":"java","database":"test-mcp","save_to":"C:\\tmp\\mcp-out"}
     exit /b 1
 )
 

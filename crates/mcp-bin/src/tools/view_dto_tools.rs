@@ -5,10 +5,11 @@ use firebird_5_mcp_core::codegen::{GenOptions, Language};
 use firebird_5_mcp_core::config::Config;
 use serde_json::Value;
 
-use super::common::{arg_bool, arg_str, open_client};
+use super::ToolResult;
+use super::common::{arg_bool, arg_str, open_client, save_or_inline};
 
 /// Handles the `firebird_generate_view_dto` tool call.
-pub fn handle_generate_view_dto(cfg: &Config, args: &Value) -> Result<String, String> {
+pub fn handle_generate_view_dto(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
     let views_raw = args
         .get("views")
         .and_then(|v| v.as_array())
@@ -59,8 +60,19 @@ pub fn handle_generate_view_dto(cfg: &Config, args: &Value) -> Result<String, St
         is_view: true,
     };
 
-    let code = view_dto::generate_view_dto(&mut client, &views, &opts)
+    let files = view_dto::generate_view_dto(&mut client, &views, &opts)
         .map_err(|e| format!("Failed to generate view DTOs: {e}"))?;
 
-    Ok(code)
+    let db_name = arg_str(args, "database").unwrap_or_else(|| cfg.default_database().to_string());
+    let format = match language {
+        Language::Java => "java",
+        Language::Go => "go",
+        Language::Rust => "rust",
+        Language::TypeScript => "typescript",
+        Language::Protobuf => "protobuf",
+        Language::OpenApi => "openapi",
+        Language::Graphql => "graphql",
+        _ => "unknown",
+    };
+    save_or_inline(cfg, args, &db_name, format, &files)
 }

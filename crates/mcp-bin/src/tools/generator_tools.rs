@@ -1,15 +1,17 @@
 //! Handler for the `firebird_generate_dev` tool.
 
+use firebird_5_mcp_core::codegen::targets::GeneratedFile;
 use firebird_5_mcp_core::codegen::ui::{lazarus, svelte};
 use firebird_5_mcp_core::codegen::{GenOptions, Language, generator};
 use firebird_5_mcp_core::config::Config;
 use firebird_5_mcp_core::schema;
 use serde_json::Value;
 
-use super::common::{arg_bool, arg_str, open_client};
+use super::ToolResult;
+use super::common::{arg_bool, arg_str, open_client, save_or_inline};
 
 /// Handles the `firebird_generate_dev` tool call.
-pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<String, String> {
+pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
     let tables_raw = args
         .get("tables")
         .and_then(|v| v.as_array())
@@ -73,28 +75,29 @@ pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<String, String>
         is_view: false,
     };
 
+    let db_name = arg_str(args, "database").unwrap_or_else(|| cfg.default_database().to_string());
+
     // Special case: Lazarus generates .lfm files, not code entities
     if language == Language::Lazarus {
-        let mut out = String::new();
+        let mut files = Vec::new();
         for schema in &schemas {
             let lazarus_fields: Vec<lazarus::LazarusField> = schema
                 .columns
                 .iter()
                 .map(lazarus::from_column_info)
                 .collect();
-            out.push_str(&lazarus::generate_lfm(
-                &schema.table,
-                &lazarus_fields,
-                false,
+            files.push(GeneratedFile::new(
+                format!("{}.lfm", schema.table.to_lowercase()),
+                lazarus::generate_lfm(&schema.table, &lazarus_fields, false),
+                "lazarus",
             ));
-            out.push('\n');
         }
-        return Ok(out);
+        return save_or_inline(cfg, args, &db_name, "lazarus", &files);
     }
 
     // Special case: Svelte generates .svelte files (Page + Form)
     if language == Language::Svelte {
-        let mut out = String::new();
+        let mut files = Vec::new();
         for schema in &schemas {
             // Find PK: look for a unique index named PK_* in schema.indexes
             let pk_field = schema
@@ -135,23 +138,36 @@ pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<String, String>
                 .collect();
 
             // Generate Page component
-            out.push_str(&format!("// Page component for {}\n", schema.table));
-            out.push_str(&svelte::generate_page(
-                &schema.table,
-                &svelte_fields,
-                &pk_field,
-                &fk_fields,
+            let page = format!("// Page component for {}\n", schema.table)
+                + &svelte::generate_page(&schema.table, &svelte_fields, &pk_field, &fk_fields);
+            files.push(GeneratedFile::new(
+                format!("{}_page.svelte", schema.table.to_lowercase()),
+                page,
+                "svelte",
             ));
-            out.push_str("\n\n");
 
             // Generate Form component
-            out.push_str(&format!("// Form component for {}\n", schema.table));
-            out.push_str(&svelte::generate_form(&schema.table, &svelte_fields));
-            out.push('\n');
+            let form = format!("// Form component for {}\n", schema.table)
+                + &svelte::generate_form(&schema.table, &svelte_fields);
+            files.push(GeneratedFile::new(
+                format!("{}_form.svelte", schema.table.to_lowercase()),
+                form,
+                "svelte",
+            ));
         }
-        return Ok(out);
+        return save_or_inline(cfg, args, &db_name, "svelte", &files);
     }
 
-    let code = generator::generate(&schemas, &fks, &opts);
-    Ok(code)
+    let files = generator::generate(&schemas, &fks, &opts);
+    let format = match language {
+        Language::Java => "java",
+        Language::Go => "go",
+        Language::Rust => "rust",
+        Language::TypeScript => "typescript",
+        Language::Protobuf => "protobuf",
+        Language::OpenApi => "openapi",
+        Language::Graphql => "graphql",
+        _ => "unknown",
+    };
+    save_or_inline(cfg, args, &db_name, format, &files)
 }

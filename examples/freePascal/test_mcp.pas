@@ -35,27 +35,32 @@ begin
 
   { 2. List tables }
   PrintSection('2. List Tables (firebird_list)');
-  Writeln(MCPCall('firebird_list', '{"type":"TABLES"}'));
+  Writeln(MCPCall('firebird_list', '{"type":"TABLES","database":"test-mcp"}'));
 
   { 3. Describe a table }
   PrintSection('3. Describe Table (firebird_describe_table)');
-  Writeln(MCPCall('firebird_describe_table', '{"table_name":"USER"}'));
+  Writeln(MCPCall('firebird_describe_table', '{"table_name":"USERS","database":"test-mcp"}'));
 
   { 4. Query data }
   PrintSection('4. Query (firebird_query)');
-  Writeln(MCPCall('firebird_query', '{"sql":"SELECT ID, NAME, ACTIVE FROM USER"}'));
+  Writeln(MCPCall('firebird_query', '{"sql":"SELECT ID, NAME, ACTIVE FROM USERS","database":"test-mcp"}'));
 
   { 5. Count rows }
   PrintSection('5. Count (firebird_count)');
-  Writeln(MCPCall('firebird_count', '{"table":"USER"}'));
+  Writeln(MCPCall('firebird_count', '{"table":"USERS","database":"test-mcp"}'));
 
   { 6. Generate code (Lazarus) }
   PrintSection('6. Code Gen — Lazarus (firebird_generate_dev)');
-  Writeln(MCPCall('firebird_generate_dev', '{"tables":["USER"],"language":"lazarus"}'));
+  Writeln(MCPCall('firebird_generate_dev', '{"tables":["USERS"],"language":"lazarus","database":"test-mcp"}'));
 
   { 7. Generate code (OpenAPI/Swagger) }
   PrintSection('7. Code Gen — OpenAPI/Swagger (firebird_generate_dev)');
-  Writeln(MCPCall('firebird_generate_dev', '{"tables":["USER"],"language":"openapi"}'));
+  Writeln(MCPCall('firebird_generate_dev', '{"tables":["USERS"],"language":"openapi","database":"test-mcp"}'));
+
+  { 8. Generate code with file-save (Java, saved to /tmp) }
+  PrintSection('8. Code Gen — Java with file-save (save_to)');
+  Writeln(MCPCall('firebird_generate_dev',
+    '{"tables":["USERS"],"language":"java","database":"test-mcp","save_to":"/tmp/mcp-out"}'));
 
   Writeln;
   Writeln('All tests completed.');

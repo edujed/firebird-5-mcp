@@ -7,8 +7,8 @@
 //! over [`FbType`](super::FbType).
 
 use super::targets::{
-    GoTarget, GraphqlTarget, JavaTarget, OpenApiTarget, ProtobufTarget, RustTarget, Target,
-    TypeScriptTarget,
+    GeneratedFile, GoTarget, GraphqlTarget, JavaTarget, OpenApiTarget, ProtobufTarget, RustTarget,
+    Target, TypeScriptTarget,
 };
 use crate::schema::{ForeignKeyInfo, TableSchema};
 
@@ -77,41 +77,53 @@ impl GenOptions {
 }
 
 /// Generates code for one or more tables.
-pub fn generate(schemas: &[TableSchema], fks: &[ForeignKeyInfo], opts: &GenOptions) -> String {
-    let mut out = String::new();
+///
+/// Returns a list of [`GeneratedFile`]s. Each table produces one or more
+/// files depending on the target (most targets produce one file per table;
+/// GraphQL produces two: schema + resolvers).
+pub fn generate(
+    schemas: &[TableSchema],
+    fks: &[ForeignKeyInfo],
+    opts: &GenOptions,
+) -> Vec<GeneratedFile> {
+    let mut files = Vec::new();
     for schema in schemas {
-        if !out.is_empty() {
-            out.push_str("\n\n");
-        }
         let table_fks: Vec<&ForeignKeyInfo> = fks
             .iter()
             .filter(|fk| fk.table.eq_ignore_ascii_case(&schema.table))
             .collect();
-        match opts.language {
-            Language::Java => out.push_str(&JavaTarget.generate(schema, &table_fks, opts)),
-            Language::Go => out.push_str(&GoTarget.generate(schema, &table_fks, opts)),
-            Language::Rust => out.push_str(&RustTarget.generate(schema, &table_fks, opts)),
-            Language::TypeScript => {
-                out.push_str(&TypeScriptTarget.generate(schema, &table_fks, opts))
-            }
-            Language::Protobuf => out.push_str(&ProtobufTarget.generate(schema, &table_fks, opts)),
-            Language::OpenApi => out.push_str(&OpenApiTarget.generate(schema, &table_fks, opts)),
-            Language::Graphql => out.push_str(&GraphqlTarget.generate(schema, &table_fks, opts)),
+        let generated = match opts.language {
+            Language::Java => JavaTarget.generate(schema, &table_fks, opts),
+            Language::Go => GoTarget.generate(schema, &table_fks, opts),
+            Language::Rust => RustTarget.generate(schema, &table_fks, opts),
+            Language::TypeScript => TypeScriptTarget.generate(schema, &table_fks, opts),
+            Language::Protobuf => ProtobufTarget.generate(schema, &table_fks, opts),
+            Language::OpenApi => OpenApiTarget.generate(schema, &table_fks, opts),
+            Language::Graphql => GraphqlTarget.generate(schema, &table_fks, opts),
             Language::Lazarus => {
                 // Lazarus is handled separately in the tool handler (generates .lfm files)
-                out.push_str(&format!(
-                    "// Lazarus form for table {} (use firebird_generate_dev with language=lazarus)\n",
-                    schema.table
-                ));
+                vec![GeneratedFile::new(
+                    format!("{}.lfm", schema.table.to_lowercase()),
+                    format!(
+                        "// Lazarus form for table {} (use firebird_generate_dev with language=lazarus)\n",
+                        schema.table
+                    ),
+                    "lazarus",
+                )]
             }
             Language::Svelte => {
                 // Svelte is handled separately in the tool handler (generates .svelte files)
-                out.push_str(&format!(
-                    "// Svelte page for table {} (use firebird_generate_dev with language=svelte)\n",
-                    schema.table
-                ));
+                vec![GeneratedFile::new(
+                    format!("{}.svelte", schema.table.to_lowercase()),
+                    format!(
+                        "// Svelte page for table {} (use firebird_generate_dev with language=svelte)\n",
+                        schema.table
+                    ),
+                    "svelte",
+                )]
             }
-        }
+        };
+        files.extend(generated);
     }
-    out
+    files
 }

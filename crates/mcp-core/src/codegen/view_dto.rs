@@ -15,8 +15,8 @@ use rsfbclient::FbError;
 use super::fbtype::FbType;
 use super::generator::{GenOptions, Language};
 use super::targets::{
-    GoTarget, GraphqlTarget, JavaTarget, OpenApiTarget, ProtobufTarget, RustTarget, Target,
-    TypeScriptTarget,
+    GeneratedFile, GoTarget, GraphqlTarget, JavaTarget, OpenApiTarget, ProtobufTarget, RustTarget,
+    Target, TypeScriptTarget,
 };
 use super::ui::{lazarus, svelte};
 use crate::client::FirebirdClient;
@@ -85,27 +85,28 @@ pub fn generate_view_dto(
     client: &mut FirebirdClient,
     views: &[String],
     opts: &GenOptions,
-) -> Result<String, FbError> {
+) -> Result<Vec<GeneratedFile>, FbError> {
     // Views are read-only projections: suppress entity annotations (Java @Entity/@Table/@Id)
     let mut opts = opts.clone();
     opts.is_view = true;
 
-    let mut out = String::new();
+    let mut files = Vec::new();
 
     for view in views {
         let fields = get_view_metadata(client, view)?;
-        if !out.is_empty() {
-            out.push_str("\n\n");
-        }
-        out.push_str(&generate_single_view_dto(view, &fields, &opts));
+        files.extend(generate_single_view_dto(view, &fields, &opts));
     }
 
-    Ok(out)
+    Ok(files)
 }
 
 /// Generates the DTO for a single view by converting it to a synthetic
 /// `TableSchema` and reusing the target's `generate` method.
-fn generate_single_view_dto(view: &str, fields: &[ViewField], opts: &GenOptions) -> String {
+fn generate_single_view_dto(
+    view: &str,
+    fields: &[ViewField],
+    opts: &GenOptions,
+) -> Vec<GeneratedFile> {
     match opts.language {
         Language::Java => {
             let schema = view_to_schema(view, fields);
@@ -138,13 +139,21 @@ fn generate_single_view_dto(view: &str, fields: &[ViewField], opts: &GenOptions)
         Language::Lazarus => {
             let lazarus_fields: Vec<lazarus::LazarusField> =
                 fields.iter().map(lazarus::from_view_field).collect();
-            lazarus::generate_lfm(view, &lazarus_fields, true)
+            vec![GeneratedFile::new(
+                format!("{}.lfm", view.to_lowercase()),
+                lazarus::generate_lfm(view, &lazarus_fields, true),
+                "lazarus",
+            )]
         }
         Language::Svelte => {
             let svelte_fields: Vec<svelte::SvelteField> =
                 fields.iter().map(svelte::from_view_field).collect();
-            format!("// Page component for view {} (read-only)\n", view)
-                + &svelte::generate_page_for_view(view, &svelte_fields)
+            vec![GeneratedFile::new(
+                format!("{}.svelte", view.to_lowercase()),
+                format!("// Page component for view {} (read-only)\n", view)
+                    + &svelte::generate_page_for_view(view, &svelte_fields),
+                "svelte",
+            )]
         }
     }
 }

@@ -15,13 +15,10 @@ pub fn handle_query(cfg: &Config, args: &Value) -> Result<String, String> {
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "The 'sql' argument is required and must be a string.".to_string())?;
 
-    let max_rows = arg_str(args, "max_rows")
-        .and_then(|s| s.parse::<u32>().ok())
+    let max_rows = arg_u32(args, "max_rows")
         .unwrap_or(query::DEFAULT_ROWS)
         .min(query::MAX_ROWS);
-    let skip = arg_str(args, "skip")
-        .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(0);
+    let skip = arg_u32(args, "skip").unwrap_or(0);
 
     let mut client = open_client(cfg, args)?;
 
@@ -99,9 +96,7 @@ pub fn handle_sample(cfg: &Config, args: &Value) -> Result<String, String> {
     let where_clause = arg_str(args, "where")
         .map(|w| w.trim().to_string())
         .unwrap_or_default();
-    let limit = arg_str(args, "limit")
-        .and_then(|l| l.parse::<usize>().ok())
-        .unwrap_or(10);
+    let limit = arg_u32(args, "limit").map(|l| l as usize).unwrap_or(10);
 
     let mut client = open_client(cfg, args)?;
     let result =
@@ -162,6 +157,17 @@ pub fn handle_run_script(cfg: &Config, args: &Value) -> Result<String, String> {
     let script = if let Some(s) = arg_str(args, "script").filter(|s| !s.is_empty()) {
         s
     } else if let Some(p) = arg_str(args, "path").filter(|s| !s.is_empty()) {
+        // Security: a script file path is only honored when it lies inside one
+        // of the configured `allowed_paths` (same containment rule used by
+        // firebird_create_database). This prevents the server from being used
+        // to read arbitrary files off the host.
+        if !cfg.server.is_path_allowed(&p) {
+            return Err(format!(
+                "Script path '{}' is not within any allowed path. Allowed: {}",
+                p,
+                cfg.server.allowed_paths.join(", ")
+            ));
+        }
         std::fs::read_to_string(&p).map_err(|e| format!("Failed to read script file: {e}"))?
     } else {
         return Err("Either 'script' or 'path' argument is required.".to_string());
@@ -175,7 +181,7 @@ pub fn handle_run_script(cfg: &Config, args: &Value) -> Result<String, String> {
         })?,
         None => IsolationPreset::default(),
     };
-    let lock_wait = arg_str(args, "lock_wait").and_then(|s| s.parse::<u32>().ok());
+    let lock_wait = arg_u32(args, "lock_wait");
 
     let mut client = FirebirdClient::new(&cfg.server, &db.path).map_err(|e| e.to_string())?;
     let executed =

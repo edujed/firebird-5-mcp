@@ -28,7 +28,7 @@ pub fn run_script(
     preset: IsolationPreset,
     lock_wait: Option<u32>,
 ) -> Result<usize, FbError> {
-    let statements = split_statements(script);
+    let statements = split_statements(script).map_err(|e| FbError::Other(e))?;
     if statements.is_empty() {
         return Err(FbError::Other("no statements found in script".into()));
     }

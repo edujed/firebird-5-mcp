@@ -1,6 +1,6 @@
 //! Java (JPA + Lombok) target.
 
-use super::Target;
+use super::{GeneratedFile, Target};
 use crate::codegen::fbtype::FbType;
 use crate::codegen::generator::GenOptions;
 use crate::codegen::naming::{to_camel_case, to_pascal_case};
@@ -16,7 +16,8 @@ impl Target for JavaTarget {
             FbType::Numeric { .. } | FbType::Decimal { .. } => "BigDecimal".to_string(),
             FbType::Float | FbType::DoublePrecision => "Double".to_string(),
             FbType::SmallInt => "Short".to_string(),
-            FbType::Integer | FbType::BigInt | FbType::Int128 => "Integer".to_string(),
+            FbType::Integer | FbType::BigInt => "Integer".to_string(),
+            FbType::Int128 => "String".to_string(),
             FbType::Char { .. } | FbType::Varchar { .. } | FbType::Nvarchar { .. } => {
                 "String".to_string()
             }
@@ -30,7 +31,12 @@ impl Target for JavaTarget {
         }
     }
 
-    fn generate(&self, schema: &TableSchema, fks: &[&ForeignKeyInfo], opts: &GenOptions) -> String {
+    fn generate(
+        &self,
+        schema: &TableSchema,
+        fks: &[&ForeignKeyInfo],
+        opts: &GenOptions,
+    ) -> Vec<GeneratedFile> {
         let class_name = to_pascal_case(&schema.table);
         let mut b = String::new();
 
@@ -102,7 +108,7 @@ impl Target for JavaTarget {
             // Regular column
             if !opts.is_view && pk_cols.contains(&col.name) {
                 b.push_str("    @Id\n");
-                b.push_str("    @GeneratedValue(strategy = GenerationType.SEQUENCE)\n");
+                b.push_str("    @GeneratedValue(strategy = GenerationType.IDENTITY)\n");
             }
             if ft.is_blob() {
                 b.push_str("    @Lob\n");
@@ -152,7 +158,11 @@ impl Target for JavaTarget {
             b.push_str(&format!("// List<{}> rows = em.createQuery(\"SELECT {} FROM {}\", {}.class).getResultList();\n", class_name, class_name, class_name, class_name));
         }
 
-        b
+        vec![GeneratedFile::new(
+            format!("{}.java", class_name),
+            b,
+            "java",
+        )]
     }
 }
 

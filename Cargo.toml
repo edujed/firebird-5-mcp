@@ -29,6 +29,9 @@ tokio = { version = "1.0", features = ["full"] }
 # Servidor Web leve para a Web-UI
 axum = { version = "0.7", features = ["macros"] }
 
+# Diretórios do usuário (home, temp, data) — multi-plataforma
+dirs = "6.0"
+
 [profile.release]
 opt-level = 3            # Máxima otimização
 codegen-units = 1         # Melhor codegen (mais lento build, melhor runtime)

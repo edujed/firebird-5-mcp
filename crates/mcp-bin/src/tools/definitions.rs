@@ -22,8 +22,8 @@ pub fn tool_definitions() -> Vec<Value> {
                 "properties": {
                     "sql": { "type": "string", "description": "The raw SQL statement to execute. Single statement only — no SET TERM, no multiple statements." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
-                    "max_rows": { "type": "string", "description": "Maximum rows to return for SELECT (default: 100, hard cap: 1000). Ignored for DML/DDL." },
-                    "skip": { "type": "string", "description": "Number of rows to skip (for pagination). Use the value suggested in the truncation hint. Default: 0." }
+                    "max_rows": { "type": ["number", "string"], "description": "Maximum rows to return for SELECT (default: 100, hard cap: 1000). Ignored for DML/DDL." },
+                    "skip": { "type": ["number", "string"], "description": "Number of rows to skip (for pagination). Use the value suggested in the truncation hint. Default: 0." }
                 },
                 "required": ["sql"]
             }),
@@ -70,7 +70,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "properties": {
                     "table": { "type": "string", "description": "Table name to check." },
                     "columns": { "type": "array", "items": { "type": "string" }, "description": "Column name(s) to check for duplicates. For composite keys, provide all columns." },
-                    "limit": { "type": "string", "description": "Maximum number of duplicate rows to return (default: 10)." },
+                    "limit": { "type": ["number", "string"], "description": "Maximum number of duplicate rows to return (default: 10)." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
                 },
                 "required": ["table", "columns"]
@@ -83,12 +83,15 @@ pub fn tool_definitions() -> Vec<Value> {
         ),
         tool(
             "firebird_create_database",
-            "Creates a new Firebird database file (.fdb). The path must be within one of the allowed_paths directories defined in config.json. Page size is configurable (default: 8192); valid values are 1024, 2048, 4096, 8192, 16384 or 32768.",
+            "Creates a new Firebird database file (.fdb). The path must be within one of the allowed_paths directories defined in config.json. Page size is configurable (default: 8192); valid values are 1024, 2048, 4096, 8192, 16384 or 32768. Use register=true to automatically add the database to config.json.",
             json!({
                 "type": "object",
                 "properties": {
                     "path": { "type": "string", "description": "Full path for the new .fdb file. Must be inside an allowed path from config.json." },
-                    "page_size": { "type": "string", "description": "Page size in bytes. Must be a power of two between 1024 and 32768 (1K, 2K, 4K, 8K, 16K or 32K). Default: 8192." }
+                    "page_size": { "type": ["number", "string"], "description": "Page size in bytes. Must be a power of two between 1024 and 32768 (1K, 2K, 4K, 8K, 16K or 32K). Default: 8192." },
+                    "register": { "type": "boolean", "description": "If true, automatically registers the database in config.json (adds to the databases array and saves). Default: false." },
+                    "name": { "type": "string", "description": "Database name for registration. If omitted, derived from the filename (e.g. '/database/test-mcp.fdb' → 'test-mcp'). Only used when register=true." },
+                    "description": { "type": "string", "description": "Optional description for the database entry in config.json. Only used when register=true." }
                 },
                 "required": ["path"]
             }),
@@ -103,7 +106,7 @@ pub fn tool_definitions() -> Vec<Value> {
                     "script": { "type": "string", "description": "The SQL script to execute. Supports SET TERM ^ blocks, EXECUTE BLOCK, CREATE PROCEDURE, etc." },
                     "path": { "type": "string", "description": "Path to a .sql file to execute. Alternative to providing the script inline." },
                     "isolation": { "type": "string", "enum": ["read-committed", "snapshot", "consistency", "readonly"], "description": "Transaction isolation level. Default: read-committed. 'snapshot' = consistent read-rewrite; 'consistency' = table locking (strictest); 'readonly' = audit scripts that must not write." },
-                    "lock_wait": { "type": "string", "description": "Maximum seconds to wait for a lock before failing. Default: 10. Use '0' or omit for indefinite wait." }
+                    "lock_wait": { "type": ["number", "string"], "description": "Maximum seconds to wait for a lock before failing. Default: 10. Use 0 or omit for indefinite wait." }
                 },
                 "required": ["database"]
             }),
@@ -159,7 +162,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "properties": {
                     "table": { "type": "string", "description": "Table name to sample from." },
                     "where": { "type": "string", "description": "Optional WHERE clause (without the WHERE keyword)." },
-                    "limit": { "type": "string", "description": "Maximum number of rows to return. Defaults to 10." },
+                    "limit": { "type": ["number", "string"], "description": "Maximum number of rows to return. Defaults to 10." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
                 },
                 "required": ["table"]
@@ -358,9 +361,9 @@ pub fn tool_definitions() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
-                    "state": { "type": "string", "description": "Filter by statement state: 0=idle, 1=active, 2=stalled. Omit to include all states." },
+                    "state": { "type": ["number", "string"], "description": "Filter by statement state: 0=idle, 1=active, 2=stalled. Omit to include all states." },
                     "user": { "type": "string", "description": "Filter by user name (case-insensitive). Omit to include all users." },
-                    "limit": { "type": "string", "description": "Maximum number of rows to return (default: 100, hard cap: 1000)." }
+                    "limit": { "type": ["number", "string"], "description": "Maximum number of rows to return (default: 100, hard cap: 1000)." }
                 }
             }),
         ),

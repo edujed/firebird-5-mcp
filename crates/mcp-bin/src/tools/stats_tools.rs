@@ -176,14 +176,15 @@ fn truncate(s: &str, max: usize) -> String {
 /// Returns the query history: active statements from `MON$STATEMENTS`,
 /// joined with `MON$ATTACHMENTS` for user and remote address.
 pub fn handle_query_history(cfg: &Config, args: &Value) -> Result<String, String> {
-    let state_filter = arg_str(args, "state").and_then(|s| s.parse::<i64>().ok());
+    let state_filter = match args.get("state") {
+        Some(Value::Number(n)) => n.as_i64(),
+        Some(Value::String(s)) => s.trim().parse::<i64>().ok(),
+        _ => None,
+    };
     let user_filter = arg_str(args, "user")
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-    let limit = arg_str(args, "limit")
-        .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(100)
-        .min(1000);
+    let limit = arg_u32(args, "limit").unwrap_or(100).min(1000);
 
     let mut client = open_client(cfg, args)?;
     let entries = stats::query_history(&mut client, state_filter, user_filter.as_deref(), limit)

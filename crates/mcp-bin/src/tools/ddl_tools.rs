@@ -1,12 +1,13 @@
 //! DDL tools: create database/trigger/procedure/function/sequence, alter, drop.
 
 use firebird_5_mcp_core::types::is_valid_identifier;
-use firebird_5_mcp_core::{Config, FirebirdClient, ddl};
+use firebird_5_mcp_core::{Config, FirebirdClient, ddl, mlog};
 use serde_json::Value;
 
-use super::common::{arg_str, open_client};
+use super::ToolResult;
+use super::common::{arg_str, arg_u32, open_client};
 
-pub fn handle_create_database(cfg: &Config, args: &Value) -> Result<String, String> {
+pub fn handle_create_database(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
     let path = arg_str(args, "path")
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "The 'path' argument is required and must be a string.".to_string())?
@@ -27,19 +28,62 @@ pub fn handle_create_database(cfg: &Config, args: &Value) -> Result<String, Stri
         ));
     }
 
-    let page_size = arg_str(args, "page_size")
-        .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(DEFAULT_PAGE_SIZE);
+    let page_size = arg_u32(args, "page_size").unwrap_or(DEFAULT_PAGE_SIZE);
     if !is_valid_page_size(page_size) {
         return Err(format!(
             "Invalid page size: {page_size}. Must be a power of two between 1024 and 32768 (1K, 2K, 4K, 8K, 16K or 32K)."
         ));
     }
 
-    FirebirdClient::create_database(&cfg.server, &path, page_size).map_err(|e| e.to_string())?;
-    Ok(format!(
-        "Database created successfully at {path} (page size: {page_size})."
-    ))
+    mlog!("create_database: {} (page_size={page_size})", path);
+    FirebirdClient::create_database(&cfg.server, &path, page_size).map_err(|e| {
+        mlog!("create_database FAILED for {path}: {e}");
+        e.to_string()
+    })?;
+
+    let register = args
+        .get("register")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if register {
+        // Derive name from filename if not provided (e.g. "/database/test-mcp.fdb" → "test-mcp")
+        let name = arg_str(args, "name")
+            .filter(|s| !s.is_empty())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| {
+                std::path::Path::new(&path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("database")
+                    .to_string()
+            });
+        let description = arg_str(args, "description")
+            .filter(|s| !s.is_empty())
+            .map(|s| s.trim().to_string());
+
+        // Clone config, register, and save (cfg is &Config, not &mut)
+        let mut cfg_clone = cfg.clone();
+        cfg_clone
+            .register_database(&name, &path, description.as_deref())
+            .map_err(|e| format!("Database created but registration failed: {e}"))?;
+
+        Ok(ToolResult::with_structured(
+            format!(
+                "Database created successfully at {path} (page size: {page_size}).\nRegistered as '{name}' in config.json."
+            ),
+            serde_json::json!({
+                "path": path,
+                "name": name,
+                "page_size": page_size,
+                "registered": true
+            }),
+        ))
+    } else {
+        Ok(ToolResult::text(format!(
+            "Database created successfully at {path} (page size: {page_size})."
+        )))
+    }
 }
 
 /// Default page size for new databases when `page_size` is not specified.

@@ -1,0 +1,348 @@
+-- =============================================================================
+-- test-mcp — Seed Data
+-- Populates the test database with realistic sample data.
+--
+-- This script is idempotent: it deletes existing data before inserting.
+-- Run AFTER schema.sql.
+-- =============================================================================
+
+-- ---------------------------------------------------------------------------
+-- CLEAR (order respects FK dependencies: children before parents)
+-- ---------------------------------------------------------------------------
+
+DELETE FROM ACTION_LOG;
+DELETE FROM APPROVAL;
+DELETE FROM PROFILE_SCREEN;
+DELETE FROM PROFILE_PERMISSION;
+DELETE FROM USER_PROFILE;
+DELETE FROM USER_DEPARTMENT;
+DELETE FROM USERS;
+DELETE FROM DEPARTMENT;
+DELETE FROM SCREEN;
+DELETE FROM PERMISSION;
+DELETE FROM PROFILE;
+DELETE FROM BRANCH;
+
+-- ---------------------------------------------------------------------------
+-- BRANCH
+-- ---------------------------------------------------------------------------
+
+INSERT INTO BRANCH (ID, NAME, CODE, ACTIVE, CREATED_AT, UPDATED_AT)
+SELECT 1, 'Headquarters', 'HQ', TRUE, '2024-01-01 08:00:00', '2024-01-01 08:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 2, 'North Branch', 'NOR', TRUE, '2024-01-15 09:00:00', '2024-06-01 10:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 3, 'South Branch', 'SOU', TRUE, '2024-02-01 08:30:00', '2024-02-01 08:30:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 4, 'East Branch', 'EAS', FALSE, '2024-03-10 14:00:00', '2024-09-15 16:00:00' FROM RDB$DATABASE;
+
+-- ---------------------------------------------------------------------------
+-- DEPARTMENT
+-- ---------------------------------------------------------------------------
+
+INSERT INTO DEPARTMENT (ID, BRANCH_ID, PARENT_ID, NAME, CODE, TYPE, ACTIVE, CREATED_AT, UPDATED_AT)
+SELECT 1, 1, NULL, 'Executive Office', 'EXEC', 'PHYSICAL', TRUE, '2024-01-01 08:00:00', '2024-01-01 08:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 2, 1, 1, 'Finance', 'FIN', 'PHYSICAL', TRUE, '2024-01-01 08:00:00', '2024-01-01 08:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 3, 1, 1, 'Human Resources', 'HR', 'PHYSICAL', TRUE, '2024-01-01 08:00:00', '2024-01-01 08:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 4, 1, 1, 'Information Tech', 'IT', 'PHYSICAL', TRUE, '2024-01-01 08:00:00', '2024-01-01 08:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 5, 1, 2, 'Accounting', 'ACC', 'PHYSICAL', TRUE, '2024-01-01 08:00:00', '2024-01-01 08:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 6, 1, 2, 'Treasury', 'TRE', 'TEMPORARY', TRUE, '2024-06-01 10:00:00', '2024-06-01 10:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 7, 2, NULL, 'North Sales', 'NSALES', 'PHYSICAL', TRUE, '2024-01-15 09:00:00', '2024-01-15 09:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 8, 2, 7, 'North Support', 'NSUP', 'PHYSICAL', TRUE, '2024-01-15 09:00:00', '2024-01-15 09:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 9, 3, NULL, 'South Sales', 'SSALES', 'PHYSICAL', TRUE, '2024-02-01 08:30:00', '2024-02-01 08:30:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 10, 3, 9, 'South Support', 'SSUP', 'TEMPORARY', FALSE, '2024-02-01 08:30:00', '2024-09-01 12:00:00' FROM RDB$DATABASE;
+
+-- ---------------------------------------------------------------------------
+-- USER
+-- ---------------------------------------------------------------------------
+
+INSERT INTO USERS (ID, DEPARTMENT_ID, NAME, EMAIL, PASSWORD_HASH, ACTIVE, SALARY, HIRED_AT, CREATED_AT, UPDATED_AT)
+SELECT 1, 1, 'Alice Johnson', 'alice.johnson@company.com', 'hash_a1', TRUE, 95000.00, '2020-03-15', '2020-03-15 09:00:00', '2025-01-10 14:30:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 2, 2, 'Bob Smith', 'bob.smith@company.com', 'hash_b2', TRUE, 78000.50, '2021-07-01', '2021-07-01 08:00:00', '2025-02-20 11:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 3, 3, 'Carol Williams', 'carol.williams@company.com', 'hash_c3', TRUE, 72000.00, '2019-11-20', '2019-11-20 10:00:00', '2025-03-05 16:45:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 4, 4, 'David Brown', 'david.brown@company.com', 'hash_d4', TRUE, 85000.75, '2022-01-10', '2022-01-10 09:30:00', '2025-04-12 10:15:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 5, 5, 'Eve Davis', 'eve.davis@company.com', 'hash_e5', TRUE, 65000.00, '2023-05-22', '2023-05-22 14:00:00', '2025-05-01 09:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 6, 6, 'Frank Miller', 'frank.miller@company.com', 'hash_f6', TRUE, 70000.25, '2023-08-14', '2023-08-14 08:30:00', '2025-06-18 13:20:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 7, 7, 'Grace Wilson', 'grace.wilson@company.com', 'hash_g7', TRUE, 58000.00, '2024-02-01', '2024-02-01 09:00:00', '2024-02-01 09:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 8, 8, 'Henry Taylor', 'henry.taylor@company.com', 'hash_h8', FALSE, 52000.00, '2024-04-15', '2024-04-15 10:00:00', '2025-01-05 08:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 9, 9, 'Iris Anderson', 'iris.anderson@company.com', 'hash_i9', TRUE, 61000.50, '2024-06-30', '2024-06-30 11:00:00', '2024-06-30 11:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 10, 1, 'Jack Thomas', 'jack.thomas@company.com', 'hash_j10', TRUE, 102000.00, '2018-09-01', '2018-09-01 08:00:00', '2025-07-22 15:00:00' FROM RDB$DATABASE;
+
+-- ---------------------------------------------------------------------------
+-- PROFILE
+-- ---------------------------------------------------------------------------
+
+INSERT INTO PROFILE (ID, NAME, DESCRIPTION, ACTIVE, CREATED_AT)
+SELECT 1, 'Administrator', 'Full system access', TRUE, '2024-01-01 08:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 2, 'Manager', 'Department management access', TRUE, '2024-01-01 08:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 3, 'Employee', 'Standard employee access', TRUE, '2024-01-01 08:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 4, 'Auditor', 'Read-only access for auditing', TRUE, '2024-01-01 08:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 5, 'Intern', 'Limited access for trainees', FALSE, '2024-06-01 10:00:00' FROM RDB$DATABASE;
+
+-- ---------------------------------------------------------------------------
+-- PERMISSION
+-- ---------------------------------------------------------------------------
+
+INSERT INTO PERMISSION (ID, CODE, NAME, MODULE, ACTIVE)
+SELECT 1, 'USER_VIEW', 'View users', 'users', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 2, 'USER_CREATE', 'Create users', 'users', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 3, 'USER_EDIT', 'Edit users', 'users', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 4, 'USER_DELETE', 'Delete users', 'users', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 5, 'APPROVAL_VIEW', 'View approvals', 'approvals', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 6, 'APPROVAL_CREATE', 'Create approvals', 'approvals', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 7, 'APPROVAL_APPROVE', 'Approve requests', 'approvals', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 8, 'REPORT_VIEW', 'View reports', 'reports', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 9, 'REPORT_EXPORT', 'Export reports', 'reports', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 10, 'SETTINGS_EDIT', 'Edit settings', 'settings', TRUE FROM RDB$DATABASE;
+
+-- ---------------------------------------------------------------------------
+-- SCREEN
+-- ---------------------------------------------------------------------------
+
+INSERT INTO SCREEN (ID, NAME, MODULE, PATH, ACTIVE)
+SELECT 1, 'User List', 'users', '/users', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 2, 'User Detail', 'users', '/users/:id', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 3, 'Approval Queue', 'approvals', '/approvals', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 4, 'Approval Detail', 'approvals', '/approvals/:id', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 5, 'Dashboard', 'home', '/dashboard', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 6, 'Reports', 'reports', '/reports', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 7, 'Settings', 'settings', '/settings', TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 8, 'Audit Log', 'audit', '/audit', TRUE FROM RDB$DATABASE;
+
+-- ---------------------------------------------------------------------------
+-- USER_DEPARTMENT
+-- ---------------------------------------------------------------------------
+
+INSERT INTO USER_DEPARTMENT (ID, USER_ID, DEPARTMENT_ID, PRIMARY_FLAG, START_DATE, END_DATE, ACTIVE)
+SELECT 1, 1, 1, TRUE, '2020-03-15', NULL, TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 2, 2, 2, TRUE, '2021-07-01', NULL, TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 3, 3, 3, TRUE, '2019-11-20', NULL, TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 4, 4, 4, TRUE, '2022-01-10', NULL, TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 5, 5, 5, TRUE, '2023-05-22', NULL, TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 6, 6, 6, TRUE, '2023-08-14', NULL, TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 7, 7, 7, TRUE, '2024-02-01', NULL, TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 8, 8, 8, TRUE, '2024-04-15', '2025-01-05', FALSE FROM RDB$DATABASE
+UNION ALL
+SELECT 9, 9, 9, TRUE, '2024-06-30', NULL, TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 10, 10, 1, TRUE, '2018-09-01', NULL, TRUE FROM RDB$DATABASE
+UNION ALL
+SELECT 11, 1, 4, FALSE, '2023-01-01', '2024-01-01', FALSE FROM RDB$DATABASE
+UNION ALL
+SELECT 12, 2, 5, FALSE, '2022-01-01', NULL, TRUE FROM RDB$DATABASE;
+
+-- ---------------------------------------------------------------------------
+-- USER_PROFILE
+-- ---------------------------------------------------------------------------
+
+INSERT INTO USER_PROFILE (ID, USER_ID, PROFILE_ID)
+SELECT 1, 1, 1 FROM RDB$DATABASE
+UNION ALL
+SELECT 2, 2, 2 FROM RDB$DATABASE
+UNION ALL
+SELECT 3, 3, 2 FROM RDB$DATABASE
+UNION ALL
+SELECT 4, 4, 2 FROM RDB$DATABASE
+UNION ALL
+SELECT 5, 5, 3 FROM RDB$DATABASE
+UNION ALL
+SELECT 6, 6, 3 FROM RDB$DATABASE
+UNION ALL
+SELECT 7, 7, 3 FROM RDB$DATABASE
+UNION ALL
+SELECT 8, 8, 3 FROM RDB$DATABASE
+UNION ALL
+SELECT 9, 9, 3 FROM RDB$DATABASE
+UNION ALL
+SELECT 10, 10, 1 FROM RDB$DATABASE;
+
+-- ---------------------------------------------------------------------------
+-- PROFILE_PERMISSION
+-- ---------------------------------------------------------------------------
+
+INSERT INTO PROFILE_PERMISSION (ID, PROFILE_ID, PERMISSION_ID)
+SELECT 1, 1, 1 FROM RDB$DATABASE
+UNION ALL
+SELECT 2, 1, 2 FROM RDB$DATABASE
+UNION ALL
+SELECT 3, 1, 3 FROM RDB$DATABASE
+UNION ALL
+SELECT 4, 1, 4 FROM RDB$DATABASE
+UNION ALL
+SELECT 5, 1, 5 FROM RDB$DATABASE
+UNION ALL
+SELECT 6, 1, 6 FROM RDB$DATABASE
+UNION ALL
+SELECT 7, 1, 7 FROM RDB$DATABASE
+UNION ALL
+SELECT 8, 1, 8 FROM RDB$DATABASE
+UNION ALL
+SELECT 9, 1, 9 FROM RDB$DATABASE
+UNION ALL
+SELECT 10, 1, 10 FROM RDB$DATABASE
+UNION ALL
+SELECT 11, 2, 1 FROM RDB$DATABASE
+UNION ALL
+SELECT 12, 2, 2 FROM RDB$DATABASE
+UNION ALL
+SELECT 13, 2, 3 FROM RDB$DATABASE
+UNION ALL
+SELECT 14, 2, 5 FROM RDB$DATABASE
+UNION ALL
+SELECT 15, 2, 6 FROM RDB$DATABASE
+UNION ALL
+SELECT 16, 2, 7 FROM RDB$DATABASE
+UNION ALL
+SELECT 17, 2, 8 FROM RDB$DATABASE
+UNION ALL
+SELECT 18, 2, 9 FROM RDB$DATABASE
+UNION ALL
+SELECT 19, 3, 1 FROM RDB$DATABASE
+UNION ALL
+SELECT 20, 3, 5 FROM RDB$DATABASE
+UNION ALL
+SELECT 21, 3, 6 FROM RDB$DATABASE
+UNION ALL
+SELECT 22, 3, 8 FROM RDB$DATABASE
+UNION ALL
+SELECT 23, 4, 1 FROM RDB$DATABASE
+UNION ALL
+SELECT 24, 4, 5 FROM RDB$DATABASE
+UNION ALL
+SELECT 25, 4, 8 FROM RDB$DATABASE;
+
+-- ---------------------------------------------------------------------------
+-- PROFILE_SCREEN
+-- ---------------------------------------------------------------------------
+
+INSERT INTO PROFILE_SCREEN (ID, PROFILE_ID, SCREEN_ID)
+SELECT 1, 1, 1 FROM RDB$DATABASE
+UNION ALL
+SELECT 2, 1, 2 FROM RDB$DATABASE
+UNION ALL
+SELECT 3, 1, 3 FROM RDB$DATABASE
+UNION ALL
+SELECT 4, 1, 4 FROM RDB$DATABASE
+UNION ALL
+SELECT 5, 1, 5 FROM RDB$DATABASE
+UNION ALL
+SELECT 6, 1, 6 FROM RDB$DATABASE
+UNION ALL
+SELECT 7, 1, 7 FROM RDB$DATABASE
+UNION ALL
+SELECT 8, 1, 8 FROM RDB$DATABASE
+UNION ALL
+SELECT 9, 2, 1 FROM RDB$DATABASE
+UNION ALL
+SELECT 10, 2, 2 FROM RDB$DATABASE
+UNION ALL
+SELECT 11, 2, 3 FROM RDB$DATABASE
+UNION ALL
+SELECT 12, 2, 4 FROM RDB$DATABASE
+UNION ALL
+SELECT 13, 2, 5 FROM RDB$DATABASE
+UNION ALL
+SELECT 14, 2, 6 FROM RDB$DATABASE
+UNION ALL
+SELECT 15, 3, 3 FROM RDB$DATABASE
+UNION ALL
+SELECT 16, 3, 4 FROM RDB$DATABASE
+UNION ALL
+SELECT 17, 3, 5 FROM RDB$DATABASE
+UNION ALL
+SELECT 18, 4, 5 FROM RDB$DATABASE
+UNION ALL
+SELECT 19, 4, 6 FROM RDB$DATABASE
+UNION ALL
+SELECT 20, 4, 8 FROM RDB$DATABASE;
+
+-- ---------------------------------------------------------------------------
+-- APPROVAL
+-- ---------------------------------------------------------------------------
+
+INSERT INTO APPROVAL (ID, REQUESTER_ID, APPROVER_ID, STATUS, REASON, APPROVED_AT, CREATED_AT)
+SELECT 1, 5, 2, 'APPROVED', 'New monitor for workstation', '2025-06-10 14:30:00', '2025-06-09 09:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 2, 7, 2, 'APPROVED', 'Laptop upgrade', '2025-07-01 10:00:00', '2025-06-28 16:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 3, 9, 1, 'PENDING', 'Access to production database', NULL, '2025-08-15 11:30:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 4, 5, 1, 'REJECTED', 'External training course', '2025-08-20 09:00:00', '2025-08-18 14:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 5, 6, 2, 'PENDING', 'Software license renewal', NULL, '2025-09-01 08:45:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 6, 10, 1, 'APPROVED', 'Team offsite venue booking', '2025-09-10 15:00:00', '2025-09-05 10:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 7, 3, 1, 'PENDING', 'Conference attendance', NULL, '2025-10-01 09:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 8, 4, 2, 'APPROVED', 'New development environment', '2025-10-10 13:00:00', '2025-10-05 11:00:00' FROM RDB$DATABASE;
+
+-- ---------------------------------------------------------------------------
+-- ACTION_LOG
+-- ---------------------------------------------------------------------------
+
+INSERT INTO ACTION_LOG (ID, USER_ID, ACTION, ENTITY, ENTITY_ID, DETAILS, CREATED_AT)
+SELECT 1, 1, 'CREATE', 'USER', 5, 'Created user Eve Davis', '2023-05-22 14:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 2, 1, 'CREATE', 'USER', 6, 'Created user Frank Miller', '2023-08-14 08:30:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 3, 2, 'UPDATE', 'USER', 8, 'Deactivated Henry Taylor', '2025-01-05 08:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 4, 1, 'CREATE', 'APPROVAL', 1, 'Created approval #1', '2025-06-09 09:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 5, 2, 'UPDATE', 'APPROVAL', 1, 'Approved approval #1', '2025-06-10 14:30:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 6, 1, 'CREATE', 'APPROVAL', 3, 'Created approval #3', '2025-08-15 11:30:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 7, 1, 'UPDATE', 'APPROVAL', 4, 'Rejected approval #4', '2025-08-20 09:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 8, 10, 'CREATE', 'APPROVAL', 6, 'Created approval #6', '2025-09-05 10:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 9, 1, 'UPDATE', 'APPROVAL', 6, 'Approved approval #6', '2025-09-10 15:00:00' FROM RDB$DATABASE
+UNION ALL
+SELECT 10, 3, 'CREATE', 'APPROVAL', 7, 'Created approval #7', '2025-10-01 09:00:00' FROM RDB$DATABASE;
