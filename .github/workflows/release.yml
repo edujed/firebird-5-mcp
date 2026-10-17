@@ -51,12 +51,15 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq mingw-w64-x86-64-dev binutils-mingw-w64-x86-64
+          # Verifica que o gcc cross está disponível
+          x86_64-w64-mingw32-gcc --version
 
       - name: Build
         env:
           # O rustc usa rust-lld por padrão, que não suporta flags AArch64
           # em host x86_64. Forçamos o gcc cross como linker.
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
         run: |
           cargo build --release --target ${{ matrix.target }}
 
