@@ -50,7 +50,7 @@ jobs:
         if: matrix.target == 'x86_64-pc-windows-gnu'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq mingw-w64-x86-64-dev
+          sudo apt-get install -y -qq mingw-w64-x86-64-dev binutils-mingw-w64-x86-64
 
       - name: Build
         env:
