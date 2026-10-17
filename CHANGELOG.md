@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0]
 
 ### Added
 - `arg_u32` helper in `mcp-bin` — numeric tool arguments now accept both JSON
@@ -32,32 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `03_create_triggers.sql`, `04_poulate.sql`) and a `create_test_db.sh`
   orchestrator. 12 tables, 2 views, 4 triggers, 2 procedures, 1 function,
   2 sequences, 5 domains, 122 rows of sample data.
-
-### Changed
-- MCP stdio loop now handles `notifications/initialized` (acknowledged silently,
-  no response) and other notifications, per the MCP spec. Malformed JSON lines
-  are logged to stderr instead of being dropped silently.
-- Tool schemas declare numeric arguments as `["number", "string"]` so clients
-  and LLMs can send either form.
-- **Config auto-resolution** — the binary now resolves `config.json`
-  automatically from `~/.firebird-mcp/config.json` (or `$FIREBIRD_MCP_HOME`).
-  The `FIREBIRD_CONFIG` environment variable is no longer needed. Example
-  scripts (`mcp-call.sh`, `mcp-call.bat`, `freePascal/uMCP.pas`) updated to
-  remove the obsolete `MCP_CONFIG` reference.
-- **`firebird_get_databases`** now reloads `config.json` from disk on every
-  call, so newly registered databases (via `firebird_create_database` with
-  `register=true`) appear immediately without restarting the server.
-
-### Fixed
-- `firebird_run_script` with a `path` argument now enforces the configured
-  `allowed_paths` (same containment rule as `firebird_create_database`),
-  preventing the server from reading arbitrary files off the host.
-- **Crash on empty databases list** — `Config::default_database()` panicked
-  when the `databases` array was empty. Now returns an empty string safely.
-
-## [1.2.0]
-
-### Added
 - `firebird_table_stats` — per-table row counts. For a single table, uses
   `SELECT COUNT(*) FROM <table>`. For all tables, uses an `EXECUTE BLOCK` with `EXECUTE STATEMENT` to dynamically count each table.
 - `firebird_users` — lists all users with access to the database, combining   `RDB$DB_CREATORS` (database owners) with `RDB$USER_PRIVILEGES` (users with explicit grants).
@@ -74,8 +48,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Editor registration docs** — README sections for VS CODE,  Cursor (`.cursor/mcp.json`) and JetBrains AI Assistant (`~/.jetbrains/mcp.json`) with `FIREBIRD_CONFIG` environment variable.
 
 ### Changed
+- MCP stdio loop now handles `notifications/initialized` (acknowledged silently,
+  no response) and other notifications, per the MCP spec. Malformed JSON lines
+  are logged to stderr instead of being dropped silently.
+- Tool schemas declare numeric arguments as `["number", "string"]` so clients
+  and LLMs can send either form.
+- **Config auto-resolution** — the binary now resolves `config.json`
+  automatically from `~/.firebird-mcp/config.json` (or `$FIREBIRD_MCP_HOME`).
+  The `FIREBIRD_CONFIG` environment variable is no longer needed. Example
+  scripts (`mcp-call.sh`, `mcp-call.bat`, `freePascal/uMCP.pas`) updated to
+  remove the obsolete `MCP_CONFIG` reference.
+- **`firebird_get_databases`** now reloads `config.json` from disk on every
+  call, so newly registered databases (via `firebird_create_database` with
+  `register=true`) appear immediately without restarting the server.
 - Workspace moved to repo root (removed `firebird-5-mcp/` subfolder).
 - Go build support removed from `scripts/build.sh` (Go version discontinued).
+
+### Fixed
+- `firebird_run_script` with a `path` argument now enforces the configured
+  `allowed_paths` (same containment rule as `firebird_create_database`),
+  preventing the server from reading arbitrary files off the host.
+- **Crash on empty databases list** — `Config::default_database()` panicked
+  when the `databases` array was empty. Now returns an empty string safely.
 
 ## [1.1.0] — Pure Rust (firebird-5-mcp)
 
