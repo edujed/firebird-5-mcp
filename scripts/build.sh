@@ -13,8 +13,7 @@ set -euo pipefail
 
 # Resolve project root (parent of scripts/)
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN_DIR="${ROOT}/bin"
-DIST_DIR="${ROOT}/dist"
+LOCAL_BIN="${HOME}/.local/bin"
 
 # Supported platforms: "os/arch"
 PLATFORMS=(
@@ -99,10 +98,7 @@ build_rust() {
   fi
 
   local out_name="firebird-5-mcp"
-  local out_file="${BIN_DIR}/${out_name}"
-  if [[ "${platform}" != "current" ]]; then
-    out_file="${BIN_DIR}/${out_name}-${os}-${arch}"
-  fi
+  local out_file="${LOCAL_BIN}/${out_name}"
   if [[ "${os}" == "windows" ]]; then
     out_file="${out_file}.exe"
   fi
@@ -145,6 +141,8 @@ build_rust() {
     else
       cp -f "${src}" "${out_file}"
     fi
+
+    chmod +x "${out_file}"
   )
 }
 
@@ -154,46 +152,16 @@ main() {
   local platforms
   platforms="$(resolve_platforms "${target}")"
 
-  mkdir -p "${BIN_DIR}"
+  mkdir -p "${LOCAL_BIN}"
 
   for platform in ${platforms}; do
     build_rust "${platform}"
   done
 
-  package_dist
-
   echo ""
   echo "Build complete."
-  echo "Binaries in: ${BIN_DIR}"
-  ls -lh "${BIN_DIR}"
-  echo ""
-  echo "Archives in: ${DIST_DIR}"
-  ls -lh "${DIST_DIR}"
-}
-
-# Package built binaries into dist/ as compressed archives:
-#   windows -> .zip, everything else -> .tar.gz
-package_dist() {
-  mkdir -p "${DIST_DIR}"
-
-  local f base name
-  for f in "${BIN_DIR}"/*; do
-    [[ -f "${f}" ]] || continue
-    base="$(basename "${f}")"
-
-    # Strip the .exe suffix for the archive name
-    name="${base%.exe}"
-
-    if [[ "${base}" == *.exe ]]; then
-      # Windows: zip the .exe
-      (cd "${BIN_DIR}" && zip -q "${DIST_DIR}/${name}.zip" "${base}")
-      echo "==> Packaged ${DIST_DIR}/${name}.zip"
-    else
-      # Linux/darwin: tar.gz the binary
-      (cd "${BIN_DIR}" && tar czf "${DIST_DIR}/${name}.tar.gz" "${base}")
-      echo "==> Packaged ${DIST_DIR}/${name}.tar.gz"
-    fi
-  done
+  echo "Binary: ${LOCAL_BIN}/firebird-5-mcp"
+  ls -lh "${LOCAL_BIN}/firebird-5-mcp"*
 }
 
 main "$@"

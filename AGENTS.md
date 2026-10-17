@@ -1,0 +1,67 @@
+# firebird-5-mcp — Project Summary (for AI agents)
+
+> **Purpose:** token-efficient map of the project root. Read this first to
+> locate a crate, script, or example before opening the full source.
+>
+> **What this project is:** a Firebird 5 MCP (Model Context Protocol) server
+> written in Rust. It exposes Firebird database operations as MCP tools
+> (query, schema introspection, DDL, codegen, statistics) over JSON-RPC 2.0
+> via stdin/stdout. Pure-Rust driver (`rsfbclient`) — no isql shell-out.
+
+## Subdirectories
+
+| Directory | AGENTS.md | Role |
+|---|---|---|
+| `crates/mcp-bin/` | [`crates/mcp-bin/AGENTS.md`](crates/mcp-bin/AGENTS.md) | MCP stdio server binary (`firebird-5-mcp`) — protocol loop, tool dispatch, Markdown rendering |
+| `crates/mcp-core/` | [`crates/mcp-core/AGENTS.md`](crates/mcp-core/AGENTS.md) | Core library — client, query, schema, DDL, metadata, stats, storage, config, codegen |
+| `examples/` | [`examples/AGENTS.md`](examples/AGENTS.md) | Examples: complete test database (`test-mcp/`), Free Pascal client (`freePascal/`), CLI helpers (`mcp-call.*`) |
+| `tests/` | [`tests/AGENTS.md`](tests/AGENTS.md) | Shell smoke tests — exercise the deployed binary over JSON-RPC (stdio) |
+
+## `scripts/`
+
+| File | Lines | Role |
+|---|---|---|
+| `build.sh` | 167 | Local build — compiles Rust, installs to `~/.local/bin/firebird-5-mcp` (fixed name) |
+| `publish_new_tag.sh` | 71 | Release helper — commit, tag, push to origin |
+
+### `scripts/build.sh`
+
+| Item | Lines | Summary |
+|---|---|---|
+| `PLATFORMS` array | 19–26 | 6 targets: linux/{amd64,arm64}, darwin/{amd64,arm64}, windows/{amd64,arm64} |
+| `resolve_platforms()` | 29–59 | Maps short names (`linux`, `darwin`, `windows`, `all`, `current`) to platform lists; detects current OS/arch |
+| `build_rust()` | 62–147 | Builds one platform: maps to Rust target triple, skips windows/arm64 (no stable GNU cross-target), skips darwin without osxcross, sets aarch64 linker, copies binary to `~/.local/bin/firebird-5-mcp` (fixed name, no platform suffix) |
+| `main()` | 149–165 | Entry: resolves platforms, builds each, lists `~/.local/bin/` |
+
+**Usage:**
+```bash
+./scripts/build.sh              # current platform → ~/.local/bin/firebird-5-mcp
+./scripts/build.sh linux        # linux/amd64 + linux/arm64
+./scripts/build.sh all          # all 6 platforms
+```
+
+> **Note:** the binary name is always `firebird-5-mcp` (no `-os-arch` suffix).
+> Cross-compiled binaries overwrite each other in `~/.local/bin/` — this is
+> intentional since local builds target the current platform only. Release
+> artifacts with platform suffixes are built by GitHub Actions.
+
+### `scripts/publish_new_tag.sh`
+
+| Item | Lines | Summary |
+|---|---|---|
+| Usage check | 19–25 | Requires `<tag>` and `<commit-message>` args |
+| Preflight | 34–54 | Checks: on a branch (not detached HEAD), tag doesn't exist, working tree has changes |
+| Commit + tag + push | 59–67 | `git commit`, `git tag -a`, `git push origin` (branch + tag) |
+
+**Usage:**
+```bash
+./scripts/publish_new_tag.sh v1.2.0 "feat: add new feature"
+```
+
+## Conventions
+
+- **Two-crate workspace:** `mcp-bin` (thin MCP layer) depends on `mcp-core` (all Firebird logic). See each crate's `AGENTS.md` for function-level detail.
+- **Build output:** binary lands in `~/.local/bin/firebird-5-mcp` (fixed name, no platform suffix). No `bin/` or `dist/` directories — GitHub Actions handles release artifacts.
+- **Cross-compile caveats:** windows/arm64 is skipped (no stable Rust GNU target); darwin requires osxcross; aarch64-linux requires `aarch64-linux-gnu-gcc`.
+- **Release flow:** `publish_new_tag.sh` commits + tags + pushes; GitHub Actions handles the rest.
+- **Config:** the binary auto-loads `~/.firebird-mcp/config.json` (or `FIREBIRD_CONFIG` env, or `./config.json`). Tests rely on the default path — no env var needed.
