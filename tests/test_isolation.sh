@@ -5,8 +5,7 @@
 #   sh tests/test_isolation.sh
 #
 # Requires the deployed binary and config.json (see README.md).
-BIN=/home/edujed/github/plamenix/jed-personal-mcp/bin/firebird-5-mcp-linux-amd64
-export FIREBIRD_CONFIG=/home/edujed/github/plamenix/jed-personal-mcp/config.json
+BIN="${HOME}/.local/bin/firebird-5-mcp"
 
 {
   echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"shell-test","version":"1.0"}}}'
