@@ -53,8 +53,8 @@ if git diff --quiet && git diff --cached --quiet; then
   exit 0
 fi
 
-echo "==> Staging changes..."
-git add -A
+# echo "==> Staging changes..."
+# git add -A
 
 echo "==> Committing: ${MSG}"
 git commit -m "${MSG}"

@@ -1,24 +1,20 @@
 #!/usr/bin/env bash
 #
-# Build script for jed-personal-mcp (Go + Rust)
+# Build script for firebird-5-mcp (Rust)
 #
 # Usage:
-#   ./scripts/build.sh              # Build both Go and Rust for current platform
-#   ./scripts/build.sh go           # Build only Go
-#   ./scripts/build.sh rust         # Build only Rust
-#   ./scripts/build.sh linux        # Build both for linux/amd64 + linux/arm64
-#   ./scripts/build.sh darwin       # Build both for darwin/amd64 + darwin/arm64
-#   ./scripts/build.sh windows      # Build both for windows/amd64 + windows/arm64
-#   ./scripts/build.sh all          # Build both for all platforms
+#   ./scripts/build.sh              # Build for current platform
+#   ./scripts/build.sh linux        # Build for linux/amd64 + linux/arm64
+#   ./scripts/build.sh darwin       # Build for darwin/amd64 + darwin/arm64
+#   ./scripts/build.sh windows      # Build for windows/amd64 + windows/arm64
+#   ./scripts/build.sh all          # Build for all platforms
 #
 set -euo pipefail
 
 # Resolve project root (parent of scripts/)
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="${ROOT}/bin"
-MODULE_NAME="$(basename "${ROOT}")"
-GO_DIR="${ROOT}/firebird-go-mcp"
-RUST_DIR="${ROOT}/firebird-5-mcp"
+DIST_DIR="${ROOT}/dist"
 
 # Supported platforms: "os/arch"
 PLATFORMS=(
@@ -61,33 +57,6 @@ resolve_platforms() {
       echo "${1}"
       ;;
   esac
-}
-
-# Build Go binary
-build_go() {
-  local platform="$1"
-  local os="${platform%%/*}"
-  local arch="${platform##*/}"
-
-  local out_name="${MODULE_NAME}"
-  if [[ "${os}" == "windows" ]]; then
-    out_name="${out_name}.exe"
-  fi
-
-  local out_file="${BIN_DIR}/${out_name}"
-  if [[ "${platform}" != "current" ]]; then
-    out_file="${BIN_DIR}/${MODULE_NAME}-${os}-${arch}"
-    if [[ "${os}" == "windows" ]]; then
-      out_file="${out_file}.exe"
-    fi
-  fi
-
-  echo "==> Building Go ${os}/${arch} -> ${out_file}"
-  (
-    cd "${GO_DIR}"
-    GOOS="${os}" GOARCH="${arch}" CGO_ENABLED=0 \
-      go build -trimpath -ldflags="-s -w" -o "${out_file}" .
-  )
 }
 
 # Build Rust binary
@@ -140,7 +109,7 @@ build_rust() {
 
   echo "==> Building Rust ${os}/${arch} (${target}) -> ${out_file}"
   (
-    cd "${RUST_DIR}"
+    cd "${ROOT}"
 
     # For cross-compiling to aarch64-linux, we need to set the linker
     # explicitly via env var (the [target.*] linker in Cargo.toml is not
@@ -181,20 +150,6 @@ build_rust() {
 
 main() {
   local target="${1:-current}"
-  local build_go_flag=true
-  local build_rust_flag=true
-
-  # Check if user specified which language to build
-  case "${target}" in
-    go)
-      build_rust_flag=false
-      target="current"
-      ;;
-    rust)
-      build_go_flag=false
-      target="current"
-      ;;
-  esac
 
   local platforms
   platforms="$(resolve_platforms "${target}")"
@@ -202,12 +157,7 @@ main() {
   mkdir -p "${BIN_DIR}"
 
   for platform in ${platforms}; do
-    if [[ "${build_go_flag}" == true ]]; then
-      build_go "${platform}"
-    fi
-    if [[ "${build_rust_flag}" == true ]]; then
-      build_rust "${platform}"
-    fi
+    build_rust "${platform}"
   done
 
   package_dist
@@ -217,15 +167,14 @@ main() {
   echo "Binaries in: ${BIN_DIR}"
   ls -lh "${BIN_DIR}"
   echo ""
-  echo "Archives in: ${ROOT}/dist"
-  ls -lh "${ROOT}/dist"
+  echo "Archives in: ${DIST_DIR}"
+  ls -lh "${DIST_DIR}"
 }
 
 # Package built binaries into dist/ as compressed archives:
 #   windows -> .zip, everything else -> .tar.gz
 package_dist() {
-  local dist_dir="${ROOT}/dist"
-  mkdir -p "${dist_dir}"
+  mkdir -p "${DIST_DIR}"
 
   local f base name
   for f in "${BIN_DIR}"/*; do
@@ -237,12 +186,12 @@ package_dist() {
 
     if [[ "${base}" == *.exe ]]; then
       # Windows: zip the .exe
-      (cd "${BIN_DIR}" && zip -q "${dist_dir}/${name}.zip" "${base}")
-      echo "==> Packaged ${dist_dir}/${name}.zip"
+      (cd "${BIN_DIR}" && zip -q "${DIST_DIR}/${name}.zip" "${base}")
+      echo "==> Packaged ${DIST_DIR}/${name}.zip"
     else
       # Linux/darwin: tar.gz the binary
-      (cd "${BIN_DIR}" && tar czf "${dist_dir}/${name}.tar.gz" "${base}")
-      echo "==> Packaged ${dist_dir}/${name}.tar.gz"
+      (cd "${BIN_DIR}" && tar czf "${DIST_DIR}/${name}.tar.gz" "${base}")
+      echo "==> Packaged ${DIST_DIR}/${name}.tar.gz"
     fi
   done
 }

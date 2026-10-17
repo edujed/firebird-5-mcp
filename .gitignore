@@ -1,5 +1,6 @@
 # Build output
 bin/
+dist/
 
 # Config (contains credentials)
 config.json
@@ -13,10 +14,11 @@ config.json
 .DS_Store
 Thumbs.db
 
-# Go
-*.test
-*.out
-
 # Rust
-firebird-5-mcp/target/
+/target/
 **/*.rs.bk
+
+# Free Pascal (examples)
+examples/freePascal/test_mcp
+examples/freePascal/*.o
+examples/freePascal/*.ppu

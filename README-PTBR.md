@@ -37,6 +37,7 @@ Um servidor MCP (Model Context Protocol) leve e em Rust puro para bancos de dado
   - **TypeScript** (interfaces)
   - **Protobuf** (Connect-RPC/gRPC)
   - **OpenAPI 3.2.0** (schemas YAML)
+  - **GraphQL** (schema + resolvers Node.js)
   - **Lazarus/Delphi** (forms .lfm com TFBDataSet)
   - **Svelte 5** (Page + Form usando `@edujed/jedsvelted-ui`)
 - `firebird_generate_view_dto` — Gera DTOs/records a partir de views (metadados resolvidos):
@@ -46,6 +47,7 @@ Um servidor MCP (Model Context Protocol) leve e em Rust puro para bancos de dado
   - **TypeScript** (interfaces)
   - **Protobuf** (Connect-RPC/gRPC)
   - **OpenAPI 3.2.0** (schemas YAML)
+  - **GraphQL** (schema + resolvers Node.js, apenas Query)
   - **Lazarus/Delphi** (forms .lfm com TFBDataSet)
   - **Svelte 5** (Page read-only usando `@edujed/jedsvelted-ui`)
 
@@ -53,6 +55,18 @@ Um servidor MCP (Model Context Protocol) leve e em Rust puro para bancos de dado
 - `firebird_get_databases` — Lista bancos de dados configurados
 - `firebird_metadata_extract` — Extração completa de DDL (substitui `isql -x`)
 - `firebird_explain_plan` — Obtém plano de execução sem rodar a query (transação revertida)
+
+### Introspecção
+- `firebird_table_stats` — Contagem de linhas por tabela (tabela única ou todas)
+- `firebird_users` — Lista todos os usuários com acesso ao banco (criadores + grants)
+- `firebird_grants` — Mostra GRANTs de uma tabela ou de todas
+- `firebird_blob_info` — Lista colunas BLOB com subtipo (TEXT/BINARY)
+- `firebird_index_usage` — Mostra todos os índices com colunas, unicidade e tipo
+
+> **⚠️ Não recomendado para bancos de produção.**
+> Este MCP foi projetado para fluxos de desenvolvimento e análise. Tools de geração de código,
+> operações DDL e instruções de refactoring podem ser destrutivas. Para produção,
+> use uma ferramenta de administração dedicada (ex.: `isql`, `fbguard`, ou a suíte preferida do seu DBA).
 
 ## Pré-requisitos
 
@@ -106,8 +120,8 @@ Crie um arquivo `config.json`:
 Use o script de build a partir da raiz do projeto:
 
 ```bash
-./scripts/build.sh rust          # Plataforma atual (binários em bin/)
-./scripts/build.sh rust all      # Todas as plataformas suportadas
+./scripts/build.sh              # Plataforma atual (binários em bin/)
+./scripts/build.sh all          # Todas as plataformas suportadas
 ```
 
 O script também empacota os binários em `dist/` como arquivos compactados:
@@ -116,7 +130,7 @@ O script também empacota os binários em `dist/` como arquivos compactados:
 - **Linux** → `.tar.gz` (ex.: `firebird-5-mcp-linux-amd64.tar.gz`)
 
 ```bash
-./scripts/build.sh rust all
+./scripts/build.sh all
 # Binários em: bin/
 # Arquivos compactados em: dist/
 ```
@@ -124,9 +138,8 @@ O script também empacota os binários em `dist/` como arquivos compactados:
 Ou compile manualmente:
 
 ```bash
-cd firebird-5-mcp
 cargo build --release
-# O binário estará em: firebird-5-mcp/target/release/firebird-5-mcp
+# O binário estará em: target/release/firebird-5-mcp
 ```
 
 **Notas sobre cross-compilação:**
@@ -139,7 +152,9 @@ cargo build --release
 | darwin/* | `*-apple-darwin` | [osxcross](https://github.com/tpoechtrager/osxcross) (pulado com aviso se não estiver instalado) |
 | windows/arm64 | — | Não suportado (sem target GNU estável no Rust) |
 
-### 3. Registre no Zed Editor
+### 3. Registre nos Editores
+
+#### 3.1. Zed Editor
 
 Adicione nas configurações do Zed (`~/.config/zed/settings.json`):
 
@@ -158,13 +173,168 @@ Adicione nas configurações do Zed (`~/.config/zed/settings.json`):
 }
 ```
 
+#### 3.2. VSCode
+
+No VSCode, abra a paleta de comandos ('Ctrl+Shift+P') e execute: 'MCP: Add Server'.
+Escolha 'Command (stdio)' e insira o binário (descompactado) com o caminho (exemplo: `/caminho/para/firebird-5-mcp`)
+Informe o nome do servidor `firebird-5-mcp` e escolha entre 'personal/user' ou 'project/workspace'.
+Confirme que você 'trust in the server' (quando perguntado) e habilite as ferramentas em 'Configure Tools'.
+
+Se preferir, é possível configurar pelo `mpc-config.json` (como `/usr/folder/.copilot/mpc-config.json`)
+e digitar
+
+```json
+{
+	"mcpServers": {
+		"firebird-5-mcp": {
+			"type": "local",
+			"command": "/caminho/para/firebird-5-mcp",
+			"args": [],
+			"env": {
+        "FIREBIRD_CONFIG": "/caminho/para/config.json"
+      },
+			"tools": ["*"]	
+		}
+	}
+}
+```
+
+#### 3.3. Cursor
+
+Crie um arquivo `.cursor/mcp.json` na raiz do projeto (ou `~/.cursor/mcp.json` para global):
+
+```json
+{
+  "mcpServers": {
+    "firebird-5-mcp": {
+      "command": "/caminho/para/firebird-5-mcp",
+      "args": [],
+      "env": {
+        "FIREBIRD_CONFIG": "/caminho/para/config.json"
+      }
+    }
+  }
+}
+```
+
+#### 3.4. JetBrains (IntelliJ, GoLand, WebStorm, CLion)
+
+Nas configurações do AI Assistant, adicione um novo servidor MCP:
+
+- **Command:** `/caminho/para/firebird-5-mcp`
+- **Variáveis de ambiente:** `FIREBIRD_CONFIG=/caminho/para/config.json`
+
+Ou edite o arquivo de configuração MCP (`~/.jetbrains/mcp.json` ou `.mcp.json` no projeto):
+
+```json
+{
+  "mcpServers": {
+    "firebird-5-mcp": {
+      "command": "/caminho/para/firebird-5-mcp",
+      "args": [],
+      "env": {
+        "FIREBIRD_CONFIG": "/caminho/para/config.json"
+      }
+    }
+  }
+}
+```
+
+## Uso pela Linha de Comando (Sem IDE)
+
+O servidor MCP fala JSON-RPC via stdio. Você pode chamar qualquer ferramenta diretamente do shell — útil para scripts, pipelines de CI, ou IDEs sem suporte a MCP (ex.: Lazarus).
+
+### Scripts de ajuda
+
+Scripts prontos para uso estão em [`examples/`](examples/):
+
+| Script | Plataforma | Uso |
+|--------|------------|-----|
+| [`mcp-call.sh`](examples/mcp-call.sh) | Linux/macOS | `./mcp-call.sh <ferramenta> '<json_args>'` |
+| [`mcp-call.bat`](examples/mcp-call.bat) | Windows | `mcp-call.bat <ferramenta> <json_args>` |
+
+**Exemplos (Linux/macOS):**
+
+```bash
+# Listar tabelas
+./examples/mcp-call.sh firebird_list '{"type":"TABLES"}'
+
+# Consultar dados
+./examples/mcp-call.sh firebird_query '{"sql":"SELECT * FROM USER"}'
+
+# Descrever uma tabela
+./examples/mcp-call.sh firebird_describe_table '{"table_name":"USER"}'
+
+# Gerar código (OpenAPI)
+./examples/mcp-call.sh firebird_generate_dev '{"tables":["USER"],"language":"openapi"}'
+```
+
+Defina `MCP_BINARY` e `MCP_CONFIG` no script (ou como variáveis de ambiente) para apontar para o binário e o arquivo de configuração.
+
+### Como funciona
+
+1. A requisição JSON-RPC é enviada ao **stdin** do servidor via pipe
+2. O servidor processa a chamada e escreve a resposta JSON-RPC no **stdout**
+3. Quando o stdin atinge EOF, o servidor encerra
+4. O `python3` extrai o campo `result.content[0].text` da resposta
+
+> **Nota:** O `timeout 10` evita travamentos se o servidor não encerrar. O `2>/dev/null` suprime o stderr (diagnósticos).
+
+### Integração com Lazarus / Free Pascal
+
+Para IDEs sem suporte a MCP (como o Lazarus), você pode chamar o servidor MCP diretamente do código Pascal. O exemplo abaixo usa **pipes POSIX puros** (`fork`/`exec`/`read`/`write`) em vez de `TProcess`, porque a API do `TProcess` no FPC 3.2.2 é limitada (sem `WaitFor`, `OutputLines` ou `CloseInput`).
+
+Um exemplo completo e testado está em [`examples/freePascal/`](examples/freePascal/).
+
+**Compilar e rodar o programa de teste:**
+
+```bash
+cd examples/freePascal
+fpc -otest_mcp test_mcp.pas
+./test_mcp
+```
+
+> **Nota:** Cada `MCPCall` inicia um novo processo. Para chamadas de alta frequência, considere manter uma conexão persistente (escrever no stdin, ler do stdout em uma thread) — mas para workflows de desenvolvimento típicos, a abordagem spawn-per-call é simples e suficiente.
+
 ## Configuração
 
 ### `config.json`
 
-Mesmo formato da versão Go. A versão Rust é totalmente compatível com configs existentes do Go.
+O arquivo de configuração define a conexão com o servidor Firebird e a lista de bancos de dados disponíveis para as ferramentas MCP.
+
+```json
+{
+  "server": {
+    "host": "localhost",
+    "port": 3050,
+    "user": "SYSDBA",
+    "password": "masterkey",
+    "allowed_paths": ["/caminho/para/bancos"],
+    "databases": [
+      {
+        "name": "teste",
+        "description": "Banco de desenvolvimento local",
+        "path": "/caminho/para/bancos/teste.fdb"
+      }
+    ],
+    "default_database": "teste"
+  }
+}
+```
+
+| Campo | Descrição |
+|-------|-----------|
+| `host` | Hostname do servidor Firebird |
+| `port` | Porta do servidor Firebird (padrão 3050) |
+| `user` | Nome do usuário do banco |
+| `password` | Senha do banco |
+| `allowed_paths` | Diretórios onde novos bancos podem ser criados |
+| `databases` | Lista de bancos configurados |
+| `default_database` | Banco a usar quando nenhum for especificado |
 
 ### Entrada de banco de dados
+
+Cada entrada no array `databases`:
 
 ```json
 {
@@ -177,9 +347,8 @@ Mesmo formato da versão Go. A versão Rust é totalmente compatível com config
 ### Busca do arquivo de configuração
 
 O servidor procura o `config.json` nesta ordem:
-1. Variável de ambiente `FIREBIRD_CONFIG`
-2. `./config.json` (diretório atual)
-3. `~/.config/firebird-5-mcp/config.json`
+1. Variável de ambiente `FIREBIRD_CONFIG` (caminho completo)
+2. `./config.json` (diretório de trabalho atual)
 
 ### Variáveis de ambiente
 
@@ -465,7 +634,7 @@ Gera código de desenvolvimento a partir de schemas de tabelas.
 
 **Argumentos:**
 - `tables` (obrigatório): Array de nomes de tabelas (máx. 20)
-- `language` (obrigatório): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `lazarus`, ou `svelte`
+- `language` (obrigatório): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `graphql`, `lazarus`, ou `svelte`
 - `database` (opcional): Nome do banco
 - `include_fks` (opcional): Se true, gera relações nomeadas de FK (Java `@ManyToOne`) ou comentários de FK
 
@@ -941,7 +1110,7 @@ Gera DTOs/records a partir de views usando metadados resolvidos (executa `SELECT
 
 **Argumentos:**
 - `views` (obrigatório): Array de nomes de views (máx. 20)
-- `language` (obrigatório): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `lazarus`, ou `svelte`
+- `language` (obrigatório): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `graphql`, `lazarus`, ou `svelte`
 - `database` (opcional): Nome do banco
 
 **Exemplo (Java):**
@@ -1079,10 +1248,112 @@ CREATE INDEX IDX_CLIENTES_EMAIL ON CLIENTES (EMAIL);
 ...
 ```
 
+### `firebird_table_stats`
+
+Retorna contagem de linhas por tabela. Para uma tabela específica, usa `SELECT COUNT(*) FROM <tabela>`. Para todas as tabelas, usa um `EXECUTE BLOCK` com `EXECUTE STATEMENT` para contar dinamicamente cada tabela.
+
+**Argumentos:**
+- `table` (opcional): Nome da tabela. Omitir para obter stats de todas as tabelas.
+- `database` (opcional): Nome do banco de dados
+
+**Resultado:**
+```
+## Table Stats (all tables)
+
+TABLE_NAME | TOTAL
+--- | ---
+CLIENTES | 1542
+PEDIDOS | 8931
+PRODUTOS | 234
+```
+
+> **Nota:** `COUNT(*)` em tabelas muito grandes pode ser lento. Destinado a desenvolvimento/análise.
+
+### `firebird_users`
+
+Lista todos os usuários com acesso ao banco, combinando `RDB$DB_CREATORS` (donos do banco) com `RDB$USER_PRIVILEGES` (usuários com grants explícitos).
+
+**Argumentos:**
+- `database` (opcional): Nome do banco de dados
+
+**Resultado:**
+```
+## Database Users
+
+USER_NAME | CREATOR_TYPE | PRIVILEGE | GRANT_OPTION
+--- | --- | --- | ---
+SYSDBA | 0 |  | 
+APP_USER |  | SELECT | 
+APP_USER |  | INSERT | 
+APP_USER |  | UPDATE | 
+```
+
+### `firebird_grants`
+
+Mostra permissões GRANT para uma tabela específica ou para todas as tabelas, usando `RDB$USER_PRIVILEGES`.
+
+**Argumentos:**
+- `table` (opcional): Nome da tabela. Omitir para mostrar grants de todas as tabelas.
+- `database` (opcional): Nome do banco de dados
+
+**Resultado:**
+```
+## Grants for CLIENTES
+
+RELATION_NAME | GRANTEE | PRIVILEGE | GRANT_OPTION
+--- | --- | --- | ---
+CLIENTES | APP_USER | SELECT | 
+CLIENTES | APP_USER | INSERT | 
+CLIENTES | APP_USER | UPDATE | 
+```
+
+### `firebird_blob_info`
+
+Lista todas as colunas BLOB no banco (ou em uma tabela específica): tabela, coluna, subtipo (TEXT/BINARY) e comprimento do campo.
+
+**Argumentos:**
+- `table` (opcional): Nome da tabela. Omitir para listar colunas BLOB de todas as tabelas.
+- `database` (opcional): Nome do banco de dados
+
+**Resultado:**
+```
+## BLOB Columns (all tables)
+
+RELATION_NAME | FIELD_NAME | FIELD_TYPE | SUB_TYPE | LENGTH | BLOB_TYPE
+--- | --- | --- | --- | --- | ---
+DOCUMENTOS | CONTEUDO | 261 | 1 | 0 | TEXT
+FATURAS | PDF_DADOS | 261 | 2 | 0 | BINARY
+```
+
+### `firebird_index_usage`
+
+Mostra todos os índices no banco (ou em uma tabela específica): nome do índice, tabela, unicidade, tipo e colunas.
+
+**Argumentos:**
+- `table` (opcional): Nome da tabela. Omitir para mostrar índices de todas as tabelas.
+- `database` (opcional): Nome do banco de dados
+
+**Resultado:**
+```
+## Indexes (all tables)
+
+INDEX_NAME | RELATION_NAME | UNIQUE_FLAG | INDEX_TYPE | COLUMNS
+--- | --- | --- | --- | ---
+PK_CLIENTES | CLIENTES | 2 | 0 | ID
+IDX_CLIENTES_EMAIL | CLIENTES | 1 | 0 | EMAIL
+IDX_PEDIDOS_CLIENTE | PEDIDOS | 0 | 0 | CLIENTE_ID, CRIADO_EM
+```
+
+| UNIQUE_FLAG | Significado |
+|---|---|
+| 0 | Não único |
+| 1 | Único |
+| 2 | Chave primária |
+
 ## Estrutura do Projeto
 
 ```
-firebird-5-mcp/
+firebird-5-mcp/             # Raiz do repositório
 ├── Cargo.toml              # Manifesto do workspace
 ├── crates/
 │   ├── mcp-core/           # Biblioteca reutilizável (firebird-5-mcp-core)
@@ -1110,7 +1381,15 @@ firebird-5-mcp/
 │               ├── schema_tools.rs # Tools de schema
 │               ├── ddl_tools.rs    # Tools de DDL
 │               └── generator_tools.rs # Geração de código
-└── README.md
+├── scripts/
+│   ├── build.sh            # Build multi-plataforma
+│   └── publish_new_tag.sh  # Helper de tag + release
+├── tests/                  # Testes de integração (shell)
+├── .github/workflows/
+│   └── release.yml         # Pipeline CI/CD de release
+├── README.md
+├── CHANGELOG.md
+└── LICENSE
 ```
 
 ### Design
@@ -1153,7 +1432,7 @@ strip = true              # Remove símbolos do binário
 debug = false             # Sem debug info
 ```
 
-**Resultado:** ~1.2MB binário estático (vs ~8MB para a versão Go)
+**Resultado:** ~1.2MB binário estático
 
 ## Créditos
 

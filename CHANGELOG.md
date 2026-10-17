@@ -5,7 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] — Rust (firebird-5-mcp)
+## [1.2.0]
+
+### Added
+- `firebird_table_stats` — per-table row counts. For a single table, uses
+  `SELECT COUNT(*) FROM <table>`. For all tables, uses an `EXECUTE BLOCK`
+  with `EXECUTE STATEMENT` to dynamically count each table (Firebird does
+  not support dynamic table references in subqueries).
+- `firebird_users` — lists all users with access to the database, combining
+  `RDB$DB_CREATORS` (database owners) with `RDB$USER_PRIVILEGES` (users with
+  explicit grants).
+- `firebird_grants` — shows GRANTs for a specific table or for all tables,
+  using `RDB$USER_PRIVILEGES` (available in all Firebird versions 2.5+).
+- `firebird_blob_info` — lists BLOB columns with subtype (TEXT/BINARY),
+  joining `RDB$RELATION_FIELDS` with `RDB$FIELDS` to get field type info.
+- `firebird_index_usage` — shows all indexes with columns, uniqueness, and
+  type. Uses `LIST()` window function to concatenate column names per index.
+
+### Changed
+- Workspace moved to repo root (removed `firebird-5-mcp/` subfolder).
+- Go build support removed from `scripts/build.sh` (Go version discontinued).
+- Added production-use warning to READMEs (MCP is for development/analysis,
+  not production).
+
+## [1.1.0] — Pure Rust (firebird-5-mcp)
 
 ### Added
 - `firebird_crypt_state` — at-rest encryption state of the database
@@ -54,10 +77,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Linux/arm64 cross-compile now works (sets
     `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER` env var).
   - Windows binary copy now finds `firebird-5-mcp.exe` in target dir.
-- README examples updated: replaced Portuguese-specific table/column
-  names (`AUT_USUARIO`, `PEP_PESSOA`, `SENHA_HASH`, `IS_MATRIZ`, etc.)
-  with common English equivalents (`USERS`, `CUSTOMERS`, `PASSWORD_HASH`,
-  `IS_VERIFIED`, etc.).
 
 ### Fixed
 - `explain_plan` SQL injection: the user's SQL is now passed as a bind
@@ -113,8 +132,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (vs ~8MB for the Go version).
 
 ### Changed
-- Project renamed: `golang/` → `firebird-go-mcp/`,
-  `firebird-mcp-workspace/` → `firebird-5-mcp/`.
+- Project renamed: `jed-personal-mcp/` → `firebird-go-mcp/`,
+- included folder `firebird-5-mcp/`.
 - `config.json` format kept fully compatible with the Go version.
 - `firebird_metadata_extract` now uses the system tables directly
   (replaces `isql -x`), so the Go version's `isql_path` setting is not
@@ -124,7 +143,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Firebird events support (not ported — events must be registered in
   advance and are not a good fit for the MCP use case).
 
-## [1.0.0] — Go version (firebird-go-mcp)
+## [1.0.0] — Go version (jed-personal-mcp)
 
 ### Added
 - Initial release of `jed-personal-mcp`: MCP server for Firebird written

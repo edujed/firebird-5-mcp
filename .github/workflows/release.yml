@@ -58,7 +58,6 @@ jobs:
           # em host x86_64. Forçamos o gcc cross como linker.
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: |
-          cd firebird-5-mcp
           cargo build --release --target ${{ matrix.target }}
 
       - name: Package
@@ -67,7 +66,7 @@ jobs:
           # Extract version from tag: v1.1.0 → 1.1.0
           VERSION="${GITHUB_REF#refs/tags/v}"
           mkdir -p dist
-          src="firebird-5-mcp/target/${{ matrix.target }}/release/firebird-5-mcp${{ matrix.ext }}"
+          src="target/${{ matrix.target }}/release/firebird-5-mcp${{ matrix.ext }}"
           base="${{ matrix.name }}-${VERSION}"
           cp "$src" "dist/${base}${{ matrix.ext }}"
 
@@ -116,7 +115,6 @@ jobs:
 
       - name: Build
         run: |
-          cd firebird-5-mcp
           cargo build --release --target ${{ matrix.target }}
 
       - name: Package
@@ -125,7 +123,7 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/v}"
           mkdir -p dist
           base="${{ matrix.name }}-${VERSION}"
-          cp "firebird-5-mcp/target/${{ matrix.target }}/release/firebird-5-mcp" \
+          cp "target/${{ matrix.target }}/release/firebird-5-mcp" \
              "dist/${base}"
           cp README.md README-PTBR.md CHANGELOG.md LICENSE dist/
           (cd dist && tar czf "${base}.tar.gz" "${base}" README.md README-PTBR.md CHANGELOG.md LICENSE)
