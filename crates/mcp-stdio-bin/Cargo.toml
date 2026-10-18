@@ -1,0 +1,13 @@
+[package]
+name = "firebird-5-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "MCP server (JSON-RPC over stdio) exposing Firebird tools"
+authors = [ "Eduardo Jedliczka <edujed@gmail.com>"]
+
+[dependencies]
+firebird-5-mcp-core = { workspace = true }
+firebird-5-mcp-tools = { workspace = true }
+serde_json = { workspace = true }

@@ -6,13 +6,10 @@
 //! `firebird_create_function`, `firebird_create_sequence`).
 
 use firebird_5_mcp_core::{Config, mlog};
+use firebird_5_mcp_tools::{ToolResult, build_time, dispatch, tool_definitions};
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Write};
 use std::sync::RwLock;
-
-mod tools;
-
-use tools::{ToolResult, dispatch, tool_definitions};
 
 /// Shared, reloadable configuration.
 ///
@@ -24,18 +21,6 @@ static CONFIG: RwLock<Option<Config>> = RwLock::new(None);
 const SERVER_NAME: &str = "jed-personal-mcp";
 const SERVER_VERSION: &str = "1.0.0";
 const PROTOCOL_VERSION: &str = "2024-11-05";
-
-/// Build timestamp, generated at compile time using `chrono`.
-/// This is evaluated once when the binary is compiled.
-pub fn build_time() -> &'static str {
-    use std::sync::OnceLock;
-    static BUILD_TIME: OnceLock<String> = OnceLock::new();
-    BUILD_TIME.get_or_init(|| {
-        // Use a fixed timestamp for reproducibility in CI/CD
-        // In local builds, this will be the actual compile time
-        chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
-    })
-}
 
 fn main() {
     let cfg = match Config::load_or_create() {

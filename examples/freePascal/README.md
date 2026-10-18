@@ -7,7 +7,7 @@ Example of calling the `firebird-5-mcp` MCP server from a Free Pascal command-li
 | File | Description |
 |------|-------------|
 | `uMCP.pas` | MCP client unit — spawns the MCP binary via POSIX pipes (`fork`/`exec`/`read`/`write`), sends JSON-RPC requests, and parses the response with `fpjson`. |
-| `test_mcp.pas` | Test program that exercises 8 MCP tools against the `test-mcp` database: `tools/list`, `firebird_list`, `firebird_describe_table`, `firebird_query`, `firebird_count`, `firebird_generate_dev` (Lazarus), `firebird_generate_dev` (OpenAPI), and `firebird_generate_dev` (Java with `save_to`). |
+| `test_mcp.pas` | Test program that exercises 8 MCP tools against the `test-mcp` database: `tools/list`, `firebird_list`, `firebird_describe_table`, `firebird_query`, `firebird_count`, `firebird_generate_dev` (Lazarus), `firebird_generate_dev` (OpenAPI), and `firebird_generate_dev` (Java with `outputDirPath`). |
 
 ## Requirements
 
@@ -163,7 +163,7 @@ object FormUsers: TFormManutencao
         format: date-time
 
 ========================================
-8. Code Gen — Java with file-save (save_to)
+8. Code Gen — Java with file-save (outputDirPath)
 ========================================
 📄 1 file written to /tmp/mcp-out/test_mcp_java/
    - Users.java (1.8 KB, 45 lines)
@@ -194,10 +194,10 @@ Preview of Users.java:
 │ }
 ```
 
-> **Note:** When `save_to` is provided (or `storage.dir` is configured in
+> **Note:** When `outputDirPath` is provided (or `storage.dir` is configured in
 > `config.json`), the generated code is written to disk and the response
 > contains a summary with file paths and previews instead of the full
-> content. Without `save_to`, the code is returned inline (legacy behavior).
+> content. Without `outputDirPath`, the code is returned inline (legacy behavior).
 
 ## How It Works
 

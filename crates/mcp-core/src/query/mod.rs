@@ -5,7 +5,6 @@
 //! - [`row_limit`] — `FIRST`/`SKIP` clause injection
 //! - [`batch`] — script execution, batch inserts, count, sample
 
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use rsfbclient::{Execute, FbError, Queryable};
 use rsfbclient_core::SqlType;
 
@@ -16,53 +15,9 @@ pub mod row_limit;
 pub mod split;
 
 pub use batch::{count, insert_batch, run_script, sample};
+pub use firebird_5_mcp_types::{ColumnMeta, QueryResult, Value};
 pub use row_limit::{DEFAULT_ROWS, MAX_ROWS, accepts_row_limit, inject_row_limit};
 pub use split::split_statements;
-
-/// A single column value returned by a query.
-#[derive(Debug, Clone)]
-pub enum Value {
-    Null,
-    Bool(bool),
-    Int(i64),
-    Float(f64),
-    Text(String),
-    Date(NaiveDate),
-    Time(NaiveTime),
-    Timestamp(NaiveDateTime),
-    Binary(Vec<u8>),
-}
-
-/// Metadata for a result column.
-#[derive(Debug, Clone)]
-pub struct ColumnMeta {
-    pub name: String,
-    pub type_name: String,
-}
-
-/// The result of a SELECT statement.
-#[derive(Debug, Clone)]
-pub struct QueryResult {
-    pub columns: Vec<ColumnMeta>,
-    pub rows: Vec<Vec<Value>>,
-}
-
-impl QueryResult {
-    /// Returns the value at `row_index`/`col_index`, or Null if out of bounds.
-    pub fn get(&self, row: usize, col: usize) -> &Value {
-        self.rows
-            .get(row)
-            .and_then(|r| r.get(col))
-            .unwrap_or(&Value::Null)
-    }
-
-    /// Looks up a column index by name (case-insensitive).
-    pub fn col_index(&self, name: &str) -> Option<usize> {
-        self.columns
-            .iter()
-            .position(|c| c.name.eq_ignore_ascii_case(name))
-    }
-}
 
 /// Executes a SELECT statement and returns the result set, bounded by
 /// `max_rows` (capped at [`MAX_ROWS`]). If the statement does not already

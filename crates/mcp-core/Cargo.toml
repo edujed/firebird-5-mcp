@@ -8,6 +8,7 @@ description = "Reusable Firebird client library (connection, queries, schema, DD
 authors = [ "Eduardo Jedliczka <edujed@gmail.com>"]
 
 [dependencies]
+firebird-5-mcp-types = { workspace = true }
 rsfbclient = { workspace = true }
 rsfbclient-rust = { workspace = true }
 rsfbclient-core = { workspace = true }

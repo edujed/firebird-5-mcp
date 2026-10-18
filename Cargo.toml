@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/mcp-core", "crates/mcp-bin"]
+members = ["crates/mcp-types", "crates/mcp-core", "crates/mcp-tools", "crates/mcp-stdio-bin"]
 
 [workspace.package]
 version = "1.2.0"
@@ -31,6 +31,19 @@ axum = { version = "0.7", features = ["macros"] }
 
 # Diretórios do usuário (home, temp, data) — multi-plataforma
 dirs = "6.0"
+
+# Crates internas do workspace
+firebird-5-mcp-types = { path = "crates/mcp-types" }
+firebird-5-mcp-core = { path = "crates/mcp-core" }
+firebird-5-mcp-tools = { path = "crates/mcp-tools" }
+
+[patch.crates-io]
+# Vendored copy that stops coercing NUMERIC/DECIMAL columns to f64.
+# Upstream describes scaled integers as SQL_DOUBLE, which loses the
+# exact value inside the driver before any caller sees it. The patch
+# keeps the scaled integer + scale and renders the exact decimal as
+# text at fetch time. See `vendor/rsfbclient-rust/src/wire.rs`.
+rsfbclient-rust = { path = "vendor/rsfbclient-rust" }
 
 [profile.release]
 opt-level = 3            # Máxima otimização

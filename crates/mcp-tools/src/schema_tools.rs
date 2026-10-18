@@ -4,7 +4,10 @@ use firebird_5_mcp_core::types::{format_column_type, is_valid_identifier};
 use firebird_5_mcp_core::{Config, FirebirdClient, metadata, query, schema};
 use serde_json::Value;
 
-use super::common::{arg_bool, arg_str, cell_int, cell_text, cell_text_or, open_client};
+use super::ToolResult;
+use super::common::{
+    arg_bool, arg_str, cell_int, cell_text, cell_text_or, open_client, save_or_inline,
+};
 
 /// Formats a table schema as Markdown.
 pub fn format_schema(schema: &schema::TableSchema) -> String {
@@ -558,7 +561,7 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
     Ok(b)
 }
 
-pub fn handle_metadata_extract(cfg: &Config, args: &Value) -> Result<String, String> {
+pub fn handle_metadata_extract(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
     let mut client = open_client(cfg, args)?;
     // Check for optional 'objects' filter
     let objects: Option<Vec<String>> = args.get("objects").and_then(|v| v.as_array()).map(|arr| {
@@ -566,11 +569,30 @@ pub fn handle_metadata_extract(cfg: &Config, args: &Value) -> Result<String, Str
             .filter_map(|v| v.as_str().map(|s| s.to_string()))
             .collect()
     });
-    match objects {
+    let ddl = match objects {
         Some(ref objs) if !objs.is_empty() => {
-            metadata::extract_ddl_filtered(&mut client, Some(objs)).map_err(|e| e.to_string())
+            metadata::extract_ddl_filtered(&mut client, Some(objs)).map_err(|e| e.to_string())?
         }
-        _ => metadata::extract_ddl(&mut client).map_err(|e| e.to_string()),
+        _ => metadata::extract_ddl(&mut client).map_err(|e| e.to_string())?,
+    };
+
+    // Check if outputDirPath is provided - if so, save to file
+    let db_name = arg_str(args, "database").unwrap_or_else(|| "default".to_string());
+    let has_output_dir = arg_str(args, "outputDirPath")
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+
+    if has_output_dir {
+        // Create a GeneratedFile with the DDL content
+        let files = vec![firebird_5_mcp_core::codegen::targets::GeneratedFile {
+            name: format!("{}_metadata.sql", db_name),
+            content: ddl,
+            format: "sql".to_string(),
+        }];
+        save_or_inline(cfg, args, &db_name, "sql", &files)
+    } else {
+        // Return inline as before
+        Ok(ToolResult::text(ddl))
     }
 }
 

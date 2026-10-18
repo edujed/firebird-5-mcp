@@ -289,10 +289,7 @@ pub fn query_history(
     user_filter: Option<&str>,
     limit: u32,
 ) -> Result<Vec<QueryHistoryEntry>, FbError> {
-    let mut sql = String::from(
-        "SELECT \n"
-        .to_string(),
-    );
+    let mut sql = String::from("SELECT \n".to_string());
     sql.push_str("    s.MON$STATEMENT_ID, s.MON$ATTACHMENT_ID, \n");
     sql.push_str("    COALESCE(TRIM(a.MON$USER), ''), \n");
     sql.push_str("    COALESCE(TRIM(a.MON$REMOTE_ADDRESS), ''), \n");
@@ -309,10 +306,7 @@ pub fn query_history(
     if let Some(user) = user_filter {
         // Escape single quotes in the user name to prevent SQL injection.
         let escaped = user.replace('\'', "''");
-        conditions.push(format!(
-            "UPPER(TRIM(a.MON$USER)) = UPPER('{}')",
-            escaped
-        ));
+        conditions.push(format!("UPPER(TRIM(a.MON$USER)) = UPPER('{}')", escaped));
     }
     if !conditions.is_empty() {
         sql.push_str("    WHERE ");
@@ -356,24 +350,5 @@ fn cell_int(row: &[Value], idx: usize) -> i64 {
         Some(Value::Text(s)) => s.parse().unwrap_or(0),
         Some(Value::Bool(b)) => i64::from(*b),
         _ => 0,
-    }
-}
-
-// Extend Value with convenience accessors used above.
-impl Value {
-    pub fn as_i64(&self) -> Option<i64> {
-        match self {
-            Value::Int(n) => Some(*n),
-            Value::Text(s) => s.parse().ok(),
-            Value::Bool(b) => Some(i64::from(*b)),
-            _ => None,
-        }
-    }
-    pub fn as_text(&self) -> Option<String> {
-        match self {
-            Value::Text(s) => Some(s.clone()),
-            Value::Int(n) => Some(n.to_string()),
-            _ => None,
-        }
     }
 }

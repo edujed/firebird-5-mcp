@@ -36,7 +36,7 @@
 | Item | Lines | Summary |
 |---|---|---|
 | `PrintSection()` | 20–26 | Prints a `====` section header |
-| `begin` block | 28–67 | Runs 8 tests: `tools/list`, `firebird_list` (TABLES), `firebird_describe_table` (USERS), `firebird_query` (SELECT), `firebird_count` (USERS), `firebird_generate_dev` (Lazarus), `firebird_generate_dev` (OpenAPI), `firebird_generate_dev` (Java + `save_to`) |
+| `begin` block | 28–67 | Runs 8 tests: `tools/list`, `firebird_list` (TABLES), `firebird_describe_table` (USERS), `firebird_query` (SELECT), `firebird_count` (USERS), `firebird_generate_dev` (Lazarus), `firebird_generate_dev` (OpenAPI), `firebird_generate_dev` (Java + `outputDirPath`) |
 
 ## Conventions
 

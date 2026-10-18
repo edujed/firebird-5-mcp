@@ -1,0 +1,14 @@
+[package]
+name = "firebird-5-mcp-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared MCP tool handlers (transport-agnostic) for the Firebird MCP"
+authors = [ "Eduardo Jedliczka <edujed@gmail.com>"]
+
+[dependencies]
+firebird-5-mcp-core = { workspace = true }
+firebird-5-mcp-types = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }

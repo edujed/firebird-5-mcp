@@ -10,7 +10,7 @@
 #   ./mcp-call.sh firebird_describe_table '{"table_name":"USERS","database":"test-mcp"}'
 #   ./mcp-call.sh firebird_count '{"table":"USERS","database":"test-mcp"}'
 #   ./mcp-call.sh firebird_generate_dev '{"tables":["USERS"],"language":"openapi","database":"test-mcp"}'
-#   ./mcp-call.sh firebird_generate_dev '{"tables":["USERS"],"language":"java","database":"test-mcp","save_to":"/tmp/mcp-out"}'
+#   ./mcp-call.sh firebird_generate_dev '{"tables":["USERS"],"language":"java","database":"test-mcp","outputDirPath":"/tmp/mcp-out"}'
 #
 # Configuration:
 #   Set MCP_BINARY below, or override via environment:
@@ -28,7 +28,7 @@ if [[ $# -lt 2 ]]; then
   echo "  $0 firebird_list '{\"type\":\"TABLES\",\"database\":\"test-mcp\"}'" >&2
   echo "  $0 firebird_query '{\"sql\":\"SELECT * FROM USERS\",\"database\":\"test-mcp\"}'" >&2
   echo "  $0 firebird_generate_dev '{\"tables\":[\"USERS\"],\"language\":\"openapi\",\"database\":\"test-mcp\"}'" >&2
-  echo "  $0 firebird_generate_dev '{\"tables\":[\"USERS\"],\"language\":\"java\",\"database\":\"test-mcp\",\"save_to\":\"/tmp/mcp-out\"}'" >&2
+  echo "  $0 firebird_generate_dev '{\"tables\":[\"USERS\"],\"language\":\"java\",\"database\":\"test-mcp\",\"outputDirPath\":\"/tmp/mcp-out\"}'" >&2
   exit 1
 fi
 

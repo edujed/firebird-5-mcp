@@ -58,9 +58,9 @@ begin
   Writeln(MCPCall('firebird_generate_dev', '{"tables":["USERS"],"language":"openapi","database":"test-mcp"}'));
 
   { 8. Generate code with file-save (Java, saved to /tmp) }
-  PrintSection('8. Code Gen — Java with file-save (save_to)');
+  PrintSection('8. Code Gen — Java with file-save (outputDirPath)');
   Writeln(MCPCall('firebird_generate_dev',
-    '{"tables":["USERS"],"language":"java","database":"test-mcp","save_to":"/tmp/mcp-out"}'));
+    '{"tables":["USERS"],"language":"java","database":"test-mcp","outputDirPath":"/tmp/mcp-out"}'));
 
   Writeln;
   Writeln('All tests completed.');

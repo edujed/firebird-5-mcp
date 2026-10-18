@@ -1,20 +1,54 @@
-//! Tool handlers for the MCP server.
+//! # firebird-5-mcp-tools
 //!
-//! Each tool is implemented as a separate function that takes the config and
-//! JSON arguments, and returns a Markdown-formatted result or an error.
+//! Shared MCP tool handlers (transport-agnostic).
+//!
+//! This crate contains the **business logic** of the Firebird MCP tools:
+//! the handlers that parse JSON arguments, call into `firebird-5-mcp-core`,
+//! and return a Markdown-formatted [`ToolResult`]. It has **no dependency
+//! on any transport protocol** (stdio, HTTP, SSE) — that is the job of the
+//! consuming crates (`firebird-5-mcp` for stdio, and the future
+//! `firebird-5-mcp-http` for HTTP/SSE).
+//!
+//! ## What lives here
+//!
+//! - [`ToolResult`] — the envelope returned by every tool call.
+//! - [`dispatch`] — routes a tool name + JSON args to the right handler.
+//! - [`tool_definitions`] — the JSON schemas for `tools/list`.
+//! - One module per tool group: [`query_tools`], [`schema_tools`],
+//!   [`stats_tools`], [`introspection_tools`], [`generator_tools`],
+//!   [`view_dto_tools`], [`ddl_tools`].
+//! - [`common`] — shared helpers (arg parsing, client opening, Markdown
+//!   rendering, file saving).
+//!
+//! ## What does not live here
+//!
+//! - The MCP protocol loop (JSON-RPC over stdio) — lives in `firebird-5-mcp`.
+//! - The HTTP/SSE server — will live in `firebird-5-mcp-http`.
+//! - Database driver, query execution, schema introspection, DDL, codegen —
+//!   live in `firebird-5-mcp-core`.
+//! - Value types (`Value`, `QueryResult`, `format_column_type`) — live in
+//!   `firebird-5-mcp-types`.
 
 use firebird_5_mcp_core::{Config, mlog};
 use serde_json::Value;
 
-mod common;
-mod ddl_tools;
-mod definitions;
-mod generator_tools;
-mod introspection_tools;
-mod query_tools;
-mod schema_tools;
-mod stats_tools;
-mod view_dto_tools;
+/// Build timestamp, generated at compile time.
+/// This is evaluated once when the crate is compiled.
+pub fn build_time() -> &'static str {
+    use std::sync::OnceLock;
+    static BUILD_TIME: OnceLock<String> = OnceLock::new();
+    BUILD_TIME.get_or_init(|| chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string())
+}
+
+pub mod common;
+pub mod ddl_tools;
+pub mod definitions;
+pub mod generator_tools;
+pub mod introspection_tools;
+pub mod query_tools;
+pub mod schema_tools;
+pub mod stats_tools;
+pub mod view_dto_tools;
 
 pub use ddl_tools::*;
 pub use definitions::*;
@@ -87,7 +121,7 @@ fn dispatch_inner(cfg: &Config, name: &str, args: &Value) -> Result<ToolResult, 
         "firebird_check_duplicates" => wrap_text(handle_check_duplicates(cfg, args)),
         "firebird_domains" => wrap_text(handle_domains(cfg, args)),
         "firebird_get_databases" => wrap_text(handle_get_databases(cfg)),
-        "firebird_metadata_extract" => wrap_text(handle_metadata_extract(cfg, args)),
+        "firebird_metadata_extract" => handle_metadata_extract(cfg, args),
 
         // Stats tools
         "firebird_crypt_state" => wrap_text(handle_crypt_state(cfg, args)),

@@ -6,7 +6,7 @@
 //!
 //! Usage:
 //! ```ignore
-//! // Once at startup (in mcp-bin):
+//! // Once at startup (in mcp-stdio-bin or mcp-http-bin):
 //! firebird_5_mcp_core::log::init("/database");
 //!
 //! // Anywhere:

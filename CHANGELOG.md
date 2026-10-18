@@ -5,10 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`mcp-types` crate** (`crates/mcp-types/`) — shared value types
+  (`Value`, `ColumnMeta`, `QueryResult`) and pure formatting helpers
+  (`format_column_type`, `is_valid_identifier`, `format_cell`) extracted
+  from `mcp-core`. No IO, no async, no driver code — consumable by any
+  future edition (HTTP/SSE, OpenAI-API) without pulling in the full
+  driver stack.
+- **`mcp-tools` crate** (`crates/mcp-tools/`) — all tool handlers,
+  `ToolResult`, `dispatch()`, `tool_definitions()`, and `build_time()`
+  extracted from the binary crate. Transport-agnostic: no dependency on
+  stdio, HTTP, or any protocol. The new HTTP/SSE edition will depend on
+  this crate directly.
+- **NUMERIC/DECIMAL precision patch** — vendored `rsfbclient-rust` 0.29.0
+  (`vendor/rsfbclient-rust/`) with a patch that preserves scaled integer
+  values instead of coercing them to `f64` (which lost the exact value).
+  `xsqlda.rs` now keeps the scale; `wire.rs` renders exact decimal text
+  via `scaled_to_decimal_string` / `scaled_to_decimal_string_i128`.
+  Applied via `[patch.crates-io]` in the workspace `Cargo.toml`.
+
+### Changed
+- **`mcp-bin` → `mcp-stdio-bin`** — the binary crate was renamed to make
+  room for the future `mcp-http-bin`. The package name (`firebird-5-mcp`)
+  and binary name are unchanged.
+- `mcp-core` re-exports `mcp-types` via its `types` module for backward
+  compatibility. New code should depend on `mcp-types` directly.
+- `build_time()` now lives in `mcp-tools` (single source of truth) instead
+  of being duplicated in the binary crate.
+
 ## [1.2.0]
 
 ### Added
-- `arg_u32` helper in `mcp-bin` — numeric tool arguments now accept both JSON
+- `arg_u32` helper in `mcp-tools` — numeric tool arguments now accept both JSON
   numbers and numeric strings, so LLMs that send `5` instead of `"5"` no longer
   fail. Applied to `max_rows`, `skip`, `limit`, `page_size`, `lock_wait`, and
   `state`.
@@ -22,11 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ```
 - **File logging** — the MCP server now writes its logs to
   `~/.firebird-mcp/logs/yyyy-mm-dd.log` (one file per day).
-- **`save_to` / output directory** — code generation tools
-  (`firebird_generate_dev`, `firebird_generate_view_dto`) now write generated
-  files to `~/.firebird-mcp/output/` by default (or to a caller-specified
-  `save_to` path). The response contains a summary with file paths and
-  previews instead of the full inline content.
+- **`outputDirPath` / output directory** — code generation tools
+  (`firebird_generate_dev`, `firebird_generate_view_dto`) and metadata extraction
+  (`firebird_metadata_extract`) now write generated files to `~/.firebird-mcp/output/`
+  by default (or to a caller-specified `outputDirPath` path). The response contains
+  a summary with file paths and previews instead of the full inline content.
 - **`examples/test-mcp/`** — self-contained test database with 4 idempotent
   SQL scripts (`01_drop_schema.sql`, `02_create_schema.sql`,
   `03_create_triggers.sql`, `04_poulate.sql`) and a `create_test_db.sh`

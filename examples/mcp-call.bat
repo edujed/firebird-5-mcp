@@ -10,7 +10,7 @@ REM   mcp-call.bat firebird_query {"sql":"SELECT * FROM USERS","database":"test-
 REM   mcp-call.bat firebird_describe_table {"table_name":"USERS","database":"test-mcp"}
 REM   mcp-call.bat firebird_count {"table":"USERS","database":"test-mcp"}
 REM   mcp-call.bat firebird_generate_dev {"tables":["USERS"],"language":"openapi","database":"test-mcp"}
-REM   mcp-call.bat firebird_generate_dev {"tables":["USERS"],"language":"java","database":"test-mcp","save_to":"C:\\tmp\\mcp-out"}
+REM   mcp-call.bat firebird_generate_dev {"tables":["USERS"],"language":"java","database":"test-mcp","outputDirPath":"C:\\tmp\\mcp-out"}
 REM
 REM Configuration:
 REM   Set MCP_BINARY below, or override via environment:
@@ -28,7 +28,7 @@ if "%~1"=="" (
     echo   %~nx0 firebird_list {"type":"TABLES","database":"test-mcp"}
     echo   %~nx0 firebird_query {"sql":"SELECT * FROM USERS","database":"test-mcp"}
     echo   %~nx0 firebird_generate_dev {"tables":["USERS"],"language":"openapi","database":"test-mcp"}
-    echo   %~nx0 firebird_generate_dev {"tables":["USERS"],"language":"java","database":"test-mcp","save_to":"C:\\tmp\\mcp-out"}
+    echo   %~nx0 firebird_generate_dev {"tables":["USERS"],"language":"java","database":"test-mcp","outputDirPath":"C:\\tmp\\mcp-out"}
     exit /b 1
 )
 

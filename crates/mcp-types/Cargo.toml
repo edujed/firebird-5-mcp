@@ -1,13 +1,11 @@
 [package]
-name = "firebird-5-mcp"
+name = "firebird-5-mcp-types"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "MCP server (JSON-RPC over stdio) exposing Firebird tools"
+description = "Shared value types for the Firebird MCP (query results, type formatting)"
 authors = [ "Eduardo Jedliczka <edujed@gmail.com>"]
 
 [dependencies]
-firebird-5-mcp-core = { path = "../mcp-core" }
-serde_json = { workspace = true }
 chrono = { workspace = true }

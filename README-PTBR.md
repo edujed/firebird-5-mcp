@@ -1362,7 +1362,10 @@ firebird-5-mcp/             # Raiz do repositório
 │   │       ├── metadata.rs # Extração de DDL
 │   │       ├── generator.rs# Geração de código
 │   │       └── types.rs    # Formatação de tipos
-│   └── mcp-bin/            # Binário do servidor MCP (firebird-5-mcp)
+│   ├── mcp-tools/          # Handlers de tools compartilhados (agnóstico de transporte)
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   └── mcp-stdio-bin/      # Binário do servidor MCP stdio (firebird-5-mcp)
 │       ├── Cargo.toml
 │       └── src/
 │           ├── main.rs     # Loop JSON-RPC stdio

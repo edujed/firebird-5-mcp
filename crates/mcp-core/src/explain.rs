@@ -11,7 +11,7 @@
 //! **Important:** the statement IS executed — a SELECT is fully evaluated
 //! (its result set is discarded), and a DML statement's changes are rolled
 //! back. For a very expensive statement this still costs the execution time;
-//! the tool description in `mcp-bin` makes this explicit.
+//! the tool description in `mcp-tools` makes this explicit.
 
 use rsfbclient::{FbError, Queryable};
 

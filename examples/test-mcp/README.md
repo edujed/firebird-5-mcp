@@ -135,7 +135,7 @@ The MCP config is resolved by the binary itself (`~/.firebird-mcp/config.json` b
 ./mcp-call.sh firebird_generate_dev '{"tables":["USERS","DEPARTMENT"],"language":"java","database":"test-mcp"}'
 
 # Generate code with file-save
-./mcp-call.sh firebird_generate_dev '{"tables":["USERS"],"language":"java","database":"test-mcp","save_to":"/tmp/mcp-out"}'
+./mcp-call.sh firebird_generate_dev '{"tables":["USERS"],"language":"java","database":"test-mcp","outputDirPath":"/tmp/mcp-out"}'
 
 # Generate view DTO
 ./mcp-call.sh firebird_generate_view_dto '{"views":["VW_USER_DEPARTMENT"],"language":"typescript","database":"test-mcp"}'

@@ -1,52 +1,44 @@
-# mcp-bin — Code Summary (for AI agents)
+# mcp-tools — Code Summary (for AI agents)
 
-> **Purpose:** token-efficient map of `crates/mcp-bin`. Read this first to locate a
+> **Purpose:** token-efficient map of `crates/mcp-tools`. Read this first to locate a
 > function before opening the full source. Line numbers are 1-based and refer to
 > the file state at the time of writing — re-verify with `grep` if they drift.
 >
-> **What this crate is:** the MCP stdio server binary (`firebird-5-mcp`). It speaks
-> JSON-RPC 2.0 (line-delimited) over stdin/stdout and exposes Firebird tools. All
-> heavy lifting (client, query, schema, codegen, storage, config) lives in the
-> sibling crate `firebird-5-mcp-core` (`crates/mcp-core`) — this crate is a thin
-> layer of argument parsing + Markdown rendering + dispatch.
+> **What this crate is:** the shared MCP tool handlers (transport-agnostic). It
+> contains the **business logic** of the Firebird MCP tools: the handlers that
+> parse JSON arguments, call into `firebird-5-mcp-core`, and return a
+> Markdown-formatted `ToolResult`. It has **no dependency on any transport
+> protocol** (stdio, HTTP, SSE) — that is the job of the consuming crates
+> (`mcp-stdio-bin` for stdio, and the future `mcp-http-bin` for HTTP/SSE).
 
 ## File map
 
 | File | Lines | Role |
 |---|---|---|
-| `Cargo.toml` | 13 | Package `firebird-5-mcp`; deps: `firebird-5-mcp-core`, `serde_json`, `chrono` |
-| `src/main.rs` | 166 | Entry point, MCP protocol loop |
-| `src/tools/mod.rs` | 119 | `ToolResult`, `dispatch` (tool name → handler) |
-| `src/tools/common.rs` | 199 | Shared helpers (arg parsing, client, Markdown, file save) |
-| `src/tools/definitions.rs` | 425 | JSON input schemas for `tools/list` |
-| `src/tools/query_tools.rs` | 221 | SQL execution tools |
-| `src/tools/schema_tools.rs` | 926 | Schema inspection tools (largest file) |
-| `src/tools/stats_tools.rs` | 233 | MON$ statistics tools |
-| `src/tools/introspection_tools.rs` | 270 | RDB$ introspection tools |
-| `src/tools/generator_tools.rs` | 173 | `firebird_generate_dev` handler |
-| `src/tools/view_dto_tools.rs` | 78 | `firebird_generate_view_dto` handler |
-| `src/tools/ddl_tools.rs` | 229 | DDL create/alter/drop tools |
+| `Cargo.toml` | 13 | Package `firebird-5-mcp-tools`; deps: `firebird-5-mcp-core`, `firebird-5-mcp-types`, `serde_json`, `chrono` |
+| `src/lib.rs` | 153 | `ToolResult`, `dispatch()`, `build_time()`, re-exports |
+| `src/common.rs` | 199 | Shared helpers (arg parsing, client, Markdown, file save) |
+| `src/definitions.rs` | 425 | JSON input schemas for `tools/list` |
+| `src/query_tools.rs` | 221 | SQL execution tools |
+| `src/schema_tools.rs` | 926 | Schema inspection tools (largest file) |
+| `src/stats_tools.rs` | 233 | MON$ statistics tools |
+| `src/introspection_tools.rs` | 270 | RDB$ introspection tools |
+| `src/generator_tools.rs` | 173 | `firebird_generate_dev` handler |
+| `src/view_dto_tools.rs` | 78 | `firebird_generate_view_dto` handler |
+| `src/ddl_tools.rs` | 229 | DDL create/alter/drop tools |
 
-## `src/main.rs`
-
-| Function | Lines | Summary |
-|---|---|---|
-| `build_time()` | 30–38 | Compile-time build timestamp via `OnceLock` + `chrono` |
-| `main()` | 40–166 | Loads `Config`, inits file logging, then loops over stdin lines: parses JSON-RPC, handles `initialize` / `ping` / `tools/list` / `tools/call` (via `dispatch`), writes line-delimited responses. Notifications (no `id`) are acked silently. |
-
-Key statics: `CONFIG: RwLock<Option<Config>>` (L22), `SERVER_NAME`/`SERVER_VERSION`/`PROTOCOL_VERSION` (L24–26).
-
-## `src/tools/mod.rs`
+## `src/lib.rs`
 
 | Item | Lines | Summary |
 |---|---|---|
-| `struct ToolResult` | 33–36 | `{ text: String, structured: Option<Value> }` — text always present, structured optional |
-| `ToolResult::text` / `with_structured` | 39–51 | Constructors |
-| `wrap_text()` | 56–58 | Adapts `Result<String,String>` handlers to `Result<ToolResult,String>` |
-| `dispatch()` | 61–68 | Logs the call, delegates to `dispatch_inner` |
-| `dispatch_inner()` | 70–119 | `match` on tool name → handler. **This is the tool registry.** Groups: query (73–79), schema (82–90), stats (93–95), introspection (98–102), generators (105–106), DDL (109–115) |
+| `struct ToolResult` | 67–70 | `{ text: String, structured: Option<Value> }` — text always present, structured optional |
+| `ToolResult::text` / `with_structured` | 73–85 | Constructors |
+| `wrap_text()` | 90–92 | Adapts `Result<String,String>` handlers to `Result<ToolResult,String>` |
+| `dispatch()` | 95–102 | Logs the call, delegates to `dispatch_inner` |
+| `dispatch_inner()` | 104–153 | `match` on tool name → handler. **This is the tool registry.** Groups: query, schema, stats, introspection, generators, DDL |
+| `build_time()` | 37–41 | Compile-time build timestamp via `OnceLock` + `chrono` (single source of truth, used by both binaries) |
 
-## `src/tools/common.rs`
+## `src/common.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
@@ -57,17 +49,17 @@ Key statics: `CONFIG: RwLock<Option<Config>>` (L22), `SERVER_NAME`/`SERVER_VERSI
 | `result_to_text` | 49–90 | Renders `query::QueryResult` as a Markdown table |
 | `plural_suffix` | 93–95 | `""` if 1 else `"s"` |
 | `cell_text` / `cell_int` / `cell_text_or` | 98–119 | Safe cell accessors (defaults `-`, `0`, or given default) |
-| `storage_dir` | 125–137 | Output dir priority: `save_to` arg > `config.storage.dir` > `~/.firebird-mcp/output/` |
+| `storage_dir` | 125–137 | Output dir priority: `outputDirPath` arg > `config.storage.dir` > `~/.firebird-mcp/output/` |
 | `save_or_inline` | 146–199 | Writes generated files to disk, builds previews (first 10 + last 5 lines) and structured content |
 
-## `src/tools/definitions.rs`
+## `src/definitions.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
 | `tool()` | 6–12 | Builds one `{name, description, inputSchema}` object |
 | `tool_definitions()` | 15–425 | Returns all tool JSON schemas (one `tool(...)` per MCP tool). **Source of truth for tool descriptions/args** — keep in sync with `dispatch_inner` |
 
-## `src/tools/query_tools.rs`
+## `src/query_tools.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
@@ -79,7 +71,7 @@ Key statics: `CONFIG: RwLock<Option<Config>>` (L22), `SERVER_NAME`/`SERVER_VERSI
 | `handle_execute_immediate` | 198–208 | Executes SQL containing `SET TERM` blocks (procedures, generators, functions) |
 | `handle_explain_plan` | 211–221 | Returns execution plan; statement runs inside a rolled-back transaction |
 
-## `src/tools/schema_tools.rs`
+## `src/schema_tools.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
@@ -88,13 +80,13 @@ Key statics: `CONFIG: RwLock<Option<Config>>` (L22), `SERVER_NAME`/`SERVER_VERSI
 | `handle_get_databases` | 112–142 | Reloads config from disk, lists configured databases + build time |
 | `handle_describe_database` | 144–322 | Full DB overview: MON$DATABASE health, per-table columns (PK/NOT NULL/comments), optional row counts, Mermaid ER diagram of FKs |
 | `handle_list` | 324–559 | Lists objects by type: TABLES, PROCEDURES, FUNCTIONS, DOMAINS, TRIGGERS, INDEXES, SEQUENCES (one branch each) |
-| `handle_metadata_extract` | 561–575 | DDL extraction (isql `-x` replacement); optional `objects` filter |
+| `handle_metadata_extract` | 561–590 | DDL extraction (isql `-x` replacement); optional `objects` filter; `outputDirPath` saves to file |
 | `handle_describe` | 577–594 | Describes multiple objects by name (tables, views, procs, functions, triggers, sequences, domains) |
 | `handle_check_duplicates` | 597–722 | Finds duplicate values in 1+ columns (GROUP BY/HAVING), then shows full rows of the first duplicate combo |
 | `handle_domains` | 726–865 | Domain analysis: usage counts, most common type signatures, suggestions for missing domains |
 | `handle_find_column` | 868–926 | Finds columns by name pattern (`%` wildcards) across all tables/views |
 
-## `src/tools/stats_tools.rs`
+## `src/stats_tools.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
@@ -104,7 +96,7 @@ Key statics: `CONFIG: RwLock<Option<Config>>` (L22), `SERVER_NAME`/`SERVER_VERSI
 | `truncate` | 168–174 | Truncates strings with `…` |
 | `handle_query_history` | 178–233 | Active statements from MON$STATEMENTS joined with MON$ATTACHMENTS; filter by state/user, limit ≤ 1000 |
 
-## `src/tools/introspection_tools.rs`
+## `src/introspection_tools.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
@@ -114,19 +106,19 @@ Key statics: `CONFIG: RwLock<Option<Config>>` (L22), `SERVER_NAME`/`SERVER_VERSI
 | `handle_blob_info` | 147–210 | BLOB columns: subtype (TEXT/BINARY) and length |
 | `handle_index_usage` | 217–269 | Indexes with columns (LIST() window fn), uniqueness, type |
 
-## `src/tools/generator_tools.rs`
+## `src/generator_tools.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
 | `handle_generate_dev` | 14–173 | Generates dev code for up to 20 tables (java, go, rust, typescript, protobuf, openapi, graphql, lazarus, svelte). Special paths: Lazarus → `.lfm` forms; Svelte → Page + Form components. Rest goes through `generator::generate` + `save_or_inline` |
 
-## `src/tools/view_dto_tools.rs`
+## `src/view_dto_tools.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
 | `handle_generate_view_dto` | 12–78 | Generates read-only DTOs for up to 20 views (same languages minus lazarus/svelte); uses resolved view metadata |
 
-## `src/tools/ddl_tools.rs`
+## `src/ddl_tools.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
@@ -143,10 +135,12 @@ Key statics: `CONFIG: RwLock<Option<Config>>` (L22), `SERVER_NAME`/`SERVER_VERSI
 
 - Handlers return `Result<String, String>` (Markdown text, error string) or
   `Result<ToolResult, String>` when they support structured output (generators,
-  `create_database`).
+  `create_database`, `metadata_extract` with `outputDirPath`).
 - Table/column names are uppercased and validated with `is_valid_identifier`
   before being interpolated into SQL; user-supplied values are bound as
   parameters where possible (`query_with_param`).
 - File output (generators) resolves dir via `storage_dir` and writes via
   `save_or_inline` (core `storage` module).
 - Logging goes through `mlog!` (core) to `{base}/logs/`.
+- **No transport protocol code** — this crate is consumed by `mcp-stdio-bin`
+  (stdio) and will be consumed by `mcp-http-bin` (HTTP/SSE).

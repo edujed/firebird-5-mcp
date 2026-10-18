@@ -12,10 +12,27 @@
 
 | Directory | AGENTS.md | Role |
 |---|---|---|
-| `crates/mcp-bin/` | [`crates/mcp-bin/AGENTS.md`](crates/mcp-bin/AGENTS.md) | MCP stdio server binary (`firebird-5-mcp`) — protocol loop, tool dispatch, Markdown rendering |
+| `crates/mcp-types/` | [`crates/mcp-types/AGENTS.md`](crates/mcp-types/AGENTS.md) | Shared value types (`Value`, `ColumnMeta`, `QueryResult`) + pure formatting helpers. No IO, no async, no driver code. |
 | `crates/mcp-core/` | [`crates/mcp-core/AGENTS.md`](crates/mcp-core/AGENTS.md) | Core library — client, query, schema, DDL, metadata, stats, storage, config, codegen |
+| `crates/mcp-tools/` | [`crates/mcp-tools/AGENTS.md`](crates/mcp-tools/AGENTS.md) | Shared MCP tool handlers (transport-agnostic) — handlers, `ToolResult`, `dispatch()`, `tool_definitions()` |
+| `crates/mcp-stdio-bin/` | [`crates/mcp-stdio-bin/AGENTS.md`](crates/mcp-stdio-bin/AGENTS.md) | MCP stdio server binary (`firebird-5-mcp`) — protocol loop + config management |
+| `vendor/` | — | Vendored `rsfbclient-rust` 0.29.0 with NUMERIC/DECIMAL precision patch (see below) |
 | `examples/` | [`examples/AGENTS.md`](examples/AGENTS.md) | Examples: complete test database (`test-mcp/`), Free Pascal client (`freePascal/`), CLI helpers (`mcp-call.*`) |
 | `tests/` | [`tests/AGENTS.md`](tests/AGENTS.md) | Shell smoke tests — exercise the deployed binary over JSON-RPC (stdio) |
+
+## `vendor/rsfbclient-rust/`
+
+Vendored copy of `rsfbclient-rust` 0.29.0 with a **NUMERIC/DECIMAL precision
+patch**. Upstream coerces scaled integers to `f64` (losing exactness —
+`NUMERIC(18,4)` is the standard money type in Firebird schemas). The patch
+keeps the scaled integer + scale in `xsqlda.rs` and renders the exact decimal
+as text at fetch time in `wire.rs` (`scaled_to_decimal_string` /
+`scaled_to_decimal_string_i128`). Applied via `[patch.crates-io]` in the
+workspace `Cargo.toml`.
+
+The vendor crate is a standalone workspace (its own `[workspace]` in
+`Cargo.toml`) so its unit tests can run independently:
+`cd vendor/rsfbclient-rust && cargo test --lib`.
 
 ## `scripts/`
 
@@ -60,7 +77,7 @@
 
 ## Conventions
 
-- **Two-crate workspace:** `mcp-bin` (thin MCP layer) depends on `mcp-core` (all Firebird logic). See each crate's `AGENTS.md` for function-level detail.
+- **Four-crate workspace:** `mcp-stdio-bin` (thin MCP-stdio layer) depends on `mcp-tools` (shared handlers) which depends on `mcp-core` (all Firebird logic). `mcp-types` holds shared value types. See each crate's `AGENTS.md` for function-level detail.
 - **Build output:** binary lands in `~/.local/bin/firebird-5-mcp` (fixed name, no platform suffix). No `bin/` or `dist/` directories — GitHub Actions handles release artifacts.
 - **Cross-compile caveats:** windows/arm64 is skipped (no stable Rust GNU target); darwin requires osxcross; aarch64-linux requires `aarch64-linux-gnu-gcc`.
 - **Release flow:** `publish_new_tag.sh` commits + tags + pushes; GitHub Actions handles the rest.

@@ -206,12 +206,13 @@ pub fn tool_definitions() -> Vec<Value> {
         ),
         tool(
             "firebird_metadata_extract",
-            "Extracts database metadata as a DDL script (replaces isql -x). By default extracts everything; optionally pass 'objects' to extract only specific objects (tables, views, procedures, functions, triggers, sequences, domains).",
+            "Extracts database metadata as a DDL script (replaces isql -x). By default extracts everything; optionally pass 'objects' to extract only specific objects (tables, views, procedures, functions, triggers, sequences, domains). If outputDirPath is provided, saves the DDL to a file in that directory.",
             json!({
                 "type": "object",
                 "properties": {
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
-                    "objects": { "type": "array", "items": { "type": "string" }, "description": "Optional list of object names to extract. If omitted, extracts everything." }
+                    "objects": { "type": "array", "items": { "type": "string" }, "description": "Optional list of object names to extract. If omitted, extracts everything." },
+                    "outputDirPath": { "type": "string", "description": "Directory path where the DDL file will be saved. If omitted, returns the DDL inline." }
                 }
             }),
         ),
@@ -316,7 +317,8 @@ pub fn tool_definitions() -> Vec<Value> {
                     "tables": { "type": "array", "items": { "type": "string" }, "description": "Table names to generate code for (max 20)." },
                     "language": { "type": "string", "enum": ["java", "go", "rust", "typescript", "protobuf", "openapi", "lazarus"], "description": "Target language. Use 'lazarus' to generate .lfm form files." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
-                    "include_fks": { "type": "boolean", "description": "If true, generates named FK relations (Java @ManyToOne) or FK comments (Go/Rust/TS). Defaults to false." }
+                    "include_fks": { "type": "boolean", "description": "If true, generates named FK relations (Java @ManyToOne) or FK comments (Go/Rust/TS). Defaults to false." },
+                    "outputDirPath": { "type": "string", "description": "Directory path where generated files will be saved. If omitted, uses config.storage.dir or ~/.firebird-mcp/output/ as fallback." }
                 },
                 "required": ["tables", "language"]
             }),
@@ -329,7 +331,8 @@ pub fn tool_definitions() -> Vec<Value> {
                 "properties": {
                     "views": { "type": "array", "items": { "type": "string" }, "description": "View names to generate DTOs for (max 20)." },
                     "language": { "type": "string", "enum": ["java", "go", "rust", "typescript", "protobuf", "openapi", "lazarus"], "description": "Target language. Use 'lazarus' to generate .lfm form files." },
-                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
+                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
+                    "outputDirPath": { "type": "string", "description": "Directory path where generated files will be saved. If omitted, uses config.storage.dir or ~/.firebird-mcp/output/ as fallback." }
                 },
                 "required": ["views", "language"]
             }),

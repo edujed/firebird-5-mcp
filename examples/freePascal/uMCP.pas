@@ -17,7 +17,7 @@ uses
   SysUtils, fpjson, jsonparser;
 
 const
-  MCP_BINARY  = '/home/edujed/github/plamenix/jed-personal-mcp/bin/firebird-5-mcp-linux-amd64';
+  MCP_BINARY  = '/home/edujed/.local/bin/firebird-5-mcp';
 
 /// Calls an MCP tool and returns the text result.
 function MCPCall(const AToolName, AArgsJSON: string): string;

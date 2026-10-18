@@ -7,8 +7,8 @@
 > **What this crate is:** the `firebird-5-mcp-core` library. All Firebird logic
 > lives here: connection handling, query execution, schema introspection, DDL,
 > metadata extraction, MON$ statistics, file storage, config, logging, and code
-> generation. The sibling crate `firebird-5-mcp` (`crates/mcp-bin`) is a thin
-> MCP-stdio layer on top of this one.
+> generation. The sibling crates `firebird-5-mcp-tools` (`crates/mcp-tools`) and
+> `firebird-5-mcp` (`crates/mcp-stdio-bin`) are thin layers on top of this one.
 
 ## File map
 
@@ -18,7 +18,7 @@
 | `src/lib.rs` | 35 | Module declarations + re-exports (`FirebirdClient`, `IsolationPreset`, `Config`, `DatabaseConfig`, `ServerConfig`) |
 | `src/client.rs` | 236 | `FirebirdClient` connection wrapper (pure-Rust `rsfbclient` driver) |
 | `src/config.rs` | 302 | `config.json` loading/validation/registration |
-| `src/query/mod.rs` | 228 | Query execution: `Value`, `QueryResult`, `query`, `exec`, `execute` |
+| `src/query/mod.rs` | 183 | Query execution: `query`, `query_with_limit`, `query_with_param`, `exec`, `execute` (types re-exported from `mcp-types`) |
 | `src/query/batch.rs` | 164 | `run_script`, `insert_batch`, `count`, `sample` |
 | `src/query/row_limit.rs` | 193 | `FIRST`/`SKIP` clause injection |
 | `src/query/split.rs` | 562 | SQL statement splitting (`SET TERM`, `BEGIN`/`END`) |
@@ -27,9 +27,9 @@
 | `src/ddl.rs` | 144 | DDL: triggers, procedures, functions, sequences, drops |
 | `src/explain.rs` | 74 | Execution plan retrieval (execute + rollback) |
 | `src/metadata.rs` | 891 | Full DDL extraction (replaces `isql -x`) |
-| `src/stats.rs` | 379 | MON$ statistics + encryption state |
+| `src/stats.rs` | 354 | MON$ statistics + encryption state |
 | `src/storage.rs` | 396 | File storage for generated artifacts |
-| `src/types.rs` | 166 | Type formatting + identifier validation |
+| `src/types.rs` | 10 | Re-exports from `firebird-5-mcp-types` (backward compat) |
 | `src/paths.rs` | 104 | Centralized path resolution |
 | `src/log.rs` | 87 | File-based daily logging + `mlog!` macro |
 | `src/codegen/mod.rs` | 43 | Codegen re-exports |
@@ -92,21 +92,18 @@
 
 ## `src/query/mod.rs`
 
+Re-exports `Value`, `ColumnMeta`, `QueryResult` from `firebird-5-mcp-types`.
+
 | Item | Lines | Summary |
 |---|---|---|
-| `enum Value` | 24–34 | Typed cell values (Int, Float, Text, Bool, Date, Time, Timestamp, Null) |
-| `struct ColumnMeta` | 38–41 | `{ name, type_name }` |
-| `struct QueryResult` | 45–48 | `{ columns, rows }` |
-| `QueryResult::get` | 52–57 | Gets a cell by column name |
-| `QueryResult::col_index` | 60–64 | Finds column index by name |
-| `query()` | 73–75 | Executes a SELECT, returns `QueryResult` |
-| `query_with_limit()` | 78–94 | SELECT with `FIRST`/`SKIP` injection |
-| `query_with_param()` | 97–107 | SELECT with a bound parameter |
-| `rows_to_result()` | 110–130 | Converts raw rows to `QueryResult` |
-| `sql_type_name()` | 140–164 | Raw ISC_* code → type name string |
-| `row_value()` | 167–179 | Raw cell → `Value` enum |
-| `exec()` | 189–208 | DML/DDL in RW transaction, commit/rollback |
-| `execute()` | 212–228 | SELECT-first, DML/DDL fallback |
+| `query()` | 28–30 | Executes a SELECT, returns `QueryResult` |
+| `query_with_limit()` | 33–49 | SELECT with `FIRST`/`SKIP` injection |
+| `query_with_param()` | 52–62 | SELECT with a bound parameter |
+| `rows_to_result()` | 65–85 | Converts raw rows to `QueryResult` |
+| `sql_type_name()` | 95–119 | Raw ISC_* code → type name string |
+| `row_value()` | 122–134 | Raw cell → `Value` enum |
+| `exec()` | 144–163 | DML/DDL in RW transaction, commit/rollback |
+| `execute()` | 167–183 | SELECT-first, DML/DDL fallback |
 
 ## `src/query/batch.rs`
 
@@ -231,10 +228,8 @@
 | `database_stats()` | 256–265 | Aggregates all MON$ data |
 | `struct QueryHistoryEntry` | 269–277 | Query history row |
 | `query_history()` | 286–339 | Active statements with user/remote info |
-| `cell_text()` | 343–351 | Safe text cell accessor |
-| `cell_int()` | 353–360 | Safe int cell accessor |
-| `Value::as_i64` | 364–371 | `Value` → i64 |
-| `Value::as_text` | 372–379 | `Value` → String |
+| `cell_text()` | 337–345 | Safe text cell accessor |
+| `cell_int()` | 347–354 | Safe int cell accessor |
 
 ## `src/storage.rs`
 
@@ -257,16 +252,9 @@
 
 ## `src/types.rs`
 
-| Item | Lines | Summary |
-|---|---|---|
-| `FIREBIRD_TYPE_NAMES` const | 11–36 | ISC_* code → type name mapping |
-| `type_name_for()` | 38–43 | Raw type code → name |
-| `format_column_type()` | 52–110 | Formats a column type string (e.g. `VARCHAR(100)`) |
-| `bytes_to_chars()` | 113–121 | Byte length → character length |
-| `is_valid_identifier()` | 125–132 | Validates an SQL identifier |
-| `format_cell()` | 136–154 | Formats a cell value for display |
-| `format_float()` | 156–162 | Formats a float value |
-| `flatten()` | 164–166 | Flattens nested values |
+Re-exports from `firebird-5-mcp-types` for backward compatibility:
+`Value`, `ColumnMeta`, `QueryResult`, `format_cell`, `format_column_type`,
+`is_valid_identifier`. New code should depend on `mcp-types` directly.
 
 ## `src/paths.rs`
 

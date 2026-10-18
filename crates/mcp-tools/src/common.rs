@@ -118,13 +118,13 @@ pub fn cell_text_or(row: &[query::Value], idx: usize, default: &str) -> String {
     }
 }
 
-/// Resolves the storage base directory from config or the `save_to` argument.
+/// Resolves the storage base directory from config or the `outputDirPath` argument.
 ///
-/// Priority: `save_to` arg > `config.storage.dir` > `~/.firebird-mcp/output/`.
+/// Priority: `outputDirPath` arg > `config.storage.dir` > `~/.firebird-mcp/output/`.
 /// Always returns `Some` (the default dir is a safe fallback).
 pub fn storage_dir(cfg: &Config, args: &Value) -> Option<String> {
-    if let Some(save_to) = arg_str(args, "save_to").filter(|s| !s.is_empty()) {
-        return Some(save_to);
+    if let Some(output_dir) = arg_str(args, "outputDirPath").filter(|s| !s.is_empty()) {
+        return Some(output_dir);
     }
     if let Some(storage) = &cfg.storage {
         if let Some(dir) = storage.effective_dir() {
@@ -140,7 +140,7 @@ pub fn storage_dir(cfg: &Config, args: &Value) -> Option<String> {
 /// and structured content.
 ///
 /// The output directory is resolved from (in priority order):
-/// 1. `save_to` argument (per-call override)
+/// 1. `outputDirPath` argument (per-call override)
 /// 2. `config.storage.dir` (configured default)
 /// 3. `~/.firebird-mcp/output/` (safe fallback)
 pub fn save_or_inline(

@@ -14,8 +14,8 @@
 //! - [`metadata`] — full DDL extraction (replaces `isql -x`)
 //! - [`types`] — Firebird type formatting and identifier validation
 //!
-//! The MCP server (`mcp-bin`) sits on top of this library and exposes the
-//! same tool set as the Go implementation.
+//! The MCP servers (`mcp-stdio-bin` for stdio, and the future `mcp-http-bin`
+//! for HTTP/SSE) sit on top of this library and expose the same tool set.
 
 pub mod client;
 pub mod codegen;
