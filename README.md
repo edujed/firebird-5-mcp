@@ -29,26 +29,8 @@ A lightweight, pure-Rust MCP (Model Context Protocol) server for Firebird 5 data
 - `firebird_insert_batch` — Batch insert multiple rows in one transaction
 
 ### Code Generation
-- `firebird_generate_dev` — Generate development code from table schemas:
-  - **Java** (JPA + Lombok)
-  - **Go** (sqlx)
-  - **Rust** (rsfbclient)
-  - **TypeScript** (interfaces)
-  - **Protobuf** (Connect-RPC/gRPC)
-  - **OpenAPI 3.2.0** (YAML schemas)
-  - **GraphQL** (schema + Node.js resolvers)
-  - **Lazarus/Delphi** (.lfm forms with TFBDataSet)
-  - **Svelte 5** (Page + Form using `@edujed/jedsvelted-ui`)
-- `firebird_generate_view_dto` — Generate DTOs/records from views (resolved metadata):
-  - **Java** (Lombok @Data)
-  - **Go** (sqlx tags)
-  - **Rust** (FromRow)
-  - **TypeScript** (interfaces)
-  - **Protobuf** (Connect-RPC/gRPC)
-  - **OpenAPI 3.2.0** (YAML schemas)
-  - **GraphQL** (schema + Node.js resolvers, Query only)
-  - **Lazarus/Delphi** (.lfm forms with TFBDataSet)
-  - **Svelte 5** (Page read-only using `@edujed/jedsvelted-ui`)
+- `firebird_generate_dev` — Generate development code from table schemas (Java, Go, Rust, TypeScript, Protobuf, OpenAPI, GraphQL, Lazarus, Svelte 5)
+- `firebird_generate_view_dto` — Generate DTOs/records from views (same languages)
 
 ### Discovery
 - `firebird_get_databases` — List configured databases
@@ -68,153 +50,12 @@ A lightweight, pure-Rust MCP (Model Context Protocol) server for Firebird 5 data
 > DDL operations, and refactoring instructions can be destructive. For production,
 > use a dedicated admin tool (e.g. `isql`, `fbguard`, or your DBA's preferred suite).
 
-#### in the future, we will provide a **safe-readonly** mode.
+> **Coming soon:** a **safe-readonly** mode.
 
-## Prerequisites for use
+## Prerequisites
 
 - **Firebird 5** server running (or any version 3+)
 - No `isql`, no ODBC, no native libraries required
-
-## Prerequisites for local dev/compiling
-- **Firebird 5** server running (or any version 3+)
-- **Rust** toolchain (only if building from source)
-
-
-# How to use
-
-## 1. Register in Editors
-
-### 1.1. Zed Editor
-
-Add to your Zed settings (`~/.config/zed/settings.json`):
-
-```json
-{
-  "context_servers": {
-    "firebird-5-mcp": {
-      "command": "/path/to/firebird-5-mcp",
-      "enabled": true,
-      "timeout": 30000
-    }
-  }
-}
-```
-
-### 1.2. VSCode
-
-In vscode, open the palete command ('Ctrl+Shift+P') and execute: 'MCP: Add Server'.
-Choice 'Command (stdio), and insert the binary (uncompressed) with path (example: `/path/to/firebird-5-mcp`)
-Inform the server name `firebird-5-mcp`, and choice from 'personal/user' or 'project/workspace'.
-confirm that you 'trust in the server' (when asked), and enable the tools in 'Configure Tools'.
-
-If you prefer, is possible to configure from `mpc-config.json` (like `/usr/folder/.copilot/mpc-config.json`)
-and type
-
-```json
-{
-	"mcpServers": {
-		"firebird-5-mcp": {
-			"type": "local",
-			"command": "/path/to/firebird-5-mcp",
-			"args": [],
-			"tools": ["*"]	
-		}
-	}
-}
-```
-
-### 1.3. Cursor
-
-Create a `.cursor/mcp.json` file in your project root (or `~/.cursor/mcp.json` for global):
-
-```json
-{
-  "mcpServers": {
-    "firebird-5-mcp": {
-      "command": "/path/to/firebird-5-mcp",
-      "args": []
-    }
-  }
-}
-```
-
-### 1.4. JetBrains (IntelliJ, GoLand, WebStorm, CLion)
-
-In the AI Assistant settings, add a new MCP server:
-
-- **Command:** `/path/to/firebird-5-mcp`
-
-Or edit the MCP config file (`~/.jetbrains/mcp.json` or project-level `.mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "firebird-5-mcp": {
-      "command": "/path/to/firebird-5-mcp",
-      "args": []
-    }
-  }
-}
-```
-
-> **Note:** The binary resolves `config.json` automatically from `~/.firebird-mcp/config.json` (or `FIREBIRD_CONFIG` / `FIREBIRD_MCP_HOME` env vars). No environment variables are needed in the editor config unless you use a non-standard path.
-
-## Using from Command Line (No IDE Required)
-
-The MCP server speaks JSON-RPC over stdio. You can call any tool directly from the shell — useful for scripting, CI pipelines, or IDEs without MCP support (e.g. Lazarus).
-
-### How it works
-
-1. The JSON-RPC request is piped to the server's **stdin**
-2. The server processes the tool call and writes the JSON-RPC response to **stdout**
-3. When stdin reaches EOF, the server exits
-4. `fpc` or `python3` extracts the `result.content[0].text` field from the response
-
-> **Note:** The `timeout 10` prevents hanging if the server doesn't exit. The `2>/dev/null` suppresses stderr (diagnostics).
-
-### Helper scripts
-
-Ready-to-use scripts are in [`examples/`](examples/):
-
-| Script | Platform | Usage |
-|--------|----------|-------|
-| [`mcp-call.sh`](examples/mcp-call.sh) | Linux/macOS | `./mcp-call.sh <tool> '<json_args>'` |
-| [`mcp-call.bat`](examples/mcp-call.bat) | Windows | `mcp-call.bat <tool> <json_args>` |
-
-
-**Examples (Linux/macOS):**
-
-```bash
-# List tables
-./examples/mcp-call.sh firebird_list '{"type":"TABLES","database":"test-mcp"}'
-
-# Query data
-./examples/mcp-call.sh firebird_query '{"sql":"SELECT * FROM USERS","database":"test-mcp"}'
-
-# Describe a table
-./examples/mcp-call.sh firebird_describe_table '{"table_name":"USERS","database":"test-mcp"}'
-
-# Generate code (OpenAPI)
-./examples/mcp-call.sh firebird_generate_dev '{"tables":["USERS"],"language":"openapi","database":"test-mcp"}'
-```
-
-Set `MCP_BINARY` in the script (or as an environment variable) to point to your binary. The config file is resolved automatically by the binary (`~/.firebird-mcp/config.json` by default).
-
-### Lazarus / Free Pascal Integration
-
-For IDEs without MCP support (like Lazarus), you can call the MCP server directly from Pascal code. The example below uses **raw POSIX pipes** (`fork`/`exec`/`read`/`write`) instead of `TProcess`, because the `TProcess` API in FPC 3.2.2 is limited (no `WaitFor`, `OutputLines`, or `CloseInput`).
-
-A complete, tested example is in [`examples/freePascal/`](examples/freePascal/).
-
-**Build & run the test program:**
-
-```bash
-cd examples/freePascal
-fpc -otest_mcp test_mcp.pas
-./test_mcp
-```
-
-> **Note:** This is a example, it works, but each `MCPCall` spawns a new process. For high-frequency calls, consider keeping a persistent connection (write to stdin, read from stdout in a thread) — but for typical dev workflows, the spawn-per-call approach is simple and sufficient.
 
 ## Configuration
 
@@ -271,6 +112,8 @@ The server looks for `config.json` in this order:
 2. `./config.json` (current working directory)
 3. `~/.firebird-mcp/config.json` (default)
 
+> **Note:** On first run, if `~/.firebird-mcp/config.json` doesn't exist, the server creates an empty config file at that location. You can then edit it to add your server connection and databases.
+
 The base directory can be overridden with `FIREBIRD_MCP_HOME` (e.g. for testing or non-standard installs).
 
 ### Environment variables
@@ -279,80 +122,6 @@ The base directory can be overridden with `FIREBIRD_MCP_HOME` (e.g. for testing 
 |----------|-------------|
 | `FIREBIRD_CONFIG` | Full path to `config.json` (highest priority) |
 | `FIREBIRD_MCP_HOME` | Override the base directory (default: `~/.firebird-mcp`) |
-
-### 2. Configure your server and databases
-
-Create a `config.json` file:
-
-```json
-{
-  "server": {
-    "host": "localhost",
-    "port": 3050,
-    "user": "SYSDBA",
-    "password": "masterkey",
-    "allowed_paths": ["/path/to/databases"],
-    "databases": [
-      {
-        "name": "examples",
-        "description": "Local development database for tests, training and examples",
-        "path": "/path/to/databases/teste.fdb"
-      },
-      {
-        "name": "myDatabase",
-        "description": "My primary local development database",
-        "path": "/path/to/databases/myDatabase.fdb"
-      }
-    ],
-    "default_database": "examples"
-  }
-}
-```
-
-| Field | Description |
-|-------|-------------|
-| `host` | Firebird server hostname |
-| `port` | Firebird server port (default 3050) |
-| `user` | Database username |
-| `password` | Database password |
-| `allowed_paths` | Directories where new databases can be created |
-| `databases` | List of configured databases |
-| `default_database` | Database to use when none is specified |
-
-### 3. Build
-
-Use the build script from the project root:
-
-```bash
-./scripts/build.sh              # Current platform (binaries in bin/)
-./scripts/build.sh all          # All supported platforms
-```
-The script also packages the binaries into `dist/` as compressed archives:
-
-- **Windows** → `.zip` (e.g. `firebird-5-mcp-windows-amd64.zip`)
-- **Linux** → `.tar.gz` (e.g. `firebird-5-mcp-linux-amd64.tar.gz`)
-
-```bash
-./scripts/build.sh all
-# Binaries in: bin/
-# Archives in: dist/
-```
-Or build manually:
-
-```bash
-cargo build --release
-# Binary will be at: target/release/firebird-5-mcp
-```
-
-**Cross-compilation notes:**
-
-| Platform | Target | Requirements |
-|---|---|---|
-| linux/amd64 | `x86_64-unknown-linux-gnu` | None (native on x86_64) |
-| linux/arm64 | `aarch64-unknown-linux-gnu` | `aarch64-linux-gnu-gcc` (`sudo apt install gcc-aarch64-linux-gnu`) |
-| windows/amd64 | `x86_64-pc-windows-gnu` | `x86_64-w64-mingw32-gcc` (`sudo apt install gcc-mingw-w64-x86-64`) |
-| darwin/* | `*-apple-darwin` | [osxcross](https://github.com/tpoechtrager/osxcross) (skipped with a warning if not installed) |
-| windows/arm64 | — | Not supported (no stable GNU target in Rust) |
 
 ## Tools
 
@@ -469,7 +238,10 @@ ID | TYPE_ID | PARENT_ID | IS_VERIFIED | ACTIVE | ...
 4 | 2 | NULL | false | true | ...
 5 | 2 | 4 | true | true | ...
 6 | 2 | 4 | false | true | ...
+
 💡 Fix duplicates before creating the unique index/constraint.
+
+
 
 **Result (no duplicates):**
 ### Duplicate Check: CUSTOMERS (ID)
@@ -519,33 +291,136 @@ Provides a complete overview of the database structure with a Health section (gs
 
 **Result:**
 
-### Database: shop
+### Database: test-mcp
 
 #### Health
 
-- **Path:** /database/shop.fdb
+- **Path:** /database/test-mcp.fdb
 - **ODS Version:** 13.1
 - **Page Size:** 32768 bytes
-- **File Size:** 428 pages (~13.4 MB)
+- **File Size:** 283 pages (~8.8 MB)
 - **Dialect:** 3
 - **Mode:** Online (Normal)
 - **Read-Only:** NO
 - **Forced Writes:** YES
 - **Active Connections:** 1
-- **Oldest Transaction:** 1063 (active: 1772, next: 1772)
+- **Oldest Transaction:** 361 (active: 362, next: 362)
 - **Buffer Pool:** 2048 pages
 
-#### Tables (26)
+#### Tables (14)
 
-**USERS**
-- ID (INTEGER, PK)
+**USERS** (10 rows)
+- ID (INTEGER)
+- DEPARTMENT_ID (INTEGER)
+- NAME (VARCHAR(25))
+- EMAIL (VARCHAR(50))
+- PASSWORD_HASH (VARCHAR(125))
+- ACTIVE (BOOLEAN)
+- SALARY (NUMERIC(14,2))
+- HIRED_AT (DATE)
+- CREATED_AT (TIMESTAMP)
+- UPDATED_AT (TIMESTAMP)
+
+**DEPARTMENT** (10 rows)
+- ID (INTEGER)
+- BRANCH_ID (INTEGER)
+- PARENT_ID (INTEGER, NOT NULL)
+- NAME (VARCHAR(25))
+- CODE (VARCHAR(5))
+- TYPE (VARCHAR(5))
+- ACTIVE (BOOLEAN, NOT NULL)
+- CREATED_AT (TIMESTAMP)
+- UPDATED_AT (TIMESTAMP)
+
+**BRANCH** (4 rows)
+- ID (INTEGER)
+- NAME (VARCHAR(25))
+- CODE (VARCHAR(2))
+- ACTIVE (BOOLEAN)
+- CREATED_AT (TIMESTAMP)
+- UPDATED_AT (TIMESTAMP)
+
+**PROFILE** (5 rows)
+- ID (INTEGER)
+- NAME (VARCHAR(25))
+- DESCRIPTION (VARCHAR(125), NOT NULL)
+- ACTIVE (BOOLEAN)
+- CREATED_AT (TIMESTAMP)
+
+**PERMISSION** (10 rows)
+- ID (INTEGER)
+- CODE (VARCHAR(12))
+- NAME (VARCHAR(25))
+- MODULE (VARCHAR(12))
+- ACTIVE (BOOLEAN)
+
+**SCREEN** (8 rows)
+- ID (INTEGER)
+- NAME (VARCHAR(25))
+- MODULE (VARCHAR(12))
+- PATH (VARCHAR(50))
+- ACTIVE (BOOLEAN, NOT NULL)
+
+**USER_PROFILE** (10 rows)
+- ID (INTEGER)
+- USER_ID (INTEGER)
+- PROFILE_ID (INTEGER)
+
+**USER_DEPARTMENT** (12 rows)
+- ID (INTEGER)
+- USER_ID (INTEGER)
+- DEPARTMENT_ID (INTEGER)
+- PRIMARY_FLAG (BOOLEAN, NOT NULL)
+- START_DATE (DATE)
+- END_DATE (DATE, NOT NULL)
+- ACTIVE (BOOLEAN, NOT NULL)
+
+**PROFILE_PERMISSION** (25 rows)
+- ID (INTEGER)
+- PROFILE_ID (INTEGER)
+- PERMISSION_ID (INTEGER)
+
+**PROFILE_SCREEN** (20 rows)
+- ID (INTEGER)
+- PROFILE_ID (INTEGER)
+- SCREEN_ID (INTEGER)
+
+**ACTION_LOG** (10 rows)
+- ID (INTEGER)
+- USER_ID (INTEGER)
+- ACTION (VARCHAR(12))
+- ENTITY (VARCHAR(12))
+- ENTITY_ID (INTEGER, NOT NULL)
+- DETAILS (VARCHAR(250), NOT NULL)
+- CREATED_AT (TIMESTAMP)
+
+**APPROVAL** (8 rows)
+- ID (INTEGER)
+- REQUESTER_ID (INTEGER)
+- APPROVER_ID (INTEGER)
+- STATUS (VARCHAR(5))
+- REASON (VARCHAR(125), NOT NULL)
+- APPROVED_AT (TIMESTAMP, NOT NULL)
+- CREATED_AT (TIMESTAMP)
 
 #### Relationships (Mermaid)
 
 ```mermaid
 erDiagram
-    CUSTOMERS ||--o{ USERS : "FK_USR_CUST"
-    ...
+    USERS ||--o{ ACTION_LOG : "FK_LOG_USER"
+    USERS ||--o{ APPROVAL : "FK_APPROVAL_APPROVER"
+    USERS ||--o{ APPROVAL : "FK_APPROVAL_REQUESTER"
+    BRANCH ||--o{ DEPARTMENT : "FK_DEPT_BRANCH"
+    DEPARTMENT ||--o{ DEPARTMENT : "FK_DEPT_PARENT"
+    PERMISSION ||--o{ PROFILE_PERMISSION : "FK_PP_PERM"
+    PROFILE ||--o{ PROFILE_PERMISSION : "FK_PP_PROFILE"
+    PROFILE ||--o{ PROFILE_SCREEN : "FK_PS_PROFILE"
+    SCREEN ||--o{ PROFILE_SCREEN : "FK_PS_SCREEN"
+    DEPARTMENT ||--o{ USERS : "FK_USER_DEPT"
+    DEPARTMENT ||--o{ USER_DEPARTMENT : "FK_UD_DEPT"
+    USERS ||--o{ USER_DEPARTMENT : "FK_UD_USER"
+    PROFILE ||--o{ USER_PROFILE : "FK_UP_PROFILE"
+    USERS ||--o{ USER_PROFILE : "FK_UP_USER"
 ```
 
 **Health section fields:**
@@ -609,479 +484,13 @@ END
 
 ### `firebird_generate_dev`
 
-Generates development code from table schemas.
+Generates development code from table schemas. See [README_CODEGEN.md](README_CODEGEN.md) for examples in all supported languages.
 
 **Arguments:**
 - `tables` (required): Array of table names (max 20)
 - `language` (required): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `graphql`, `lazarus`, or `svelte`
 - `database` (optional): Database name
 - `include_fks` (optional): If true, generates named FK relations (Java `@ManyToOne`) or FK comments
-
-**Example (Go):**
-```json
-{
-  "tables": ["USERS"],
-  "language": "go",
-  "database": "shop",
-  "include_fks": true
-}
-```
-
-**Result:**
-```go
-// User maps to table USERS
-type User struct {
-    Id           sql.NullInt32  `db:"ID" json:"id"`
-    CustomerId   sql.NullInt32  `db:"CUSTOMER_ID" json:"customerId"` // FK → CUSTOMERS.ID
-    Email        sql.NullString `db:"EMAIL" json:"email"`
-    PasswordHash sql.NullString `db:"PASSWORD_HASH" json:"passwordHash"`
-    Active       bool           `db:"ACTIVE" json:"active"`
-    CreatedAt    *time.Time     `db:"CREATED_AT" json:"createdAt"`
-    UpdatedAt    *time.Time     `db:"UPDATED_AT" json:"updatedAt"`
-    CreatedBy    i32            `db:"CREATED_BY" json:"createdBy"`
-    UpdatedBy    i32            `db:"UPDATED_BY" json:"updatedBy"`
-    DeletedAt    *time.Time     `db:"DELETED_AT" json:"deletedAt"`
-}
-```
-
-**Example (Java):**
-```json
-{
-  "tables": ["USERS"],
-  "language": "java",
-  "database": "shop",
-  "include_fks": true
-}
-```
-
-**Result:**
-```java
-@Entity
-@Table(name = "USERS")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class User {
-
-    @Id
-    @Column(name = "ID")
-    private Integer id;
-
-    @ManyToOne
-    @JoinColumn(name = "CUSTOMER_ID")
-    private Customer customer;
-
-    @Column(name = "EMAIL", length = 250)
-    private String email;
-
-    @Column(name = "PASSWORD_HASH", length = 250)
-    private String passwordHash;
-
-    @Column(name = "ACTIVE")
-    private Boolean active;
-
-    @Column(name = "CREATED_AT")
-    private LocalDateTime createdAt;
-
-    @Column(name = "UPDATED_AT")
-    private LocalDateTime updatedAt;
-
-    @Column(name = "CREATED_BY")
-    private Integer createdBy;
-
-    @Column(name = "UPDATED_BY")
-    private Integer updatedBy;
-
-    @Column(name = "DELETED_AT")
-    private LocalDateTime deletedAt;
-}
-```
-
-**Example (Rust):**
-```json
-{
-  "tables": ["USERS"],
-  "language": "rust",
-  "database": "shop",
-  "include_fks": true
-}
-```
-
-**Result:**
-```rust
-// User maps to table USERS
-#[derive(Debug, Clone, FromRow)]
-pub struct User {
-    /// Column: ID
-    pub id: Option<i32>,
-    /// Column: CUSTOMER_ID — FK → CUSTOMERS.ID
-    pub customer_id: Option<i32>,
-    /// Column: EMAIL
-    pub email: Option<String>,
-    /// Column: PASSWORD_HASH
-    pub password_hash: Option<String>,
-    /// Column: ACTIVE
-    pub active: bool,
-    /// Column: CREATED_AT
-    pub created_at: NaiveDateTime,
-    /// Column: UPDATED_AT
-    pub updated_at: NaiveDateTime,
-    /// Column: CREATED_BY
-    pub created_by: i32,
-    /// Column: UPDATED_BY
-    pub updated_by: i32,
-    /// Column: DELETED_AT
-    pub deleted_at: NaiveDateTime,
-}
-```
-
-// Example query (aliases must match field names for FromRow):
-// SELECT ID AS id, CUSTOMER_ID AS customer_id, EMAIL AS email, ... FROM USERS
-// let rows: Vec<User> = conn.query(sql, ({}))?;
-
-**Example (TypeScript):**
-```json
-{
-  "tables": ["USERS"],
-  "language": "typescript",
-  "database": "shop",
-  "include_fks": true
-}
-```
-
-**Result:**
-```typescript
-export interface User {
-    id?: number;
-    /** FK → CUSTOMERS.ID */
-    customerId?: number;
-    email?: string;
-    passwordHash?: string;
-    active: boolean;
-    createdAt: string;
-    updatedAt: string;
-    createdBy: number;
-    updatedBy: number;
-    deletedAt: string;
-}
-```
-
-**Example (Protobuf):**
-```json
-{
-  "tables": ["USERS"],
-  "language": "protobuf",
-  "database": "shop",
-  "include_fks": true
-}
-```
-
-**Result:**
-```protobuf
-syntax = "proto3";
-
-package users;
-
-// Nullable columns: ID, CUSTOMER_ID, EMAIL, PASSWORD_HASH
-message User {
-    int32 id = 1;
-    // FK → CUSTOMERS.ID
-    int32 customer_id = 2;
-    string email = 3;
-    string password_hash = 4;
-    bool active = 5;
-    string created_at = 6;
-    string updated_at = 7;
-    int32 created_by = 8;
-    int32 updated_by = 9;
-    string deleted_at = 10;
-}
-```
-
-**Example (OpenAPI):**
-```json
-{
-  "tables": ["USERS"],
-  "language": "openapi",
-  "database": "shop",
-  "include_fks": true
-}
-```
-
-**Result:**
-```yaml
-User:
-  type: object
-  description: Schema for table USERS
-  required:
-    - active
-    - createdAt
-    - updatedAt
-    - createdBy
-    - updatedBy
-    - deletedAt
-  properties:
-    id:
-      type: integer
-      format: int32
-      nullable: true
-    customerId:
-      type: integer
-      format: int32
-      nullable: true
-      x-foreign-key: CUSTOMERS.ID
-    email:
-      type: string
-      nullable: true
-    passwordHash:
-      type: string
-      nullable: true
-    active:
-      type: boolean
-    createdAt:
-      type: string
-      format: date-time
-    updatedAt:
-      type: string
-      format: date-time
-    createdBy:
-      type: integer
-      format: int32
-    updatedBy:
-      type: integer
-      format: int32
-    deletedAt:
-      type: string
-      format: date-time
-```
-
-**Example (Lazarus/Delphi):**
-```json
-{
-  "tables": ["CUSTOMERS"],
-  "language": "lazarus",
-  "database": "shop"
-}
-```
-
-**Result:**
-```pascal
-object FormCustomer: TFormManutencao
-  Left = 0
-  Top = 0
-  Caption = 'FormCustomer'
-  ClientHeight = 400
-  ClientWidth = 600
-  LCLVersion = '3.0.0.0'
-  object FBDataSetCustomer: TFBDataSet
-    Left = 24
-    Top = 24
-    Connected = False
-    SQL.Strings = (
-      'SELECT * FROM CUSTOMERS'
-    )
-  end
-  object DataSourceCustomer: TDataSource
-    Left = 112
-    Top = 24
-    DataSet = FBDataSetCustomer
-  end
-  object Label_ID: TLabel
-    Left = 24
-    Top = 100
-    Width = 120
-    Height = 15
-    Caption = 'ID:'
-    ParentColor = False
-  end
-  object TDBEdit_ID: TDBEdit
-    Left = 24
-    Top = 121
-    Width = 120
-    Height = 23
-    DataSource = DataSourceCustomer
-    DataField = 'ID'
-    TabOrder = 0
-  end
-  object Label_IS_VERIFIED: TLabel
-    Left = 24
-    Top = 160
-    Width = 150
-    Height = 15
-    Caption = 'IS_VERIFIED:'
-    ParentColor = False
-  end
-  object TDBCheckBox_IS_VERIFIED: TDBCheckBox
-    Left = 24
-    Top = 181
-    Width = 150
-    Height = 23
-    DataSource = DataSourceCustomer
-    DataField = 'IS_VERIFIED'
-    TabOrder = 1
-  end
-  object Label_CREATED_AT: TLabel
-    Left = 24
-    Top = 220
-    Width = 150
-    Height = 15
-    Caption = 'CREATED_AT:'
-    ParentColor = False
-  end
-  object TDBDateTimePicker_CREATED_AT: TDBDateTimePicker
-    Left = 24
-    Top = 241
-    Width = 150
-    Height = 23
-    DataSource = DataSourceCustomer
-    DataField = 'CREATED_AT'
-    TabOrder = 2
-    Kind = dtkDate
-  end
-  ...
-end
-```
-
-**Component mapping:**
-| Firebird Type | Lazarus Component | Width |
-|---------------|-------------------|-------|
-| INTEGER/BIGINT/SMALLINT | TDBEdit | 120 |
-| VARCHAR/CHAR | TDBEdit | 80/250/450 (dynamic) |
-| NUMERIC/DECIMAL | TDBEdit | 120 |
-| BOOLEAN | TDBCheckBox | 150 |
-| DATE/TIMESTAMP | TDBDateTimePicker | 150 |
-| BLOB SUB_TYPE TEXT | TDBMemo | 450 |
-| BLOB SUB_TYPE BINARY | TDBEdit | 250 |
-
-**Example (Svelte 5):**
-```json
-{
-  "tables": ["CUSTOMERS"],
-  "language": "svelte",
-  "database": "shop"
-}
-```
-
-**Result:** Generates two components:
-
-1. **Page** — `PageShell` + `Table` with search by PK and FKs:
-```svelte
-<script lang="ts">
-	import { PageShell } from '@edujed/jedsvelted-ui/pages';
-	import { Table } from '@edujed/jedsvelted-ui/table';
-	import type { TableCol, TableAction } from '@edujed/jedsvelted-ui/table';
-	import { localeStore } from '@edujed/jedsvelted-ui/i18n';
-	import { formatDate } from '@edujed/jedsvelted-ui/format';
-
-	let data = $state<any[]>([]);
-	let loading = $state(false);
-	let error = $state<string | null>(null);
-
-	// Search filters (PK + FKs)
-	let searchID = $state('');
-	let searchPARENT_ID = $state('');
-	let searchTYPE_ID = $state('');
-
-	const columns: TableCol[] = [
-		{ key: 'id', title: 'Id', sortable: true },
-		{ key: 'typeId', title: 'TypeId' },
-		{ key: 'parentId', title: 'ParentId' },
-		{ key: 'isVerified', title: 'IsVerified' },
-		{ key: 'active', title: 'Active' },
-		{ key: 'createdAt', title: 'CreatedAt', formatter: (v: string) => formatDate(v, $localeStore) },
-		// ...
-	];
-
-	const actions: TableAction[] = [
-		{ title: 'View', icon: 'eye', onClick: (row) => showDetail(row) },
-		{ title: 'Edit', icon: 'edit', onClick: (row) => editRow(row) },
-		{ title: 'Delete', icon: 'trash', onClick: (row) => deleteRow(row) },
-	];
-
-	async function search() { /* TODO: API call */ }
-	function clear() { /* resets search fields */ }
-	function showDetail(row: any) { /* TODO */ }
-	function editRow(row: any) { /* TODO */ }
-	function deleteRow(row: any) { /* TODO */ }
-</script>
-
-<PageShell
-	title="Customer"
-	onSearch={search}
-	onClear={clear}
-	{loading}
-	{error}
-	skeletonVariant="table"
-	skeletonRows={5}
->
-	{#snippet searchFields()}
-		<div class="search-fields">
-			<label>
-				Id
-				<input type="text" bind:value={searchID} />
-			</label>
-			<!-- FK search fields -->
-		</div>
-	{/snippet}
-
-	{#snippet content(state)}
-		<Table
-			id="customer"
-			caption="Customer"
-			{data}
-			{columns}
-			{actions}
-			rowKey="id"
-			csvFileName="customer.csv"
-			onAdd={() => {}}
-		/>
-	{/snippet}
-</PageShell>
-```
-
-2. **Form** — Fields with `$state` (no event logic):
-```svelte
-<script lang="ts">
-	import {
-		EditField,
-		NumericField,
-		DateField,
-		SwitchField,
-		FormActions
-	} from '@edujed/jedsvelted-ui/forms';
-
-	let id = $state<number>(0);
-	let typeId = $state<number>(0);
-	let parentId = $state<number>(0);
-	let isVerified = $state<boolean>(false);
-	let active = $state<boolean>(false);
-	let createdAt = $state<string>('');
-	// ...
-
-	function save() { /* TODO */ }
-	function cancel() { /* TODO */ }
-</script>
-
-<form>
-	<NumericField label="Id" bind:value={id} />
-	<NumericField label="TypeId" bind:value={typeId} />
-	<NumericField label="ParentId" bind:value={parentId} />
-	<SwitchField label="IsVerified" bind:value={isVerified} />
-	<SwitchField label="Active" bind:value={active} />
-	<DateField label="CreatedAt" bind:value={createdAt} />
-	<!-- ... -->
-	<FormActions onSave={save} onCancel={cancel} />
-</form>
-```
-
-**Field mapping:**
-| Firebird Type | Svelte Component | TS Type |
-|---------------|-----------------|--------|
-| BOOLEAN | SwitchField | boolean |
-| DATE/TIMESTAMP | DateField | string |
-| INTEGER/BIGINT/SMALLINT/NUMERIC/DECIMAL | NumericField | number |
-| VARCHAR/CHAR/BLOB | EditField | string |
 
 ### `firebird_explain_plan`
 
@@ -1132,9 +541,18 @@ Returns per-table row counts. For a single table, uses `SELECT COUNT(*) FROM <ta
 
 TABLE_NAME | TOTAL
 --- | ---
-CLIENTS | 1542
-ORDERS | 8931
-PRODUCTS | 234
+ACTION_LOG | 10
+APPROVAL | 8
+BRANCH | 4
+DEPARTMENT | 10
+PERMISSION | 10
+PROFILE | 5
+PROFILE_PERMISSION | 25
+PROFILE_SCREEN | 20
+SCREEN | 8
+USERS | 10
+USER_DEPARTMENT | 12
+USER_PROFILE | 10
 
 > **Note:** `COUNT(*)` on very large tables can be slow. Intended for development/analysis.
 
@@ -1155,6 +573,8 @@ APP_USER |  | SELECT |
 APP_USER |  | INSERT | 
 APP_USER |  | UPDATE | 
 
+> **Note:** Privileges are shown as single letters: `S` = SELECT, `I` = INSERT, `U` = UPDATE, `D` = DELETE, `R` = REFERENCES, `G` = GRANT OPTION.
+
 ### `firebird_grants`
 
 Shows GRANT privileges for a specific table or for all tables, using `RDB$USER_PRIVILEGES`.
@@ -1172,7 +592,6 @@ CLIENTS | APP_USER | SELECT |
 CLIENTS | APP_USER | INSERT | 
 CLIENTS | APP_USER | UPDATE | 
 
-
 ### `firebird_blob_info`
 
 Lists all BLOB columns in the database (or a specific table): table, column, blob subtype (TEXT/BINARY), and field length.
@@ -1188,7 +607,6 @@ RELATION_NAME | FIELD_NAME | FIELD_TYPE | SUB_TYPE | LENGTH | BLOB_TYPE
 --- | --- | --- | --- | --- | ---
 DOCUMENTS | CONTENT | 261 | 1 | 0 | TEXT
 INVOICES | PDF_DATA | 261 | 2 | 0 | BINARY
-
 
 ### `firebird_index_usage`
 
@@ -1214,68 +632,18 @@ IDX_ORDERS_CLIENT | ORDERS | 0 | 0 | CLIENT_ID, CREATED_AT
 | 1 | Unique |
 | 2 | Primary key |
 
-## Project Structure
+## Setup Guides
 
-```
-firebird-5-mcp/             # Repository root
-├── Cargo.toml              # Workspace manifest
-├── crates/
-│   ├── mcp-core/           # Reusable library (firebird-5-mcp-core)
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs      # Public API
-│   │       ├── config.rs   # Config loading
-│   │       ├── client.rs   # Connection wrapper
-│   │       ├── query.rs    # SQL execution
-│   │       ├── schema.rs   # Schema introspection
-│   │       ├── ddl.rs      # DDL operations
-│   │       ├── explain.rs  # Execution plans
-│   │       ├── metadata.rs # DDL extraction
-│   │       ├── generator.rs# Code generation
-│   │       └── types.rs    # Type formatting
-│   ├── mcp-tools/          # Shared tool handlers (transport-agnostic)
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   └── mcp-stdio-bin/      # MCP stdio server binary (firebird-5-mcp)
-│       ├── Cargo.toml
-│       └── src/
-│           ├── main.rs     # JSON-RPC stdio loop
-│           └── tools/
-│               ├── mod.rs          # Dispatch
-│               ├── common.rs       # Shared helpers
-│               ├── definitions.rs  # Tool schemas
-│               ├── query_tools.rs  # Query tools
-│               ├── schema_tools.rs # Schema tools
-│               ├── ddl_tools.rs    # DDL tools
-│               └── generator_tools.rs # Code generation
-├── scripts/
-│   ├── build.sh            # Multi-platform build
-│   └── publish_new_tag.sh  # Tag + release helper
-├── tests/                  # Shell integration tests
-├── .github/workflows/
-│   └── release.yml         # CI/CD release pipeline
-├── README.md
-├── CHANGELOG.md
-└── LICENSE
-```
-
-### Design
-
-The project is split into two crates:
-
-1. **`firebird-5-mcp-core`** — A reusable library that provides:
-   - Database connection management
-   - SQL query execution
-   - Schema introspection
-   - DDL operations
-   - Code generation
-
-   This library can be used in other Rust projects (e.g., desktop apps, CLI tools) without the MCP layer.
-
-2. **`firebird-5-mcp`** — The MCP server binary that:
-   - Implements the MCP protocol (JSON-RPC over stdio)
-   - Exposes the core library's functionality as MCP tools
-   - Handles configuration and error reporting
+| Guide | Description |
+|-------|-------------|
+| [README_ZED_EDITOR.md](README_ZED_EDITOR.md) | Configure in Zed Editor |
+| [README_VSCODE.md](README_VSCODE.md) | Configure in VSCode & Cursor |
+| [README_JETBRAINS.md](README_JETBRAINS.md) | Configure in JetBrains IDEs |
+| [README_COMMAND_LINE.md](README_COMMAND_LINE.md) | Use from the command line (no IDE) |
+| [examples/freePascal/README.md](examples/freePascal/README.md) | Free Pascal / Lazarus integration |
+| [README_CODEGEN.md](README_CODEGEN.md) | Code generation examples (all languages) |
+| [README_FOR_DEVS.md](README_FOR_DEVS.md) | Build, cross-compilation, project structure |
+| [README_MIGRATIONS.md](README_MIGRATIONS.md) | Data migration (Parquet/CSV) |
 
 ## Credits
 

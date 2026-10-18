@@ -176,7 +176,7 @@ pub fn format_column_type(
     // Add size info for character types
     match type_name.as_str() {
         "CHAR" | "VARCHAR" | "NVARCHAR" => {
-            let char_size = bytes_to_chars(size, &type_name);
+            let char_size = char_size_for(size, &type_name);
             if char_size > 0 {
                 return format!("{type_name}({char_size})");
             }
@@ -197,14 +197,18 @@ pub fn format_column_type(
     type_name
 }
 
-/// Converts a byte size to character count for a given character type.
-fn bytes_to_chars(byte_size: i64, type_name: &str) -> i64 {
-    if byte_size <= 0 {
+/// Returns the character count for a given character type.
+///
+/// In Firebird, `RDB$FIELD_LENGTH` for CHAR/VARCHAR/NVARCHAR is already in
+/// **characters**, not bytes. The only exception is NVARCHAR, where the
+/// length is in 2-byte units (so divide by 2 to get characters).
+fn char_size_for(size: i64, type_name: &str) -> i64 {
+    if size <= 0 {
         return 0;
     }
     match type_name {
-        "NVARCHAR" => byte_size / 2,
-        _ => byte_size / 4, // CHAR, VARCHAR: assume UTF8 (4 bytes/char)
+        "NVARCHAR" => size / 2,
+        _ => size, // CHAR, VARCHAR: already in characters
     }
 }
 

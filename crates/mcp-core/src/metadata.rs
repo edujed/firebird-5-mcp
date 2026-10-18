@@ -155,6 +155,9 @@ fn extract_tables(
                 int_at(c, 4),
                 int_at(c, 5),
             );
+            // In Firebird, RDB$NULL_FLAG = 0 means the column CAN be NULL,
+            // and RDB$NULL_FLAG = 1 means the column CANNOT be NULL.
+            // When NULL, the column can be NULL (default behavior).
             let null_flag = opt_int_at(c, 6).unwrap_or(0);
             let default_raw = opt_text_at(c, 7).unwrap_or_default();
             let default = decode_blr_default(&default_raw).unwrap_or_default();
@@ -163,7 +166,7 @@ fn extract_tables(
             if !default.is_empty() {
                 def.push_str(&format!(" DEFAULT {default}"));
             }
-            if null_flag == 0 {
+            if null_flag == 1 {
                 def.push_str(" NOT NULL");
             }
             col_defs.push(def);

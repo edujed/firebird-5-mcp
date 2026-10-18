@@ -19,7 +19,7 @@ REM   (config.json is auto-loaded from %USERPROFILE%\.firebird-mcp\config.json b
 
 setlocal
 
-if "%MCP_BINARY%"=="" set MCP_BINARY=%~dp0bin\firebird-5-mcp-windows-amd64.exe
+if "%MCP_BINARY%"=="" set MCP_BINARY=%USERPROFILE%\Downloads\firebird-5-mcp-windows-amd64.exe
 
 if "%~1"=="" (
     echo Usage: %~nx0 ^<tool_name^> ^<json_arguments^>

@@ -16,6 +16,7 @@
 | `crates/mcp-core/` | [`crates/mcp-core/AGENTS.md`](crates/mcp-core/AGENTS.md) | Core library — client, query, schema, DDL, metadata, stats, storage, config, codegen |
 | `crates/mcp-tools/` | [`crates/mcp-tools/AGENTS.md`](crates/mcp-tools/AGENTS.md) | Shared MCP tool handlers (transport-agnostic) — handlers, `ToolResult`, `dispatch()`, `tool_definitions()` |
 | `crates/mcp-stdio-bin/` | [`crates/mcp-stdio-bin/AGENTS.md`](crates/mcp-stdio-bin/AGENTS.md) | MCP stdio server binary (`firebird-5-mcp`) — protocol loop + config management |
+| `crates/mcp-migration/` | [`crates/mcp-migration/AGENTS.md`](crates/mcp-migration/AGENTS.md) | Data file export/import — tables, views, SQL → Parquet/CSV; Parquet/CSV → tables (create/append) |
 | `vendor/` | — | Vendored `rsfbclient-rust` 0.29.0 with NUMERIC/DECIMAL precision patch (see below) |
 | `examples/` | [`examples/AGENTS.md`](examples/AGENTS.md) | Examples: complete test database (`test-mcp/`), Free Pascal client (`freePascal/`), CLI helpers (`mcp-call.*`) |
 | `tests/` | [`tests/AGENTS.md`](tests/AGENTS.md) | Shell smoke tests — exercise the deployed binary over JSON-RPC (stdio) |
@@ -77,7 +78,7 @@ The vendor crate is a standalone workspace (its own `[workspace]` in
 
 ## Conventions
 
-- **Four-crate workspace:** `mcp-stdio-bin` (thin MCP-stdio layer) depends on `mcp-tools` (shared handlers) which depends on `mcp-core` (all Firebird logic). `mcp-types` holds shared value types. See each crate's `AGENTS.md` for function-level detail.
+- **Five-crate workspace:** `mcp-stdio-bin` (thin MCP-stdio layer) depends on `mcp-tools` (shared handlers) which depends on `mcp-core` (all Firebird logic) and `mcp-migration` (Parquet export/import). `mcp-types` holds shared value types. See each crate's `AGENTS.md` for function-level detail.
 - **Build output:** binary lands in `~/.local/bin/firebird-5-mcp` (fixed name, no platform suffix). No `bin/` or `dist/` directories — GitHub Actions handles release artifacts.
 - **Cross-compile caveats:** windows/arm64 is skipped (no stable Rust GNU target); darwin requires osxcross; aarch64-linux requires `aarch64-linux-gnu-gcc`.
 - **Release flow:** `publish_new_tag.sh` commits + tags + pushes; GitHub Actions handles the rest.

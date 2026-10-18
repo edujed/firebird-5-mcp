@@ -99,11 +99,12 @@ Re-exports `Value`, `ColumnMeta`, `QueryResult` from `firebird-5-mcp-types`.
 | `query()` | 28–30 | Executes a SELECT, returns `QueryResult` |
 | `query_with_limit()` | 33–49 | SELECT with `FIRST`/`SKIP` injection |
 | `query_with_param()` | 52–62 | SELECT with a bound parameter |
-| `rows_to_result()` | 65–85 | Converts raw rows to `QueryResult` |
-| `sql_type_name()` | 95–119 | Raw ISC_* code → type name string |
-| `row_value()` | 122–134 | Raw cell → `Value` enum |
-| `exec()` | 144–163 | DML/DDL in RW transaction, commit/rollback |
-| `execute()` | 167–183 | SELECT-first, DML/DDL fallback |
+| `query_unbounded()` | 65–78 | SELECT with **no** row-limit injection — for bulk data movement (file export); never for LLM-facing queries |
+| `rows_to_result()` | 81–101 | Converts raw rows to `QueryResult` |
+| `sql_type_name()` | 111–135 | Raw ISC_* code → type name string |
+| `row_value()` | 138–150 | Raw cell → `Value` enum |
+| `exec()` | 160–179 | DML/DDL in RW transaction, commit/rollback |
+| `execute()` | 183–199 | SELECT-first, DML/DDL fallback |
 
 ## `src/query/batch.rs`
 
@@ -165,7 +166,7 @@ Re-exports `Value`, `ColumnMeta`, `QueryResult` from `firebird-5-mcp-types`.
 
 | Function | Lines | Summary |
 |---|---|---|
-| `format_schema_markdown()` | 6–92 | Renders `TableSchema` as Markdown |
+| `format_schema_markdown()` | 6–94 | Renders `TableSchema` as Markdown |
 
 ## `src/ddl.rs`
 
@@ -235,11 +236,11 @@ Re-exports `Value`, `ColumnMeta`, `QueryResult` from `firebird-5-mcp-types`.
 
 | Item | Lines | Summary |
 |---|---|---|
-| `struct StorageConfig` | 13–16 | `{ dir: Option<String> }` |
+| `struct StorageConfig` | 13–16 | `{ dir: String }` (empty = use default) |
 | `StorageConfig::effective_dir` | 23–29 | Resolves the effective storage directory |
 | `default_storage_dir()` | 35–37 | Returns `~/.firebird-mcp/output/` |
-| `struct StorageResult` | 41–46 | `{ files, dir }` |
-| `struct WrittenFile` | 50–61 | `{ path, content, size }` |
+| `struct StorageResult` | 41–46 | `{ output_dir: String, files: Vec<WrittenFile> }` |
+| `struct WrittenFile` | 50–61 | `{ name, path, size, lines, format }` |
 | `resolve_output_dir()` | 68–81 | Resolves output dir, rejects path traversal |
 | `write_files()` | 87–124 | Writes generated files to disk |
 | `preview()` | 131–148 | Builds a preview (first 10 + last 5 lines) |
@@ -282,7 +283,7 @@ Re-exports from `firebird-5-mcp-types` for backward compatibility:
 
 ## `src/codegen/mod.rs`
 
-Re-exports only (L23–43): `FbType`, `Language`, `GenOptions`, `generate`, `GeneratedFile`, `Target`, `to_pascal_case`, `to_snake_case`, `to_camel_case`.
+Re-exports (L30–43): `FbType`, `GenOptions`, `Language`, `generate`, `to_camel_case`, `to_pascal_case`, `to_snake_case`, `Target`, plus UI re-exports (`LazarusField`, `lazarus_from_column_info`, `lazarus_from_view_field`, `generate_lfm`, `SvelteField`, `svelte_from_column_info`, `svelte_from_view_field`, `generate_form`, `generate_page`, `generate_page_for_view`) and view_dto re-exports (`ViewField`, `generate_view_dto`, `get_view_metadata`). `GeneratedFile` is NOT re-exported (it lives in `codegen::targets`).
 
 ## `src/codegen/fbtype.rs`
 
@@ -304,9 +305,9 @@ Re-exports only (L23–43): `FbType`, `Language`, `GenOptions`, `generate`, `Gen
 |---|---|---|
 | `enum Language` | 17–27 | `Java`, `Go`, `Rust`, `TypeScript`, `Protobuf`, `OpenApi`, `Graphql`, `Lazarus`, `Svelte` |
 | `Language::parse` | 30–43 | String → `Language` |
-| `struct GenOptions` | 48–63 | Generation options (include_fks, etc.) |
+| `struct GenOptions` | 48–63 | `{ language, include_fks, include_comments, include_examples, package, is_view }` |
 | `GenOptions::new` | 67–76 | Constructor |
-| `generate()` | 84–129 | Dispatcher: language → target, calls `Target::generate` |
+| `generate()` | 84–129 | Dispatcher: language → target, calls `Target::generate`; `Lazarus`/`Svelte` handled inline (placeholder files) |
 
 ## `src/codegen/naming.rs`
 
@@ -321,9 +322,9 @@ Re-exports only (L23–43): `FbType`, `Language`, `GenOptions`, `generate`, `Gen
 
 | Item | Lines | Summary |
 |---|---|---|
-| `struct ViewField` | 28–32 | `{ name, type_name, nullable }` |
+| `struct ViewField` | 28–32 | `{ name, type_str, nullable }` |
 | `get_view_metadata()` | 41–65 | `SELECT FIRST 1 * FROM view` to resolve columns |
-| `infer_type_from_value()` | 69–81 | Infers `FbType` from a sample value |
+| `infer_type_from_value()` | 69–81 | Infers type string (`String`) from a sample value |
 | `generate_view_dto()` | 84–101 | Generates DTOs for multiple views |
 | `generate_single_view_dto()` | 105–159 | Generates a single view DTO |
 | `view_to_schema()` | 164–193 | Converts view fields to a synthetic `TableSchema` |
@@ -332,9 +333,9 @@ Re-exports only (L23–43): `FbType`, `Language`, `GenOptions`, `generate`, `Gen
 
 | Item | Lines | Summary |
 |---|---|---|
-| `struct GeneratedFile` | 37–41 | `{ path, content }` |
+| `struct GeneratedFile` | 37–41 | `{ name, content, format }` |
 | `GeneratedFile::new` | 45–55 | Constructor |
-| `trait Target` | 62–88 | `type_for`, `generate`, `dto_type_for` — implemented per language |
+| `trait Target` | 62–88 | `type_for`, `generate` (returns `Vec<GeneratedFile>`), `dto_type_for` — implemented per language |
 
 ## `src/codegen/targets/java.rs`
 
@@ -398,29 +399,28 @@ Re-exports only (L23–43): `FbType`, `Language`, `GenOptions`, `generate`, `Gen
 
 | Item | Lines | Summary |
 |---|---|---|
-| Layout consts | 13–19 | Component positioning constants |
-| `struct LazarusField` | 23–28 | `{ name, type_name, size, nullable }` |
-| `generate_lfm()` | 31–126 | Generates `.lfm` form file |
-| `determine_component()` | 129–176 | Picks TDBEdit/TDBMemo/TDBDateTimePicker/TDBCheckBox |
-| `from_column_info()` | 179–193 | `ColumnInfo` → `LazarusField` |
-| `from_view_field()` | 196–205 | `ViewField` → `LazarusField` |
-| `parse_size_from_type()` | 208–218 | Extracts size from type string |
+| Layout consts | 13–19 | `MARGEM_ESQUERDA`, `TOP_INICIAL_CAMPOS`, `ALTURA_LABEL`, `ALTURA_EDIT`, `ESPACO_ENTRE_ELEMENTOS`, `ESPACO_ENTRE_CAMPOS`, `LARGURA_PADRAO_EDIT` |
+| `struct LazarusField` | 23–28 | `{ name, type_str, size, nullable }` |
+| `generate_lfm()` | 31–126 | `generate_lfm(object_name: &str, fields: &[LazarusField], is_view: bool) -> String` |
+| `determine_component()` | 129–176 | `determine_component(type_str: &str, size: i64) -> (&'static str, i32)` — component type + width |
+| `from_column_info()` | 179–193 | `from_column_info(col: &ColumnInfo) -> LazarusField` |
+| `from_view_field()` | 196–205 | `from_view_field(view_field: &ViewField) -> LazarusField` |
+| `parse_size_from_type()` | 208–218 | `parse_size_from_type(type_str: &str) -> i64` |
 
 ## `src/codegen/ui/svelte.rs`
 
 | Item | Lines | Summary |
 |---|---|---|
-| `struct SvelteField` | 14–21 | `{
- name, type_name, size, nullable }` |
-| `generate_page()` | 24–205 | Generates Svelte 5 page component |
-| `generate_form()` | 208–303 | Generates Svelte 5 form component |
-| `capitalize()` | 306–312 | Capitalizes first letter |
-| `format_title()` | 315–323 | Formats a title string |
-| `default_value_for_type()` | 326–339 | Returns default value for a type |
-| `rust_type_to_ts()` | 342–356 | Rust type → TypeScript type |
-| `from_column_info()` | 359–375 | `ColumnInfo` → `SvelteField` |
-| `from_view_field()` | 378–387 | `ViewField` → `SvelteField` |
-| `generate_page_for_view()` | 390–394 | Generates a page for a view |
+| `struct SvelteField` | 14–21 | `{ name, type_str, size, nullable, is_pk, is_fk }` |
+| `generate_page()` | 24–205 | `generate_page(table_name: &str, fields: &[SvelteField], pk_field: &str, fk_fields: &[String]) -> String` |
+| `generate_form()` | 208–303 | `generate_form(_table_name: &str, fields: &[SvelteField]) -> String` |
+| `capitalize()` | 306–312 | `capitalize(s: &str) -> String` |
+| `format_title()` | 315–323 | `format_title(name: &str) -> String` |
+| `default_value_for_type()` | 326–339 | `default_value_for_type(type_str: &str) -> &'static str` |
+| `rust_type_to_ts()` | 342–356 | `rust_type_to_ts(type_str: &str) -> &'static str` — Firebird type → TS type |
+| `from_column_info()` | 359–375 | `from_column_info(col: &ColumnInfo, is_pk: bool, is_fk: bool) -> SvelteField` |
+| `from_view_field()` | 378–387 | `from_view_field(vf: &ViewField) -> SvelteField` |
+| `generate_page_for_view()` | 390–394 | `generate_page_for_view(view_name: &str, fields: &[SvelteField]) -> String` |
 
 ## Conventions
 

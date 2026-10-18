@@ -424,5 +424,48 @@ pub fn tool_definitions() -> Vec<Value> {
                 }
             }),
         ),
+        // Migration tools (export/import/describe)
+        tool(
+            "firebird_export",
+            "Exports a table, view, or SQL query to a data file. All three sources go through the same engine (table/view names are wrapped as SELECT * FROM). Currently supports format 'parquet'. NUMERIC/DECIMAL columns are exported as text (exact decimal strings).",
+            json!({
+                "type": "object",
+                "properties": {
+                    "source": { "type": "string", "description": "Table/view name (e.g. 'USERS') or a raw SQL SELECT/WITH statement." },
+                    "output_path": { "type": "string", "description": "Full path for the output file. Must be within an allowed path." },
+                    "format": { "type": "string", "enum": ["parquet", "csv"], "description": "Output format. Default: 'parquet'." },
+                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
+                },
+                "required": ["source", "output_path"]
+            }),
+        ),
+        tool(
+            "firebird_import",
+            "Imports a data file into a Firebird table. Mode 'create' creates the table from the file schema (fails if it already exists) then inserts data. Mode 'append' requires the table to already exist with a compatible structure. Use ignore_columns to skip specific file columns.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "input_path": { "type": "string", "description": "Full path to the file to import." },
+                    "table": { "type": "string", "description": "Target table name." },
+                    "mode": { "type": "string", "enum": ["create", "append"], "description": "'create' = create table + insert; 'append' = insert into existing table." },
+                    "format": { "type": "string", "enum": ["parquet", "csv"], "description": "Input format. Default: 'parquet'. For CSV, column types are inferred from sample data." },
+                    "ignore_columns": { "type": "array", "items": { "type": "string" }, "description": "Optional list of file column names to skip (case-insensitive). Excluded from DDL in create mode; excluded from INSERT in append mode." },
+                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
+                },
+                "required": ["input_path", "table", "mode"]
+            }),
+        ),
+        tool(
+            "firebird_describe_file",
+            "Describes a data file's schema without loading its data: column names, Arrow types, mapped Firebird types, and row count. No database connection needed.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Full path to the file to describe." },
+                    "format": { "type": "string", "enum": ["parquet", "csv"], "description": "File format. Default: 'parquet'. For CSV, shows column names + first 5 sample rows." }
+                },
+                "required": ["path"]
+            }),
+        ),
     ]
 }

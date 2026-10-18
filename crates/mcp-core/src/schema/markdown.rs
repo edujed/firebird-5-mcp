@@ -18,7 +18,9 @@ pub fn format_schema_markdown(schema: &TableSchema) -> String {
             col.precision,
             col.scale,
         );
-        let null_str = if col.nullable.map(|n| n == 1).unwrap_or(false) {
+        // In Firebird, RDB$NULL_FLAG = 0 means the column CAN be NULL,
+        // and RDB$NULL_FLAG = 1 means the column CANNOT be NULL.
+        let null_str = if col.nullable.map(|n| n == 0).unwrap_or(true) {
             "YES"
         } else {
             "NO"

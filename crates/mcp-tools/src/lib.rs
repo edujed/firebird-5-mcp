@@ -45,6 +45,7 @@ pub mod ddl_tools;
 pub mod definitions;
 pub mod generator_tools;
 pub mod introspection_tools;
+pub mod migration_tools;
 pub mod query_tools;
 pub mod schema_tools;
 pub mod stats_tools;
@@ -54,6 +55,7 @@ pub use ddl_tools::*;
 pub use definitions::*;
 pub use generator_tools::*;
 pub use introspection_tools::*;
+pub use migration_tools::*;
 pub use query_tools::*;
 pub use schema_tools::*;
 pub use stats_tools::*;
@@ -147,6 +149,11 @@ fn dispatch_inner(cfg: &Config, name: &str, args: &Value) -> Result<ToolResult, 
         "firebird_create_sequence" => wrap_text(handle_create_sequence(cfg, args)),
         "firebird_alter_column_type" => wrap_text(handle_alter_column_type(cfg, args)),
         "firebird_drop" => wrap_text(handle_drop(cfg, args)),
+
+        // Migration tools (export/import/describe)
+        "firebird_export" => handle_export(cfg, args),
+        "firebird_import" => handle_import(cfg, args),
+        "firebird_describe_file" => handle_describe_file(cfg, args),
 
         other => Err(format!("Unknown tool: {other}")),
     }

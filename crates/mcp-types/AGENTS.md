@@ -29,7 +29,7 @@
 | `FIREBIRD_TYPE_NAMES` | 99–124 | RDB$FIELD_TYPE number → Firebird type name (24 entries, verified vs Firebird 5) |
 | `type_name_for` | 126–131 | Lookup helper |
 | `format_column_type` | 140–198 | Human-readable type: NUMERIC/DECIMAL(p,s), CHAR/VARCHAR/NVARCHAR(n) bytes→chars, BLOB sub-type |
-| `bytes_to_chars` | 201–209 | NVARCHAR = /2, CHAR/VARCHAR = /4 (UTF8) |
+| `char_size_for` | 205–213 | NVARCHAR = /2 (2-byte units); CHAR/VARCHAR = as-is (already in characters) |
 | `is_valid_identifier` | 217–224 | Letters/digits/underscore, must start with a letter |
 | `format_cell` | 232–250 | Markdown cell: NULL, flatten newlines, escape pipes, `<BLOB>` for binary |
 | `format_float` | 252–258 | Whole floats render as integers |

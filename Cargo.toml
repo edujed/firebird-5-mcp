@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/mcp-types", "crates/mcp-core", "crates/mcp-tools", "crates/mcp-stdio-bin"]
 
 [workspace.package]
-version = "1.2.0"
+version = "1.3.0"
 edition = "2024"
 license = "MIT"
 authors = [ "Eduardo Jedliczka <edujed@gmail.com>"]
@@ -36,6 +36,14 @@ dirs = "6.0"
 firebird-5-mcp-types = { path = "crates/mcp-types" }
 firebird-5-mcp-core = { path = "crates/mcp-core" }
 firebird-5-mcp-tools = { path = "crates/mcp-tools" }
+firebird-5-mcp-migration = { path = "crates/mcp-migration" }
+
+# Apache Arrow + Parquet (migration crate)
+arrow = { version = "55", default-features = false, features = ["prettyprint"] }
+parquet = { version = "55", default-features = false, features = ["arrow", "snap"] }
+
+# CSV parsing/writing (migration crate)
+csv = "1.3"
 
 [patch.crates-io]
 # Vendored copy that stops coercing NUMERIC/DECIMAL columns to f64.

@@ -2,12 +2,17 @@
 
 Example of calling the `firebird-5-mcp` MCP server from a Free Pascal command-line program, without any IDE or AI integration.
 
+For IDEs without MCP support (like Lazarus), you can call the MCP server directly from Pascal code. The examples use **raw POSIX pipes** (`fork`/`exec`/`read`/`write`) instead of `TProcess`, because the `TProcess` API in FPC 3.2.2 is limited (no `WaitFor`, `OutputLines`, or `CloseInput`).
+
+> **Note:** Each `MCPCall` spawns a new process. For high-frequency calls, consider keeping a persistent connection (write to stdin, read from stdout in a thread). For typical dev workflows, the spawn-per-call approach is simple and sufficient.
+
 ## Files
 
 | File | Description |
 |------|-------------|
 | `uMCP.pas` | MCP client unit — spawns the MCP binary via POSIX pipes (`fork`/`exec`/`read`/`write`), sends JSON-RPC requests, and parses the response with `fpjson`. |
 | `test_mcp.pas` | Test program that exercises 8 MCP tools against the `test-mcp` database: `tools/list`, `firebird_list`, `firebird_describe_table`, `firebird_query`, `firebird_count`, `firebird_generate_dev` (Lazarus), `firebird_generate_dev` (OpenAPI), and `firebird_generate_dev` (Java with `outputDirPath`). |
+| `test_migration.pas` | Migration tools example — exports `USERS` to Parquet, describes the file, imports it into a new table, verifies, and cleans up. |
 
 ## Requirements
 
@@ -30,15 +35,20 @@ The MCP config is resolved by the binary itself (`~/.firebird-mcp/config.json` b
 ## Build
 
 ```bash
+# Main test (8 tools)
 fpc -otest_mcp test_mcp.pas
+
+# Migration tools example (Parquet export/import)
+fpc -otest_migration test_migration.pas
 ```
 
-This compiles both `test_mcp.pas` and `uMCP.pas` (found in the same directory) into a single static binary.
+This compiles the program and `uMCP.pas` (found in the same directory) into a single static binary.
 
 ## Run
 
 ```bash
 ./test_mcp
+./test_migration
 ```
 
 Expected output:
@@ -232,3 +242,15 @@ end.
 ```
 
 > **Note:** The `MCP_BINARY` constant is hardcoded in `uMCP.pas`. For a production app, consider making it configurable (e.g., via command-line parameters or an INI file).
+
+## Migration Tools Example (Parquet Export/Import)
+
+The `test_migration.pas` example demonstrates the migration tools:
+
+1. **Export** — `firebird_export` exports the `USERS` table to `/tmp/users_test.parquet`
+2. **Describe** — `firebird_describe_file` shows the Parquet schema (no database connection needed)
+3. **Import** — `firebird_import` creates a new table `USERS_MIGRATION_TEST` from the Parquet file
+4. **Verify** — `firebird_count` and `firebird_query` confirm the data was imported
+5. **Cleanup** — `firebird_drop` removes the test table
+
+> **Note:** The `output_path` and `input_path` must be within an allowed path (configured in `config.json` under `allowed_paths`).

@@ -61,6 +61,19 @@ pub fn query_with_param(
     Ok(rows_to_result(rows))
 }
 
+/// Executes a SELECT statement and returns **all** rows, with no row-limit
+/// injection. Intended for bulk data movement (e.g. file export) where the
+/// caller wants the complete result set. Do not use for LLM-facing queries —
+/// use [`query`] or [`query_with_limit`] instead.
+pub fn query_unbounded(client: &mut FirebirdClient, sql: &str) -> Result<QueryResult, FbError> {
+    let trimmed = sql.trim_end().trim_end_matches(';').trim_end();
+    let rows: Vec<rsfbclient_core::Row> = client
+        .conn
+        .query_iter(trimmed, ())?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows_to_result(rows))
+}
+
 /// Converts raw driver rows into a `QueryResult`.
 fn rows_to_result(rows: Vec<rsfbclient_core::Row>) -> QueryResult {
     let mut result = QueryResult {

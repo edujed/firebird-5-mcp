@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     fn type_str_delegates_to_format_column_type() {
-        assert_eq!(FbType::Varchar { size: 400 }.type_str(), "VARCHAR(100)");
+        assert_eq!(FbType::Varchar { size: 400 }.type_str(), "VARCHAR(400)");
         assert_eq!(
             FbType::Numeric {
                 precision: 10,

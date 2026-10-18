@@ -14,7 +14,7 @@
 
 | File | Lines | Role |
 |---|---|---|
-| `README.md` | 234 | Build/run instructions, expected output, architecture diagram |
+| `README.md` | 256 | Build/run instructions, expected output, architecture diagram |
 | `uMCP.pas` | 243 | MCP client unit — POSIX pipe wrappers + `MCPCall` / `MCPListTools` |
 | `test_mcp.pas` | 67 | Test program exercising 8 MCP tools against the `test-mcp` database |
 

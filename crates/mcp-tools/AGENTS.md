@@ -15,17 +15,18 @@
 
 | File | Lines | Role |
 |---|---|---|
-| `Cargo.toml` | 13 | Package `firebird-5-mcp-tools`; deps: `firebird-5-mcp-core`, `firebird-5-mcp-types`, `serde_json`, `chrono` |
-| `src/lib.rs` | 153 | `ToolResult`, `dispatch()`, `build_time()`, re-exports |
+| `Cargo.toml` | 15 | Package `firebird-5-mcp-tools`; deps: `firebird-5-mcp-core`, `firebird-5-mcp-types`, `firebird-5-mcp-migration`, `serde_json`, `chrono` |
+| `src/lib.rs` | 160 | `ToolResult`, `dispatch()`, `build_time()`, re-exports |
 | `src/common.rs` | 199 | Shared helpers (arg parsing, client, Markdown, file save) |
-| `src/definitions.rs` | 425 | JSON input schemas for `tools/list` |
+| `src/definitions.rs` | 471 | JSON input schemas for `tools/list` |
 | `src/query_tools.rs` | 221 | SQL execution tools |
-| `src/schema_tools.rs` | 926 | Schema inspection tools (largest file) |
+| `src/schema_tools.rs` | 948 | Schema inspection tools (largest file) |
 | `src/stats_tools.rs` | 233 | MON$ statistics tools |
 | `src/introspection_tools.rs` | 270 | RDB$ introspection tools |
 | `src/generator_tools.rs` | 173 | `firebird_generate_dev` handler |
 | `src/view_dto_tools.rs` | 78 | `firebird_generate_view_dto` handler |
 | `src/ddl_tools.rs` | 229 | DDL create/alter/drop tools |
+| `src/migration_tools.rs` | 189 | Export/import/describe handlers (format-agnostic: Parquet + CSV) |
 
 ## `src/lib.rs`
 
@@ -35,7 +36,7 @@
 | `ToolResult::text` / `with_structured` | 73–85 | Constructors |
 | `wrap_text()` | 90–92 | Adapts `Result<String,String>` handlers to `Result<ToolResult,String>` |
 | `dispatch()` | 95–102 | Logs the call, delegates to `dispatch_inner` |
-| `dispatch_inner()` | 104–153 | `match` on tool name → handler. **This is the tool registry.** Groups: query, schema, stats, introspection, generators, DDL |
+| `dispatch_inner()` | 106–159 | `match` on tool name → handler. **This is the tool registry.** Groups: query, schema, stats, introspection, generators, DDL, migration |
 | `build_time()` | 37–41 | Compile-time build timestamp via `OnceLock` + `chrono` (single source of truth, used by both binaries) |
 
 ## `src/common.rs`
@@ -57,7 +58,7 @@
 | Function | Lines | Summary |
 |---|---|---|
 | `tool()` | 6–12 | Builds one `{name, description, inputSchema}` object |
-| `tool_definitions()` | 15–425 | Returns all tool JSON schemas (one `tool(...)` per MCP tool). **Source of truth for tool descriptions/args** — keep in sync with `dispatch_inner` |
+| `tool_definitions()` | 15–471 | Returns all tool JSON schemas (one `tool(...)` per MCP tool). **Source of truth for tool descriptions/args** — keep in sync with `dispatch_inner` |
 
 ## `src/query_tools.rs`
 
@@ -75,16 +76,16 @@
 
 | Function | Lines | Summary |
 |---|---|---|
-| `format_schema` | 10–96 | Renders `schema::TableSchema` as Markdown (columns, indexes, constraints, triggers, comments) |
-| `handle_describe_table` | 98–110 | Full schema of one table/view |
-| `handle_get_databases` | 112–142 | Reloads config from disk, lists configured databases + build time |
-| `handle_describe_database` | 144–322 | Full DB overview: MON$DATABASE health, per-table columns (PK/NOT NULL/comments), optional row counts, Mermaid ER diagram of FKs |
-| `handle_list` | 324–559 | Lists objects by type: TABLES, PROCEDURES, FUNCTIONS, DOMAINS, TRIGGERS, INDEXES, SEQUENCES (one branch each) |
-| `handle_metadata_extract` | 561–590 | DDL extraction (isql `-x` replacement); optional `objects` filter; `outputDirPath` saves to file |
-| `handle_describe` | 577–594 | Describes multiple objects by name (tables, views, procs, functions, triggers, sequences, domains) |
-| `handle_check_duplicates` | 597–722 | Finds duplicate values in 1+ columns (GROUP BY/HAVING), then shows full rows of the first duplicate combo |
-| `handle_domains` | 726–865 | Domain analysis: usage counts, most common type signatures, suggestions for missing domains |
-| `handle_find_column` | 868–926 | Finds columns by name pattern (`%` wildcards) across all tables/views |
+| `format_schema` | 13–99 | Renders `schema::TableSchema` as Markdown (columns, indexes, constraints, triggers, comments) |
+| `handle_describe_table` | 101–113 | Full schema of one table/view |
+| `handle_get_databases` | 115–145 | Reloads config from disk, lists configured databases + build time |
+| `handle_describe_database` | 147–325 | Full DB overview: MON$DATABASE health, per-table columns (PK/NOT NULL/comments), optional row counts, Mermaid ER diagram of FKs |
+| `handle_list` | 327–562 | Lists objects by type: TABLES, PROCEDURES, FUNCTIONS, DOMAINS, TRIGGERS, INDEXES, SEQUENCES (one branch each) |
+| `handle_metadata_extract` | 564–597 | DDL extraction (isql `-x` replacement); optional `objects` filter; `outputDirPath` saves to file |
+| `handle_describe` | 599–616 | Describes multiple objects by name (tables, views, procs, functions, triggers, sequences, domains) |
+| `handle_check_duplicates` | 619–744 | Finds duplicate values in 1+ columns (GROUP BY/HAVING), then shows full rows of the first duplicate combo |
+| `handle_domains` | 748–887 | Domain analysis: usage counts, most common type signatures, suggestions for missing domains |
+| `handle_find_column` | 890–948 | Finds columns by name pattern (`%` wildcards) across all tables/views |
 
 ## `src/stats_tools.rs`
 
@@ -130,6 +131,14 @@
 | `handle_create_sequence` | 170–183 | Creates a sequence/generator |
 | `handle_alter_column_type` | 185–196 | Changes a column's type to a domain |
 | `handle_drop` | 198–229 | Drops TABLE/VIEW/DOMAIN/TRIGGER/PROCEDURE/FUNCTION/INDEX/SEQUENCE (whitelist-validated) |
+
+## `src/migration_tools.rs`
+
+| Function | Lines | Summary |
+|---|---|---|
+| `handle_export` | 12–42 | Exports table/view/SQL to data file. Args: `source`, `output_path`, optional `format` (default "parquet"), `database`. Returns structured `{path, rows, columns, format}` |
+| `handle_import` | 45–103 | Imports data file into Firebird table. Args: `input_path`, `table`, `mode` (create/append), optional `format`, `ignore_columns` (array), `database`. Returns structured `{table, rows, columns, mode, format, ignored_columns}` |
+| `handle_describe_file` | 106–189 | Describes a file's schema without loading data. Args: `path`, optional `format`. Returns Markdown (Parquet: types table; CSV: columns + 5 sample rows) + structured `{path, format, rows, columns, arrow_types, firebird_types, sample_rows}`. **No DB connection needed** |
 
 ## Conventions
 

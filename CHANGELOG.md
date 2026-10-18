@@ -5,9 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0]
 
 ### Added
+- **`mcp-migration` crate** (`crates/mcp-migration/`) — data file export/import
+  for Firebird databases. Three new MCP tools:
+  - `firebird_export` — exports a table, view, or raw SQL query to a data file.
+    All three sources go through the same unified engine (table/view names are
+    wrapped as `SELECT * FROM`). `format` param (default `"parquet"`).
+  - `firebird_import` — imports a data file into a Firebird table. Two modes:
+    `create` (creates the table from the file schema, fails if it already
+    exists) and `append` (table must already exist with a compatible
+    structure). `ignore_columns` (optional array) skips specific file columns.
+  - `firebird_describe_file` — describes a file's schema without loading data:
+    column names, Arrow types, mapped Firebird types, and row count. No
+    database connection needed.
+  - The public API is format-agnostic (`format` param dispatch); supports
+    **Parquet** (Apache Arrow v55) and **CSV** (`csv` crate v1.3). CSV import
+    infers column types from a sample of the first 100 rows (INTEGER, DOUBLE
+    PRECISION, BOOLEAN, DATE, TIMESTAMP, or VARCHAR(255) fallback).
 - **`mcp-types` crate** (`crates/mcp-types/`) — shared value types
   (`Value`, `ColumnMeta`, `QueryResult`) and pure formatting helpers
   (`format_column_type`, `is_valid_identifier`, `format_cell`) extracted
@@ -25,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `xsqlda.rs` now keeps the scale; `wire.rs` renders exact decimal text
   via `scaled_to_decimal_string` / `scaled_to_decimal_string_i128`.
   Applied via `[patch.crates-io]` in the workspace `Cargo.toml`.
+- **`examples/freePascal/test_migration.pas`** — Free Pascal example
+  demonstrating the migration tools (Parquet export/import).
 
 ### Changed
 - **`mcp-bin` → `mcp-stdio-bin`** — the binary crate was renamed to make
@@ -34,6 +52,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compatibility. New code should depend on `mcp-types` directly.
 - `build_time()` now lives in `mcp-tools` (single source of truth) instead
   of being duplicated in the binary crate.
+- **README reorganization** — the main `README.md` now focuses on tool
+  descriptions and result examples. Setup guides, code generation examples,
+  developer docs, and migration docs moved to dedicated files:
+  - `README_ZED_EDITOR.md` — Zed Editor configuration
+  - `README_VSCODE.md` — VSCode & Cursor configuration
+  - `README_JETBRAINS.md` — JetBrains IDEs configuration
+  - `README_COMMAND_LINE.md` — Command line usage (no IDE)
+  - `README_CODEGEN.md` — Code generation examples (all languages)
+  - `README_FOR_DEVS.md` — Build, cross-compilation, project structure
+  - `README_MIGRATIONS.md` — Data migration (Parquet/CSV)
+  - `examples/freePascal/README.md` — Free Pascal / Lazarus integration
 
 ## [1.2.0]
 
