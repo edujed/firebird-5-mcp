@@ -4,30 +4,29 @@ A lightweight, pure-Rust MCP (Model Context Protocol) server for Firebird 5 data
 
 ## Features
 
+### Schema & Structure
+- `firebird_describe_database` — Complete database overview with Health section (gstat-like) + Mermaid ER diagram
+- `firebird_describe_table` — Full schema of a table (columns, indexes, constraints, triggers, comments)
+- `firebird_describe` — Multi-object describe (tables, views, procedures, functions, triggers, sequences, domains)
+- `firebird_list` — List tables, views, procedures, functions, domains, triggers, indexes, sequences
+- `firebird_check_duplicates` — Check for duplicate values before creating unique index/constraint
+
+### DDL & Advanced
+- `firebird_create_database` — Create a new Firebird database file
+- `firebird_alter_column_type` — Change column type using domains
+- `firebird_create_trigger` — Create BEFORE/AFTER INSERT/UPDATE/DELETE triggers
+- `firebird_create_procedure` — Create stored procedures (no isql needed)
+- `firebird_create_function` — Create user-defined functions
+- `firebird_create_sequence` — Create sequences (generators)
+- `firebird_drop` — Drop tables, views, domains, triggers, procedures, functions, indexes, sequences
+- `firebird_run_script` — Execute multi-statement SQL scripts
+- `firebird_execute_immediate` — Execute statements with SET TERM blocks (procedures, functions, generators)
+
 ### Query & Data
 - `firebird_query` — Execute any SQL statement (SELECT, INSERT, UPDATE, DELETE, DDL)
 - `firebird_count` — Count rows in a table (with optional WHERE)
 - `firebird_sample` — Quick sample of table data
 - `firebird_insert_batch` — Batch insert multiple rows in one transaction
-- `firebird_run_script` — Execute multi-statement SQL scripts
-- `firebird_execute_immediate` — Execute statements with SET TERM blocks (procedures, functions, generators)
-
-### Schema & Structure
-- `firebird_describe_table` — Full schema of a table (columns, indexes, constraints, triggers, comments)
-- `firebird_describe_database` — Complete database overview with Health section (gstat-like) + Mermaid ER diagram
-- `firebird_describe` — Multi-object describe (tables, views, procedures, functions, triggers, sequences, domains)
-- `firebird_list` — List tables, views, procedures, functions, domains, triggers, indexes, sequences
-- `firebird_find_column` — Find columns by name pattern (LIKE) across all tables/views
-- `firebird_check_duplicates` — Check for duplicate values before creating unique index/constraint
-
-### DDL & Advanced
-- `firebird_create_database` — Create a new Firebird database file
-- `firebird_create_trigger` — Create BEFORE/AFTER INSERT/UPDATE/DELETE triggers
-- `firebird_create_procedure` — Create stored procedures (no isql needed)
-- `firebird_create_function` — Create user-defined functions
-- `firebird_create_sequence` — Create sequences (generators)
-- `firebird_alter_column_type` — Change column type using domains
-- `firebird_drop` — Drop tables, views, domains, triggers, procedures, functions, indexes, sequences
 
 ### Code Generation
 - `firebird_generate_dev` — Generate development code from table schemas:
@@ -55,6 +54,7 @@ A lightweight, pure-Rust MCP (Model Context Protocol) server for Firebird 5 data
 - `firebird_get_databases` — List configured databases
 - `firebird_metadata_extract` — Full DDL extraction (replaces `isql -x`)
 - `firebird_explain_plan` — Get execution plan without running the query (rolled-back transaction)
+- `firebird_find_column` — Find columns by name pattern (LIKE) across all tables/views
 
 ### Introspection
 - `firebird_table_stats` — Per-table row counts (single table or all tables)
@@ -68,93 +68,23 @@ A lightweight, pure-Rust MCP (Model Context Protocol) server for Firebird 5 data
 > DDL operations, and refactoring instructions can be destructive. For production,
 > use a dedicated admin tool (e.g. `isql`, `fbguard`, or your DBA's preferred suite).
 
-## Prerequisites
+#### in the future, we will provide a **safe-readonly** mode.
+
+## Prerequisites for use
 
 - **Firebird 5** server running (or any version 3+)
-- **Rust** toolchain (only if building from source)
 - No `isql`, no ODBC, no native libraries required
 
-## Setup
+## Prerequisites for local dev/compiling
+- **Firebird 5** server running (or any version 3+)
+- **Rust** toolchain (only if building from source)
 
-### 1. Configure your server and databases
 
-Create a `config.json` file:
+# How to use
 
-```json
-{
-  "server": {
-    "host": "localhost",
-    "port": 3050,
-    "user": "SYSDBA",
-    "password": "masterkey",
-    "allowed_paths": ["/path/to/databases"],
-    "databases": [
-      {
-        "name": "examples",
-        "description": "Local development database for tests, training and examples",
-        "path": "/path/to/databases/teste.fdb"
-      },
-      {
-        "name": "myDatabase",
-        "description": "My primary local development database",
-        "path": "/path/to/databases/myDatabase.fdb"
-      }
-    ],
-    "default_database": "examples"
-  }
-}
-```
+## 1. Register in Editors
 
-| Field | Description |
-|-------|-------------|
-| `host` | Firebird server hostname |
-| `port` | Firebird server port (default 3050) |
-| `user` | Database username |
-| `password` | Database password |
-| `allowed_paths` | Directories where new databases can be created |
-| `databases` | List of configured databases |
-| `default_database` | Database to use when none is specified |
-
-### 2. Build
-
-Use the build script from the project root:
-
-```bash
-./scripts/build.sh              # Current platform (binaries in bin/)
-./scripts/build.sh all          # All supported platforms
-```
-
-The script also packages the binaries into `dist/` as compressed archives:
-
-- **Windows** → `.zip` (e.g. `firebird-5-mcp-windows-amd64.zip`)
-- **Linux** → `.tar.gz` (e.g. `firebird-5-mcp-linux-amd64.tar.gz`)
-
-```bash
-./scripts/build.sh all
-# Binaries in: bin/
-# Archives in: dist/
-```
-
-Or build manually:
-
-```bash
-cargo build --release
-# Binary will be at: target/release/firebird-5-mcp
-```
-
-**Cross-compilation notes:**
-
-| Platform | Target | Requirements |
-|---|---|---|
-| linux/amd64 | `x86_64-unknown-linux-gnu` | None (native on x86_64) |
-| linux/arm64 | `aarch64-unknown-linux-gnu` | `aarch64-linux-gnu-gcc` (`sudo apt install gcc-aarch64-linux-gnu`) |
-| windows/amd64 | `x86_64-pc-windows-gnu` | `x86_64-w64-mingw32-gcc` (`sudo apt install gcc-mingw-w64-x86-64`) |
-| darwin/* | `*-apple-darwin` | [osxcross](https://github.com/tpoechtrager/osxcross) (skipped with a warning if not installed) |
-| windows/arm64 | — | Not supported (no stable GNU target in Rust) |
-
-### 3. Register in Editors
-
-#### 3.1. Zed Editor
+### 1.1. Zed Editor
 
 Add to your Zed settings (`~/.config/zed/settings.json`):
 
@@ -170,7 +100,7 @@ Add to your Zed settings (`~/.config/zed/settings.json`):
 }
 ```
 
-#### 3.2. VSCode
+### 1.2. VSCode
 
 In vscode, open the palete command ('Ctrl+Shift+P') and execute: 'MCP: Add Server'.
 Choice 'Command (stdio), and insert the binary (uncompressed) with path (example: `/path/to/firebird-5-mcp`)
@@ -193,7 +123,7 @@ and type
 }
 ```
 
-#### 3.3. Cursor
+### 1.3. Cursor
 
 Create a `.cursor/mcp.json` file in your project root (or `~/.cursor/mcp.json` for global):
 
@@ -208,7 +138,7 @@ Create a `.cursor/mcp.json` file in your project root (or `~/.cursor/mcp.json` f
 }
 ```
 
-#### 3.4. JetBrains (IntelliJ, GoLand, WebStorm, CLion)
+### 1.4. JetBrains (IntelliJ, GoLand, WebStorm, CLion)
 
 In the AI Assistant settings, add a new MCP server:
 
@@ -251,6 +181,7 @@ Ready-to-use scripts are in [`examples/`](examples/):
 | [`mcp-call.sh`](examples/mcp-call.sh) | Linux/macOS | `./mcp-call.sh <tool> '<json_args>'` |
 | [`mcp-call.bat`](examples/mcp-call.bat) | Windows | `mcp-call.bat <tool> <json_args>` |
 
+
 **Examples (Linux/macOS):**
 
 ```bash
@@ -283,7 +214,7 @@ fpc -otest_mcp test_mcp.pas
 ./test_mcp
 ```
 
-> **Note:** Each `MCPCall` spawns a new process. For high-frequency calls, consider keeping a persistent connection (write to stdin, read from stdout in a thread) — but for typical dev workflows, the spawn-per-call approach is simple and sufficient.
+> **Note:** This is a example, it works, but each `MCPCall` spawns a new process. For high-frequency calls, consider keeping a persistent connection (write to stdin, read from stdout in a thread) — but for typical dev workflows, the spawn-per-call approach is simple and sufficient.
 
 ## Configuration
 
@@ -349,6 +280,80 @@ The base directory can be overridden with `FIREBIRD_MCP_HOME` (e.g. for testing 
 | `FIREBIRD_CONFIG` | Full path to `config.json` (highest priority) |
 | `FIREBIRD_MCP_HOME` | Override the base directory (default: `~/.firebird-mcp`) |
 
+### 2. Configure your server and databases
+
+Create a `config.json` file:
+
+```json
+{
+  "server": {
+    "host": "localhost",
+    "port": 3050,
+    "user": "SYSDBA",
+    "password": "masterkey",
+    "allowed_paths": ["/path/to/databases"],
+    "databases": [
+      {
+        "name": "examples",
+        "description": "Local development database for tests, training and examples",
+        "path": "/path/to/databases/teste.fdb"
+      },
+      {
+        "name": "myDatabase",
+        "description": "My primary local development database",
+        "path": "/path/to/databases/myDatabase.fdb"
+      }
+    ],
+    "default_database": "examples"
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `host` | Firebird server hostname |
+| `port` | Firebird server port (default 3050) |
+| `user` | Database username |
+| `password` | Database password |
+| `allowed_paths` | Directories where new databases can be created |
+| `databases` | List of configured databases |
+| `default_database` | Database to use when none is specified |
+
+### 3. Build
+
+Use the build script from the project root:
+
+```bash
+./scripts/build.sh              # Current platform (binaries in bin/)
+./scripts/build.sh all          # All supported platforms
+```
+The script also packages the binaries into `dist/` as compressed archives:
+
+- **Windows** → `.zip` (e.g. `firebird-5-mcp-windows-amd64.zip`)
+- **Linux** → `.tar.gz` (e.g. `firebird-5-mcp-linux-amd64.tar.gz`)
+
+```bash
+./scripts/build.sh all
+# Binaries in: bin/
+# Archives in: dist/
+```
+Or build manually:
+
+```bash
+cargo build --release
+# Binary will be at: target/release/firebird-5-mcp
+```
+
+**Cross-compilation notes:**
+
+| Platform | Target | Requirements |
+|---|---|---|
+| linux/amd64 | `x86_64-unknown-linux-gnu` | None (native on x86_64) |
+| linux/arm64 | `aarch64-unknown-linux-gnu` | `aarch64-linux-gnu-gcc` (`sudo apt install gcc-aarch64-linux-gnu`) |
+| windows/amd64 | `x86_64-pc-windows-gnu` | `x86_64-w64-mingw32-gcc` (`sudo apt install gcc-mingw-w64-x86-64`) |
+| darwin/* | `*-apple-darwin` | [osxcross](https://github.com/tpoechtrager/osxcross) (skipped with a warning if not installed) |
+| windows/arm64 | — | Not supported (no stable GNU target in Rust) |
+
 ## Tools
 
 ### `firebird_query`
@@ -368,7 +373,6 @@ Executes a single SQL statement. For DML/DDL, the execution plan is appended to 
 ```
 
 **Result:**
-```
 ### Query Results (3 rows)
 
 Columns: ID (INT), NAME (VARCHAR), CITY (VARCHAR)
@@ -378,7 +382,6 @@ ID | NAME | CITY
 1 | Alice | New York
 2 | Bob | NULL
 3 | Charlie | New York
-```
 
 ### `firebird_list`
 
@@ -397,7 +400,6 @@ Lists database objects by type.
 ```
 
 **Result:**
-```
 ### Tables and Views (5)
 
 NAME | TYPE | COMMENT
@@ -405,7 +407,6 @@ NAME | TYPE | COMMENT
 CLIENTS | TABLE | Customer records
 ORDERS | TABLE | Order data
 ...
-```
 
 ### `firebird_find_column`
 
@@ -424,14 +425,12 @@ Finds columns by name pattern across all tables and views. Supports `%` wildcard
 ```
 
 **Result:**
-```
 ### Columns matching '%EMAIL%' (2 found)
 
 TABLE | COLUMN | TYPE | NULL | VIEW
 --- | --- | --- | --- | ---
 USERS | EMAIL | VARCHAR(250) | NO |
 VW_ACTIVE_USERS | EMAIL | VARCHAR(250) | YES | YES
-```
 
 ### `firebird_check_duplicates`
 
@@ -453,7 +452,6 @@ Checks for duplicate values in one or more columns. Use this BEFORE creating a u
 ```
 
 **Result (with duplicates):**
-```
 ### Duplicate Check: CUSTOMERS (TYPE_ID)
 
 ⚠️ 1 duplicate combination(s) found:
@@ -471,16 +469,12 @@ ID | TYPE_ID | PARENT_ID | IS_VERIFIED | ACTIVE | ...
 4 | 2 | NULL | false | true | ...
 5 | 2 | 4 | true | true | ...
 6 | 2 | 4 | false | true | ...
-
 💡 Fix duplicates before creating the unique index/constraint.
-```
 
 **Result (no duplicates):**
-```
 ### Duplicate Check: CUSTOMERS (ID)
 
 ✅ No duplicates found. Safe to create unique index/constraint.
-```
 
 ### `firebird_describe_table`
 
@@ -491,7 +485,6 @@ Shows the full schema of a table or view.
 - `database` (optional): Database name
 
 **Result:**
-```
 ### Table: CLIENTS
 
 #### Columns
@@ -514,7 +507,6 @@ PK_CLIENTS | YES | 0 | ID
 NAME | TYPE
 --- | ---
 PK_CLIENTS | PRIMARY KEY
-```
 
 ### `firebird_describe_database`
 
@@ -526,7 +518,7 @@ Provides a complete overview of the database structure with a Health section (gs
 - `include_describes` (optional): Include column details
 
 **Result:**
-```
+
 ### Database: shop
 
 #### Health
@@ -547,7 +539,6 @@ Provides a complete overview of the database structure with a Health section (gs
 
 **USERS**
 - ID (INTEGER, PK)
-...
 
 #### Relationships (Mermaid)
 
@@ -555,7 +546,6 @@ Provides a complete overview of the database structure with a Health section (gs
 erDiagram
     CUSTOMERS ||--o{ USERS : "FK_USR_CUST"
     ...
-```
 ```
 
 **Health section fields:**
@@ -590,7 +580,6 @@ Multi-object describe — accepts any mix of tables, views, procedures, function
 ```
 
 **Result (procedure with parameters):**
-```
 ### SAVE_USER (PROCEDURE)
 
 #### Input Parameters
@@ -611,15 +600,12 @@ POSITION | NAME | DOMAIN
 
 #### Source
 
-```
 CREATE PROCEDURE SAVE_USER (P_OPER RDB$33, P_ID D_ID_NULL, ...)
 AS
 DECLARE VARIABLE V_AFF INT;
 BEGIN
     ...
 END
-```
-```
 
 ### `firebird_generate_dev`
 
@@ -748,11 +734,11 @@ pub struct User {
     /// Column: DELETED_AT
     pub deleted_at: NaiveDateTime,
 }
+```
 
 // Example query (aliases must match field names for FromRow):
 // SELECT ID AS id, CUSTOMER_ID AS customer_id, EMAIL AS email, ... FROM USERS
 // let rows: Vec<User> = conn.query(sql, ({}))?;
-```
 
 **Example (TypeScript):**
 ```json
@@ -880,7 +866,7 @@ User:
 ```
 
 **Result:**
-```lfm
+```pascal
 object FormCustomer: TFormManutencao
   Left = 0
   Top = 0
@@ -1097,112 +1083,6 @@ end
 | INTEGER/BIGINT/SMALLINT/NUMERIC/DECIMAL | NumericField | number |
 | VARCHAR/CHAR/BLOB | EditField | string |
 
-### `firebird_generate_view_dto`
-
-Generates DTOs/records from views using resolved metadata (executes `SELECT FIRST 1 * FROM view` to get accurate column types). Generated code is read-only (no entity annotations, no FKs).
-
-**Arguments:**
-- `views` (required): Array of view names (max 20)
-- `language` (required): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `graphql`, `lazarus`, or `svelte`
-- `database` (optional): Database name
-
-**Example (Java):**
-```json
-{
-  "views": ["VW_ACTIVE_USERS"],
-  "language": "java",
-  "database": "shop"
-}
-```
-
-**Result:**
-```java
-@Data
-public class VwActiveUsers {
-    private Long id;
-    private String email;
-    private String passwordHash;
-    private Boolean active;
-    private Long customerId;
-    private Long typeId;
-    private Boolean isActive;
-    private String fullName;
-    private java.time.LocalDateTime createdAt;
-    private java.time.LocalDateTime updatedAt;
-    private String createdBy;
-    private String updatedBy;
-}
-```
-
-**Example (Lazarus/Delphi):**
-```json
-{
-  "views": ["VW_ACTIVE_USERS"],
-  "language": "lazarus",
-  "database": "shop"
-}
-```
-
-**Result:**
-```lfm
-object FormVwActiveUsers: TFormConsulta
-  Left = 0
-  Top = 0
-  Caption = 'FormVwActiveUsers'
-  ClientHeight = 400
-  ClientWidth = 600
-  LCLVersion = '3.0.0.0'
-  object FBDataSetVwActiveUsers: TFBDataSet
-    Left = 24
-    Top = 24
-    Connected = False
-    SQL.Strings = (
-      'SELECT * FROM VW_ACTIVE_USERS'
-    )
-  end
-  object DataSourceVwActiveUsers: TDataSource
-    Left = 112
-    Top = 24
-    DataSet = FBDataSetVwActiveUsers
-  end
-  object Label_ID: TLabel
-    Left = 24
-    Top = 100
-    Width = 120
-    Height = 15
-    Caption = 'ID:'
-    ParentColor = False
-  end
-  object TDBEdit_ID: TDBEdit
-    Left = 24
-    Top = 121
-    Width = 120
-    Height = 23
-    DataSource = DataSourceVwActiveUsers
-    DataField = 'ID'
-    TabOrder = 0
-  end
-  object Label_ACTIVE: TLabel
-    Left = 24
-    Top = 160
-    Width = 150
-    Height = 15
-    Caption = 'ACTIVE:'
-    ParentColor = False
-  end
-  object TDBCheckBox_ACTIVE: TDBCheckBox
-    Left = 24
-    Top = 181
-    Width = 150
-    Height = 23
-    DataSource = DataSourceVwActiveUsers
-    DataField = 'ACTIVE'
-    TabOrder = 1
-  end
-  ...
-end
-```
-
 ### `firebird_explain_plan`
 
 Gets the execution plan for a SQL statement without actually running it. The statement is executed inside a rolled-back transaction.
@@ -1212,12 +1092,10 @@ Gets the execution plan for a SQL statement without actually running it. The sta
 - `database` (optional): Database name
 
 **Result:**
-```
 Execution plan (the statement was executed inside a rolled-back transaction):
 PLAN:
   SORT
     TABLE: CLIENTS (INDEX: PK_CLIENTS)
-```
 
 ### `firebird_metadata_extract`
 
@@ -1250,7 +1128,6 @@ Returns per-table row counts. For a single table, uses `SELECT COUNT(*) FROM <ta
 - `database` (optional): Database name
 
 **Result:**
-```
 ## Table Stats (all tables)
 
 TABLE_NAME | TOTAL
@@ -1258,7 +1135,6 @@ TABLE_NAME | TOTAL
 CLIENTS | 1542
 ORDERS | 8931
 PRODUCTS | 234
-```
 
 > **Note:** `COUNT(*)` on very large tables can be slow. Intended for development/analysis.
 
@@ -1270,7 +1146,6 @@ Lists all users with access to the database, combining `RDB$DB_CREATORS` (databa
 - `database` (optional): Database name
 
 **Result:**
-```
 ## Database Users
 
 USER_NAME | CREATOR_TYPE | PRIVILEGE | GRANT_OPTION
@@ -1279,7 +1154,6 @@ SYSDBA | 0 |  |
 APP_USER |  | SELECT | 
 APP_USER |  | INSERT | 
 APP_USER |  | UPDATE | 
-```
 
 ### `firebird_grants`
 
@@ -1290,7 +1164,6 @@ Shows GRANT privileges for a specific table or for all tables, using `RDB$USER_P
 - `database` (optional): Database name
 
 **Result:**
-```
 ## Grants for CLIENTS
 
 RELATION_NAME | GRANTEE | PRIVILEGE | GRANT_OPTION
@@ -1298,7 +1171,7 @@ RELATION_NAME | GRANTEE | PRIVILEGE | GRANT_OPTION
 CLIENTS | APP_USER | SELECT | 
 CLIENTS | APP_USER | INSERT | 
 CLIENTS | APP_USER | UPDATE | 
-```
+
 
 ### `firebird_blob_info`
 
@@ -1309,14 +1182,13 @@ Lists all BLOB columns in the database (or a specific table): table, column, blo
 - `database` (optional): Database name
 
 **Result:**
-```
 ## BLOB Columns (all tables)
 
 RELATION_NAME | FIELD_NAME | FIELD_TYPE | SUB_TYPE | LENGTH | BLOB_TYPE
 --- | --- | --- | --- | --- | ---
 DOCUMENTS | CONTENT | 261 | 1 | 0 | TEXT
 INVOICES | PDF_DATA | 261 | 2 | 0 | BINARY
-```
+
 
 ### `firebird_index_usage`
 
@@ -1327,7 +1199,7 @@ Shows all indexes in the database (or a specific table): index name, table, uniq
 - `database` (optional): Database name
 
 **Result:**
-```
+
 ## Indexes (all tables)
 
 INDEX_NAME | RELATION_NAME | UNIQUE_FLAG | INDEX_TYPE | COLUMNS
@@ -1335,7 +1207,6 @@ INDEX_NAME | RELATION_NAME | UNIQUE_FLAG | INDEX_TYPE | COLUMNS
 PK_CLIENTS | CLIENTS | 2 | 0 | ID
 IDX_CLIENTS_EMAIL | CLIENTS | 1 | 0 | EMAIL
 IDX_ORDERS_CLIENT | ORDERS | 0 | 0 | CLIENT_ID, CREATED_AT
-```
 
 | UNIQUE_FLAG | Meaning |
 |---|---|
@@ -1405,30 +1276,6 @@ The project is split into two crates:
    - Implements the MCP protocol (JSON-RPC over stdio)
    - Exposes the core library's functionality as MCP tools
    - Handles configuration and error reporting
-
-### Extending with new database engines
-
-The core library is designed to be database-agnostic. To add support for a new database engine:
-
-1. Create a new crate (e.g., `postgres-mcp-core`)
-2. Implement the same traits/interfaces
-3. Create a new MCP server binary (e.g., `postgres-mcp`)
-
-## Optimized Build for Deployment
-
-The release profile is optimized for minimal binary size and maximum performance:
-
-```toml
-[profile.release]
-opt-level = 3            # Maximum optimization
-codegen-units = 1        # Best codegen (slower build, better runtime)
-lto = "fat"              # Aggressive link-time optimization
-panic = "abort"           # Smaller binary (no unwinding)
-strip = true              # Remove symbols from binary
-debug = false             # No debug info
-```
-
-**Result:** ~1.2MB static binary
 
 ## Credits
 
