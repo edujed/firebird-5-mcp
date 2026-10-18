@@ -123,6 +123,19 @@ The base directory can be overridden with `FIREBIRD_MCP_HOME` (e.g. for testing 
 | `FIREBIRD_CONFIG` | Full path to `config.json` (highest priority) |
 | `FIREBIRD_MCP_HOME` | Override the base directory (default: `~/.firebird-mcp`) |
 
+## Setup Guides
+
+| Guide | Description |
+|-------|-------------|
+| [README_ZED_EDITOR.md](README_ZED_EDITOR.md) | Configure in Zed Editor |
+| [README_VSCODE.md](README_VSCODE.md) | Configure in VSCode & Cursor |
+| [README_JETBRAINS.md](README_JETBRAINS.md) | Configure in JetBrains IDEs |
+| [README_COMMAND_LINE.md](README_COMMAND_LINE.md) | Use from the command line (no IDE) |
+| [examples/freePascal/README.md](examples/freePascal/README.md) | Free Pascal / Lazarus integration |
+| [README_CODEGEN.md](README_CODEGEN.md) | Code generation examples (all languages) |
+| [README_FOR_DEVS.md](README_FOR_DEVS.md) | Build, cross-compilation, project structure |
+| [README_MIGRATIONS.md](README_MIGRATIONS.md) | Data migration (Parquet/CSV) |
+
 ## Tools
 
 ### `firebird_query`
@@ -631,19 +644,6 @@ IDX_ORDERS_CLIENT | ORDERS | 0 | 0 | CLIENT_ID, CREATED_AT
 | 0 | Non-unique |
 | 1 | Unique |
 | 2 | Primary key |
-
-## Setup Guides
-
-| Guide | Description |
-|-------|-------------|
-| [README_ZED_EDITOR.md](README_ZED_EDITOR.md) | Configure in Zed Editor |
-| [README_VSCODE.md](README_VSCODE.md) | Configure in VSCode & Cursor |
-| [README_JETBRAINS.md](README_JETBRAINS.md) | Configure in JetBrains IDEs |
-| [README_COMMAND_LINE.md](README_COMMAND_LINE.md) | Use from the command line (no IDE) |
-| [examples/freePascal/README.md](examples/freePascal/README.md) | Free Pascal / Lazarus integration |
-| [README_CODEGEN.md](README_CODEGEN.md) | Code generation examples (all languages) |
-| [README_FOR_DEVS.md](README_FOR_DEVS.md) | Build, cross-compilation, project structure |
-| [README_MIGRATIONS.md](README_MIGRATIONS.md) | Data migration (Parquet/CSV) |
 
 ## Credits
 
