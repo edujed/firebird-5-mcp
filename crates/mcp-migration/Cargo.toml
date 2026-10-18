@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Data file export/import for Firebird databases (Parquet, CSV)"
+description = "Data file export/import for Firebird databases (Parquet, Arrow IPC, CSV)"
 authors = [ "Eduardo Jedliczka <edujed@gmail.com>"]
 
 [dependencies]
@@ -13,5 +13,8 @@ firebird-5-mcp-types = { workspace = true }
 arrow = { workspace = true }
 parquet = { workspace = true }
 csv = { workspace = true }
+flate2 = { workspace = true }
+zstd = { workspace = true }
+lz4_flex = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }

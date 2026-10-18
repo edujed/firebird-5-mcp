@@ -9,15 +9,17 @@
 //! - all `YYYY-MM-DD` → DATE
 //! - all `YYYY-MM-DD HH:MM:SS` → TIMESTAMP
 //! - anything else → VARCHAR(255)
+//!
+//! Compression is transparent: the file extension determines the codec
+//! (`.csv`, `.csv.zst`, `.csv.gz`, `.csv.lz4`).
 
-use std::fs::File;
-
-use csv::ReaderBuilder;
 use firebird_5_mcp_core::client::FirebirdClient;
 use firebird_5_mcp_core::mlog;
-use firebird_5_mcp_core::query::{Value, exec, insert_batch, query_with_param};
+use firebird_5_mcp_core::query::insert_batch;
 
+use crate::format::CsvReader;
 use crate::import::{ImportMode, ImportResult};
+use crate::table::{create_table_from_types, table_exists};
 
 /// Number of sample rows to read for type inference.
 const SAMPLE_SIZE: usize = 100;
@@ -33,11 +35,7 @@ pub fn import_csv(
     mode: ImportMode,
     ignore_columns: &[String],
 ) -> Result<ImportResult, String> {
-    let file = File::open(input_path).map_err(|e| format!("cannot open {input_path}: {e}"))?;
-    let mut reader = ReaderBuilder::new()
-        .has_headers(true)
-        .flexible(true)
-        .from_reader(file);
+    let mut reader = CsvReader::open(input_path)?.into_csv_reader();
 
     // Read header
     let headers = reader
@@ -103,10 +101,14 @@ pub fn import_csv(
     // Create or verify table
     match mode {
         ImportMode::Create => {
-            create_table_csv(client, table, &kept_columns, &inferred_types, &sample_rows)?;
+            create_table_from_types(client, table, &kept_columns, &inferred_types, &sample_rows)?;
         }
         ImportMode::Append => {
-            verify_table_exists(client, table)?;
+            if !table_exists(client, table)? {
+                return Err(format!(
+                    "table '{table}' not found (use mode 'create' to create it)"
+                ));
+            }
         }
     }
 
@@ -143,72 +145,6 @@ pub fn import_csv(
         columns: kept_columns.len(),
         mode,
     })
-}
-
-/// Creates a table from inferred CSV column types.
-fn create_table_csv(
-    client: &mut FirebirdClient,
-    table: &str,
-    columns: &[String],
-    types: &[String],
-    sample_rows: &[Vec<String>],
-) -> Result<(), String> {
-    let check_sql = "SELECT COUNT(*) FROM RDB$RELATIONS WHERE RDB$RELATION_NAME = ?";
-    let result = query_with_param(client, check_sql, table).map_err(|e| e.to_string())?;
-    let count = result
-        .rows
-        .first()
-        .and_then(|row| row.first())
-        .and_then(|v| match v {
-            Value::Int(n) => Some(*n),
-            _ => None,
-        })
-        .unwrap_or(0);
-    if count > 0 {
-        return Err(format!(
-            "table '{table}' already exists (use mode 'append' to add data)"
-        ));
-    }
-
-    let col_defs: Vec<String> = columns
-        .iter()
-        .enumerate()
-        .zip(types.iter())
-        .map(|((col_idx, name), ty)| {
-            // Check if this column has any empty values in the sample
-            let has_empty = sample_rows.iter().any(|row| row[col_idx].is_empty());
-            // Firebird columns are nullable by default; only add NOT NULL if no empty values
-            if has_empty {
-                format!("\"{name}\" {ty}")
-            } else {
-                format!("\"{name}\" {ty} NOT NULL")
-            }
-        })
-        .collect();
-    let ddl = format!("CREATE TABLE \"{table}\" ({})", col_defs.join(", "));
-    exec(client, &ddl).map_err(|e| format!("CREATE TABLE failed: {e}"))?;
-    Ok(())
-}
-
-/// Verifies the table exists (for append mode).
-fn verify_table_exists(client: &mut FirebirdClient, table: &str) -> Result<(), String> {
-    let check_sql = "SELECT COUNT(*) FROM RDB$RELATIONS WHERE RDB$RELATION_NAME = ?";
-    let result = query_with_param(client, check_sql, table).map_err(|e| e.to_string())?;
-    let count = result
-        .rows
-        .first()
-        .and_then(|row| row.first())
-        .and_then(|v| match v {
-            Value::Int(n) => Some(*n),
-            _ => None,
-        })
-        .unwrap_or(0);
-    if count == 0 {
-        return Err(format!(
-            "table '{table}' not found (use mode 'create' to create it)"
-        ));
-    }
-    Ok(())
 }
 
 /// Infers a Firebird DDL type from sample values.

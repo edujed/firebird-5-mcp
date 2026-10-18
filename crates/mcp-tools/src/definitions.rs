@@ -427,13 +427,14 @@ pub fn tool_definitions() -> Vec<Value> {
         // Migration tools (export/import/describe)
         tool(
             "firebird_export",
-            "Exports a table, view, or SQL query to a data file. All three sources go through the same engine (table/view names are wrapped as SELECT * FROM). Currently supports format 'parquet'. NUMERIC/DECIMAL columns are exported as text (exact decimal strings).",
+            "Exports a table, view, or SQL query to a data file. All three sources go through the same engine (table/view names are wrapped as SELECT * FROM). Supports Parquet (Snappy), Arrow IPC/Feather v2 (ZSTD), and CSV. NUMERIC/DECIMAL columns are exported as text (exact decimal strings).",
             json!({
                 "type": "object",
                 "properties": {
                     "source": { "type": "string", "description": "Table/view name (e.g. 'USERS') or a raw SQL SELECT/WITH statement." },
                     "output_path": { "type": "string", "description": "Full path for the output file. Must be within an allowed path." },
-                    "format": { "type": "string", "enum": ["parquet", "csv"], "description": "Output format. Default: 'parquet'." },
+                    "format": { "type": "string", "enum": ["parquet", "ipc", "csv"], "description": "Output format. Default: 'parquet'. IPC = Arrow IPC (Feather v2)." },
+                    "compression": { "type": "string", "enum": ["snappy", "zstd", "lz4", "gzip", "none"], "description": "Compression codec. Parquet: 'snappy' (default), 'zstd', 'lz4', 'none'. IPC: 'zstd' (default), 'lz4', 'none'. CSV: determined by file extension (.csv, .csv.zst, .csv.gz, .csv.lz4) — this param is validated against the extension." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
                 },
                 "required": ["source", "output_path"]
@@ -448,7 +449,7 @@ pub fn tool_definitions() -> Vec<Value> {
                     "input_path": { "type": "string", "description": "Full path to the file to import." },
                     "table": { "type": "string", "description": "Target table name." },
                     "mode": { "type": "string", "enum": ["create", "append"], "description": "'create' = create table + insert; 'append' = insert into existing table." },
-                    "format": { "type": "string", "enum": ["parquet", "csv"], "description": "Input format. Default: 'parquet'. For CSV, column types are inferred from sample data." },
+                    "format": { "type": "string", "enum": ["parquet", "ipc", "csv"], "description": "Input format. Default: 'parquet'. IPC = Arrow IPC (Feather v2), supports LZ4 and ZSTD compression. For CSV, column types are inferred from sample data." },
                     "ignore_columns": { "type": "array", "items": { "type": "string" }, "description": "Optional list of file column names to skip (case-insensitive). Excluded from DDL in create mode; excluded from INSERT in append mode." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
                 },
@@ -462,7 +463,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "path": { "type": "string", "description": "Full path to the file to describe." },
-                    "format": { "type": "string", "enum": ["parquet", "csv"], "description": "File format. Default: 'parquet'. For CSV, shows column names + first 5 sample rows." }
+                    "format": { "type": "string", "enum": ["parquet", "ipc", "csv"], "description": "File format. Default: 'parquet'. For CSV, shows column names + first 5 sample rows." }
                 },
                 "required": ["path"]
             }),

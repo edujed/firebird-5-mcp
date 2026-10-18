@@ -26,7 +26,7 @@
 | `src/generator_tools.rs` | 173 | `firebird_generate_dev` handler |
 | `src/view_dto_tools.rs` | 78 | `firebird_generate_view_dto` handler |
 | `src/ddl_tools.rs` | 229 | DDL create/alter/drop tools |
-| `src/migration_tools.rs` | 189 | Export/import/describe handlers (format-agnostic: Parquet + CSV) |
+| `src/migration_tools.rs` | 247 | Export/import/describe handlers (format-agnostic: Parquet, IPC, CSV + compression) |
 
 ## `src/lib.rs`
 
@@ -136,9 +136,10 @@
 
 | Function | Lines | Summary |
 |---|---|---|
-| `handle_export` | 12–42 | Exports table/view/SQL to data file. Args: `source`, `output_path`, optional `format` (default "parquet"), `database`. Returns structured `{path, rows, columns, format}` |
-| `handle_import` | 45–103 | Imports data file into Firebird table. Args: `input_path`, `table`, `mode` (create/append), optional `format`, `ignore_columns` (array), `database`. Returns structured `{table, rows, columns, mode, format, ignored_columns}` |
-| `handle_describe_file` | 106–189 | Describes a file's schema without loading data. Args: `path`, optional `format`. Returns Markdown (Parquet: types table; CSV: columns + 5 sample rows) + structured `{path, format, rows, columns, arrow_types, firebird_types, sample_rows}`. **No DB connection needed** |
+| `handle_export` | 12–91 | Exports table/view/SQL to data file. Args: `source`, `output_path`, optional `format` (default "parquet": `parquet`/`ipc`/`csv`), optional `compression` (validated per format: Parquet → snappy/zstd/lz4/none; IPC → zstd/lz4/none; CSV → zstd/gzip/lz4/none, but extension takes precedence), `database`. Returns structured `{path, rows, columns, format, compression}` |
+| `handle_import` | 94–152 | Imports data file into Firebird table. Args: `input_path`, `table`, `mode` (create/append), optional `format` (default "parquet"), `ignore_columns` (array), `database`. Returns structured `{table, rows, columns, mode, format, ignored_columns}` |
+| `handle_describe_file` | 155–238 | Describes a file's schema without loading data. Args: `path`, optional `format` (default "parquet"). Returns Markdown (Parquet/IPC: types table; CSV: columns + 5 sample rows) + structured `{path, format, rows, columns, arrow_types, firebird_types, sample_rows}`. **No DB connection needed** |
+| `default_compression` | 241–247 | Returns default codec per format: Parquet → snappy, IPC → zstd, CSV → none |
 
 ## Conventions
 

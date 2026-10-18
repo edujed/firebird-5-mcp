@@ -86,7 +86,19 @@ fn rows_to_result(rows: Vec<rsfbclient_core::Row>) -> QueryResult {
             for col in &row.cols {
                 let name = col.name.to_string();
                 let type_name = sql_type_name(col.raw_type);
-                result.columns.push(ColumnMeta { name, type_name });
+                // NUMERIC/DECIMAL columns arrive as SQL_INT64 (580) with a
+                // decimal text value (vendor patch). Detect them so the
+                // export path can map to Float64 instead of Int64.
+                let is_numeric = col.raw_type == 580
+                    && matches!(
+                        &col.value,
+                        SqlType::Text(s) if s.contains('.')
+                    );
+                result.columns.push(ColumnMeta {
+                    name,
+                    type_name,
+                    is_numeric,
+                });
             }
         }
         result

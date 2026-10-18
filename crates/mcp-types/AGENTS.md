@@ -20,7 +20,7 @@
 | Item | Lines | Summary |
 |---|---|---|
 | `enum Value` | 29–39 | Single column value: Null, Bool, Int, Float, Text, Date, Time, Timestamp, Binary |
-| `struct ColumnMeta` | 43–46 | `{ name, type_name }` |
+| `struct ColumnMeta` | 43–54 | `{ name, type_name, is_numeric }` — `is_numeric` flags NUMERIC/DECIMAL columns (detected by the query layer) |
 | `struct QueryResult` | 50–53 | `{ columns: Vec<ColumnMeta>, rows: Vec<Vec<Value>> }` |
 | `QueryResult::get` | 57–62 | Value at row/col, Null if out of bounds |
 | `QueryResult::col_index` | 65–69 | Column index by name (case-insensitive) |

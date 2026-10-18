@@ -38,12 +38,17 @@ firebird-5-mcp-core = { path = "crates/mcp-core" }
 firebird-5-mcp-tools = { path = "crates/mcp-tools" }
 firebird-5-mcp-migration = { path = "crates/mcp-migration" }
 
-# Apache Arrow + Parquet (migration crate)
-arrow = { version = "55", default-features = false, features = ["prettyprint"] }
-parquet = { version = "55", default-features = false, features = ["arrow", "snap"] }
+# Apache Arrow + Parquet + IPC (migration crate)
+arrow = { version = "55", default-features = false, features = ["prettyprint", "ipc_compression"] }
+parquet = { version = "55", default-features = false, features = ["arrow", "snap", "lz4", "zstd"] }
 
 # CSV parsing/writing (migration crate)
 csv = "1.3"
+
+# Compression for CSV export (pure-Rust, no C deps)
+flate2 = { version = "1.0", default-features = false, features = ["rust_backend"] }
+zstd = { version = "0.13", default-features = false }
+lz4_flex = { version = "0.11", default-features = false }
 
 [patch.crates-io]
 # Vendored copy that stops coercing NUMERIC/DECIMAL columns to f64.

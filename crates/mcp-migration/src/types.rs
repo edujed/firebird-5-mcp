@@ -1,7 +1,8 @@
-//! Firebird ↔ Arrow type mapping for Parquet export/import.
+//! Firebird ↔ Arrow type mapping.
 //!
-//! Export: Firebird column types (from RDB$) → Arrow `DataType`.
-//! Import: Arrow `DataType` (from Parquet schema) → Firebird DDL type string.
+//! - Export: Firebird column types → Arrow `DataType`
+//! - Import: Arrow `DataType` → Firebird DDL type string
+//! - Append: compatibility check between Arrow schema and Firebird table
 
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use firebird_5_mcp_types::ColumnMeta;
@@ -11,6 +12,10 @@ use firebird_5_mcp_types::ColumnMeta;
 /// `type_num` is the RDB$FIELD_TYPE code, `precision` and `scale` come from
 /// RDB$FIELD_PRECISION / RDB$FIELD_SCALE, `size` is RDB$FIELD_LENGTH (bytes),
 /// `sub_type` is RDB$FIELD_SUB_TYPE (BLOB: 1=TEXT, 2=BINARY).
+///
+/// Note: the current export path uses [`column_meta_to_arrow`] instead,
+/// because `ColumnMeta` (from query results) does not carry precision/scale.
+/// This function is available for future RDB$-based export.
 pub fn firebird_to_arrow(
     type_num: i64,
     precision: i64,
@@ -50,7 +55,7 @@ pub fn firebird_to_arrow(
 
 /// Maps an Arrow `DataType` to a Firebird DDL type string.
 ///
-/// Used when creating a table from a Parquet file (`create` mode).
+/// Used when creating a table from a file schema (`create` mode).
 pub fn arrow_to_firebird(dt: &DataType) -> String {
     match dt {
         DataType::Int16 => "SMALLINT".to_string(),
@@ -69,41 +74,38 @@ pub fn arrow_to_firebird(dt: &DataType) -> String {
     }
 }
 
-/// Builds an Arrow `Schema` from Firebird column metadata (RDB$ introspection).
-pub fn firebird_schema_to_arrow(columns: &[(String, i64, i64, i64, i64, i64)]) -> Schema {
-    let fields: Vec<Field> = columns
-        .iter()
-        .map(|(name, type_num, precision, scale, size, sub_type)| {
-            let dt = firebird_to_arrow(*type_num, *precision, *scale, *size, *sub_type);
-            Field::new(name, dt, true)
-        })
-        .collect();
-    Schema::new(fields)
-}
-
-/// Builds an Arrow `Schema` from `ColumnMeta` (limited type info from query results).
+/// Builds an Arrow `Schema` from `ColumnMeta` (type info from query results).
 ///
-/// Used for raw SQL exports where we don't have RDB$ introspection.
-/// NUMERIC/DECIMAL columns (which arrive as Text due to the vendor patch)
-/// are mapped to Utf8 since we don't know the precision/scale.
+/// This is what the export path uses. NUMERIC/DECIMAL columns (detected via
+/// `ColumnMeta.is_numeric`) are mapped to `Float64` — the vendor patch renders
+/// them as exact decimal text (e.g. `"80.00"`), and Float64 preserves the value
+/// through the Arrow → JSON → Firebird import round-trip.
 pub fn column_meta_to_arrow(columns: &[ColumnMeta]) -> Schema {
     let fields: Vec<Field> = columns
         .iter()
         .map(|c| {
-            let dt = match c.type_name.to_uppercase().as_str() {
-                "SMALLINT" => DataType::Int16,
-                "INTEGER" => DataType::Int32,
-                "BIGINT" => DataType::Int64,
-                "INT128" => DataType::Int64,
-                "FLOAT" => DataType::Float32,
-                "DOUBLE PRECISION" => DataType::Float64,
-                "BOOLEAN" => DataType::Boolean,
-                "DATE" => DataType::Date32,
-                "TIME" => DataType::Time64(TimeUnit::Microsecond),
-                "TIMESTAMP" => DataType::Timestamp(TimeUnit::Microsecond, None),
-                "BLOB" => DataType::Binary,
-                // NUMERIC, DECIMAL, VARCHAR, CHAR, NVARCHAR, and unknown → Utf8
-                _ => DataType::Utf8,
+            // NUMERIC/DECIMAL columns (detected by the query layer) map to
+            // Float64 — the vendor patch renders them as exact decimal text
+            // (e.g. "80.00"), and Float64 preserves the value through the
+            // Arrow → JSON → Firebird import round-trip.
+            let dt = if c.is_numeric {
+                DataType::Float64
+            } else {
+                match c.type_name.to_uppercase().as_str() {
+                    "SMALLINT" => DataType::Int16,
+                    "INTEGER" => DataType::Int32,
+                    "BIGINT" => DataType::Int64,
+                    "INT128" => DataType::Int64,
+                    "FLOAT" => DataType::Float32,
+                    "DOUBLE PRECISION" => DataType::Float64,
+                    "BOOLEAN" => DataType::Boolean,
+                    "DATE" => DataType::Date32,
+                    "TIME" => DataType::Time64(TimeUnit::Microsecond),
+                    "TIMESTAMP" => DataType::Timestamp(TimeUnit::Microsecond, None),
+                    "BLOB" => DataType::Binary,
+                    // VARCHAR, CHAR, NVARCHAR, and unknown → Utf8
+                    _ => DataType::Utf8,
+                }
             };
             Field::new(&c.name, dt, true)
         })
@@ -111,38 +113,36 @@ pub fn column_meta_to_arrow(columns: &[ColumnMeta]) -> Schema {
     Schema::new(fields)
 }
 
-/// Checks whether an Arrow schema is compatible with an existing Firebird table
-/// for `append` mode. Returns `Ok(())` if compatible, `Err(message)` otherwise.
+/// Checks whether an Arrow schema is compatible with an existing Firebird
+/// table for `append` mode.
 ///
 /// Compatibility rules:
 /// - Column count must match
-/// - Column names must match (case-insensitive)
-/// - Arrow types must be mappable to the Firebird column types
+/// - Column names must match (case-insensitive, trimmed)
+///
+/// Type compatibility is not strictly checked here — the actual `INSERT`
+/// will fail with a clear error if the types are truly incompatible.
 pub fn check_append_compatibility(
     arrow_schema: &Schema,
     firebird_columns: &[(String, i64)],
 ) -> Result<(), String> {
     if arrow_schema.fields().len() != firebird_columns.len() {
         return Err(format!(
-            "column count mismatch: Parquet has {}, table has {}",
+            "column count mismatch: file has {}, table has {}",
             arrow_schema.fields().len(),
             firebird_columns.len()
         ));
     }
 
     for (i, field) in arrow_schema.fields().iter().enumerate() {
-        let (fb_name, fb_type_num) = &firebird_columns[i];
+        let (fb_name, _fb_type_num) = &firebird_columns[i];
         if field.name().to_uppercase() != fb_name.trim().to_uppercase() {
             return Err(format!(
-                "column {i}: name mismatch — Parquet has '{}', table has '{}'",
+                "column {i}: name mismatch — file has '{}', table has '{}'",
                 field.name(),
                 fb_name
             ));
         }
-        // Type compatibility: check that the Arrow type maps to a compatible
-        // Firebird type. We do a loose check here — the actual insert will
-        // fail with a clear error if the types are truly incompatible.
-        let _ = fb_type_num;
     }
 
     Ok(())

@@ -6,7 +6,7 @@ use crate::common::{arg_str, open_client};
 use firebird_5_mcp_core::Config;
 use firebird_5_mcp_migration::{ImportMode, describe_file, export, import};
 
-const SUPPORTED_FORMATS: &str = "'parquet' and 'csv'";
+const SUPPORTED_FORMATS: &str = "'parquet', 'ipc' and 'csv'";
 
 /// `firebird_export` — export a table, view, or SQL query to a data file.
 pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolResult, String> {
@@ -17,14 +17,62 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
     let format = arg_str(args, "format").unwrap_or("parquet".to_string());
     let fmt = format.to_lowercase();
 
-    if fmt != "parquet" && fmt != "csv" {
+    if fmt != "parquet" && fmt != "ipc" && fmt != "csv" {
         return Err(format!(
             "unsupported format '{format}' — supported: {SUPPORTED_FORMATS}"
         ));
     }
 
+    let compression = arg_str(args, "compression");
+    if let Some(ref c) = compression {
+        let cl = c.to_lowercase();
+        let valid: &[&str] = match fmt.as_str() {
+            "parquet" => &["snappy", "zstd", "lz4", "none"],
+            "ipc" => &["zstd", "lz4", "none"],
+            "csv" => &["zstd", "gzip", "lz4", "none"],
+            _ => &["none"],
+        };
+        if !valid.contains(&cl.as_str()) {
+            return Err(format!(
+                "unsupported compression '{c}' for {fmt} — valid: {}",
+                valid.join(", ")
+            ));
+        }
+    }
+
+    // For CSV, compression is determined by the file extension (.csv, .csv.zst, .csv.gz).
+    // The `compression` param is validated but the extension takes precedence.
+    if fmt == "csv" {
+        let lower = output_path.to_lowercase();
+        let ext_compression = if lower.ends_with(".csv.zst") || lower.ends_with(".zst") {
+            Some("zstd")
+        } else if lower.ends_with(".csv.gz") || lower.ends_with(".gz") {
+            Some("gzip")
+        } else if lower.ends_with(".csv.lz4") || lower.ends_with(".lz4") {
+            Some("lz4")
+        } else {
+            Some("none")
+        };
+        if let Some(ref c) = compression {
+            let cl = c.to_lowercase();
+            let ext_c = ext_compression.unwrap_or("none");
+            if cl != ext_c && cl != "none" {
+                return Err(format!(
+                    "compression '{c}' conflicts with file extension (implies '{ext_c}') — \
+                     use a matching extension or omit the compression param"
+                ));
+            }
+        }
+    }
+
     let mut client = open_client(config, args)?;
-    let result = export(&mut client, &source, &output_path, &fmt)?;
+    let result = export(
+        &mut client,
+        &source,
+        &output_path,
+        &fmt,
+        compression.as_deref(),
+    )?;
 
     let text = format!(
         "Exported {} rows × {} columns to `{}` (format: {fmt})",
@@ -36,6 +84,7 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         "rows": result.rows,
         "columns": result.columns,
         "format": fmt,
+        "compression": compression.unwrap_or_else(|| default_compression(&fmt).to_string()),
     });
 
     Ok(ToolResult::with_structured(text, structured))
@@ -53,7 +102,7 @@ pub fn handle_import(config: &Config, args: &serde_json::Value) -> Result<ToolRe
     let format = arg_str(args, "format").unwrap_or("parquet".to_string());
     let fmt = format.to_lowercase();
 
-    if fmt != "parquet" && fmt != "csv" {
+    if fmt != "parquet" && fmt != "ipc" && fmt != "csv" {
         return Err(format!(
             "unsupported format '{format}' — supported: {SUPPORTED_FORMATS}"
         ));
@@ -112,7 +161,7 @@ pub fn handle_describe_file(
     let format = arg_str(args, "format").unwrap_or("parquet".to_string());
     let fmt = format.to_lowercase();
 
-    if fmt != "parquet" && fmt != "csv" {
+    if fmt != "parquet" && fmt != "ipc" && fmt != "csv" {
         return Err(format!(
             "unsupported format '{format}' — supported: {SUPPORTED_FORMATS}"
         ));
@@ -186,4 +235,13 @@ pub fn handle_describe_file(
     });
 
     Ok(ToolResult::with_structured(text, structured))
+}
+
+/// Returns the default compression codec for a given format.
+fn default_compression(fmt: &str) -> &'static str {
+    match fmt {
+        "parquet" => "snappy",
+        "ipc" => "zstd",
+        _ => "none",
+    }
 }

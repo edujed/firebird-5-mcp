@@ -43,6 +43,14 @@ pub enum Value {
 pub struct ColumnMeta {
     pub name: String,
     pub type_name: String,
+    /// `true` when the column is a NUMERIC/DECIMAL (fixed-point) column.
+    ///
+    /// The vendor patch renders NUMERIC/DECIMAL as exact decimal text
+    /// (e.g. `"80.00"`), but the `raw_type` stays `SQL_INT64` (580), so
+    /// `type_name` alone cannot distinguish a NUMERIC from a real BIGINT.
+    /// This flag is set by the query layer when it detects a scaled-integer
+    /// column (raw_type 580 + decimal text value).
+    pub is_numeric: bool,
 }
 
 /// The result of a SELECT statement.

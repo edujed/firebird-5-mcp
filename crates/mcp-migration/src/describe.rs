@@ -1,16 +1,16 @@
 //! Describes the schema of a data file without loading its data.
 //!
-//! For Parquet: reads the file footer to get column names, Arrow types,
+//! For Parquet/IPC: reads the file footer to get column names, Arrow types,
 //! mapped Firebird types, and row count. No database connection needed.
 //!
 //! For CSV: reads the header line and the first 5 data rows as a sample
 //! (CSV is untyped, so we show actual values instead of types).
 
+use arrow::ipc::reader::FileReader as IpcFileReader;
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use std::fs::File;
 
-use csv::ReaderBuilder;
-use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
-
+use crate::format::{CsvReader, Format};
 use crate::types::arrow_to_firebird;
 
 /// Number of sample rows to show for CSV files.
@@ -27,22 +27,21 @@ pub struct FileDescription {
     pub rows: i64,
     /// Column names.
     pub columns: Vec<String>,
-    /// Type names (Arrow types for Parquet; "inferred" for CSV).
+    /// Type names (Arrow types for Parquet/IPC; "inferred" for CSV).
     pub arrow_types: Vec<String>,
-    /// Mapped Firebird DDL types (for Parquet; empty for CSV).
+    /// Mapped Firebird DDL types (for Parquet/IPC; empty for CSV).
     pub firebird_types: Vec<String>,
-    /// Sample rows (first N data rows). Empty for Parquet.
+    /// Sample rows (first N data rows). Empty for Parquet/IPC.
     pub sample_rows: Vec<Vec<String>>,
 }
 
 /// Describes a data file's schema.
 pub fn describe_file(path: &str, format: &str) -> Result<FileDescription, String> {
-    match format.to_lowercase().as_str() {
-        "parquet" => describe_parquet(path),
-        "csv" => describe_csv(path),
-        other => Err(format!(
-            "unsupported format '{other}' — only 'parquet' and 'csv' are supported"
-        )),
+    let fmt = Format::parse(format)?;
+    match fmt {
+        Format::Parquet => describe_parquet(path),
+        Format::Ipc => describe_ipc(path),
+        Format::Csv => describe_csv(path),
     }
 }
 
@@ -54,15 +53,7 @@ fn describe_parquet(path: &str) -> Result<FileDescription, String> {
     let schema = (**builder.schema()).clone();
     let row_count = builder.metadata().file_metadata().num_rows();
 
-    let mut columns = Vec::with_capacity(schema.fields().len());
-    let mut arrow_types = Vec::with_capacity(schema.fields().len());
-    let mut firebird_types = Vec::with_capacity(schema.fields().len());
-
-    for field in schema.fields() {
-        columns.push(field.name().clone());
-        arrow_types.push(format!("{}", field.data_type()));
-        firebird_types.push(arrow_to_firebird(field.data_type()));
-    }
+    let (columns, arrow_types, firebird_types) = schema_to_description(&schema);
 
     Ok(FileDescription {
         path: path.to_string(),
@@ -75,12 +66,32 @@ fn describe_parquet(path: &str) -> Result<FileDescription, String> {
     })
 }
 
-fn describe_csv(path: &str) -> Result<FileDescription, String> {
+fn describe_ipc(path: &str) -> Result<FileDescription, String> {
     let file = File::open(path).map_err(|e| format!("cannot open {path}: {e}"))?;
-    let mut reader = ReaderBuilder::new()
-        .has_headers(true)
-        .flexible(true)
-        .from_reader(file);
+    let mut reader =
+        IpcFileReader::try_new(file, None).map_err(|e| format!("cannot read IPC file: {e}"))?;
+
+    let schema = reader.schema().clone();
+    let row_count: i64 = reader
+        .by_ref()
+        .map(|b| b.map(|b| b.num_rows() as i64).unwrap_or(0))
+        .sum();
+
+    let (columns, arrow_types, firebird_types) = schema_to_description(&schema);
+
+    Ok(FileDescription {
+        path: path.to_string(),
+        format: "ipc".to_string(),
+        rows: row_count,
+        columns,
+        arrow_types,
+        firebird_types,
+        sample_rows: Vec::new(),
+    })
+}
+
+fn describe_csv(path: &str) -> Result<FileDescription, String> {
+    let mut reader = CsvReader::open(path)?.into_csv_reader();
 
     // Read header
     let headers = reader
@@ -115,4 +126,21 @@ fn describe_csv(path: &str) -> Result<FileDescription, String> {
         firebird_types,
         sample_rows,
     })
+}
+
+/// Builds the (columns, arrow_types, firebird_types) triple from an Arrow schema.
+fn schema_to_description(
+    schema: &arrow::datatypes::Schema,
+) -> (Vec<String>, Vec<String>, Vec<String>) {
+    let mut columns = Vec::with_capacity(schema.fields().len());
+    let mut arrow_types = Vec::with_capacity(schema.fields().len());
+    let mut firebird_types = Vec::with_capacity(schema.fields().len());
+
+    for field in schema.fields() {
+        columns.push(field.name().clone());
+        arrow_types.push(format!("{}", field.data_type()));
+        firebird_types.push(arrow_to_firebird(field.data_type()));
+    }
+
+    (columns, arrow_types, firebird_types)
 }

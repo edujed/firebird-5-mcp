@@ -1,15 +1,15 @@
-//! Export Firebird tables, views, or SQL queries to Parquet files.
+//! Export engine: table/view/SQL → data file.
 //!
-//! All three sources (table, view, raw SQL) go through the same engine:
+//! All three sources (table, view, raw SQL) go through the same path:
 //! the source is normalised into a `SELECT` statement, executed via
-//! [`query`], and the resulting [`ColumnMeta`] drives the Arrow schema.
+//! [`query_unbounded`] (no row cap — export must fetch ALL rows), and the
+//! resulting [`ColumnMeta`] drives the Arrow schema.
 //!
-//! NUMERIC/DECIMAL columns arrive as text (vendor patch) and are mapped
-//! to `Utf8` — the driver does not propagate precision/scale through
-//! `ColumnMeta`.
+//! NUMERIC/DECIMAL columns arrive as exact decimal text (vendor patch) and
+//! are mapped to `Float64` — the query layer sets `ColumnMeta.is_numeric`
+//! so the export path can distinguish them from real BIGINT columns.
 
-use std::fs::File;
-use std::io::BufWriter;
+use std::io::Write;
 use std::sync::Arc;
 
 use arrow::array::{
@@ -18,17 +18,23 @@ use arrow::array::{
     TimestampMicrosecondArray,
 };
 use arrow::datatypes::{DataType, Schema, TimeUnit};
+use arrow::ipc::CompressionType;
+use arrow::ipc::writer::{FileWriter as IpcFileWriter, IpcWriteOptions};
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use parquet::arrow::ArrowWriter;
+use parquet::basic::Compression;
+use parquet::file::properties::WriterProperties;
 
 use firebird_5_mcp_core::client::FirebirdClient;
 use firebird_5_mcp_core::mlog;
 use firebird_5_mcp_core::query::{Value, query_unbounded};
 use firebird_5_mcp_types::QueryResult;
 
+use crate::format::{CsvWriter, Format};
 use crate::types::column_meta_to_arrow;
+use crate::value::{bool_or_false, float_or_zero, int_or_zero, value_to_text};
 
-/// Result of a Parquet export.
+/// Result of a file export.
 #[derive(Debug)]
 pub struct ExportResult {
     pub path: String,
@@ -42,38 +48,44 @@ pub struct ExportResult {
 /// treated as a raw SQL query. Otherwise it is treated as a table or view
 /// name and wrapped in `SELECT * FROM "source"`.
 ///
-/// `format` selects the output format: `"parquet"` or `"csv"`.
+/// `format` selects the output format: `"parquet"`, `"ipc"`, or `"csv"`.
+///
+/// `compression` is an optional override: `"snappy"`, `"zstd"`, `"lz4"`, or
+/// `"none"`. When `None`, the format default is used (Parquet → Snappy,
+/// IPC → ZSTD, CSV → determined by file extension).
 pub fn export(
     client: &mut FirebirdClient,
     source: &str,
     output_path: &str,
     format: &str,
+    compression: Option<&str>,
 ) -> Result<ExportResult, String> {
+    let fmt = Format::parse(format)?;
     let sql = normalise_source(source);
     let result = query_unbounded(client, &sql).map_err(|e| e.to_string())?;
     if result.columns.is_empty() {
         return Err("query returned no columns".to_string());
     }
 
-    let fmt = format.to_lowercase();
-    match fmt.as_str() {
-        "parquet" => {
+    match fmt {
+        Format::Parquet => {
             let schema = column_meta_to_arrow(&result.columns);
             let batch = build_record_batch(&schema, &result)?;
-            write_parquet(output_path, &schema, &batch)?;
+            write_parquet(output_path, &schema, &batch, compression)?;
         }
-        "csv" => {
+        Format::Ipc => {
+            let schema = column_meta_to_arrow(&result.columns);
+            let batch = build_record_batch(&schema, &result)?;
+            write_ipc(output_path, &schema, &batch, compression)?;
+        }
+        Format::Csv => {
             write_csv(output_path, &result)?;
-        }
-        other => {
-            return Err(format!(
-                "unsupported format '{other}' — only 'parquet' and 'csv' are supported"
-            ));
         }
     }
 
     mlog!(
-        "{fmt} export: exported {} rows to {}",
+        "{} export: exported {} rows to {}",
+        fmt.as_str(),
         result.rows.len(),
         output_path
     );
@@ -85,28 +97,37 @@ pub fn export(
     })
 }
 
-/// Writes a `QueryResult` to a CSV file (header + rows) using the `csv` crate.
+/// Writes a `QueryResult` to a CSV file (header + rows).
+///
+/// Compression is determined by the file extension (see
+/// [`crate::format::csv_compression_from_path`]).
 fn write_csv(path: &str, result: &QueryResult) -> Result<(), String> {
-    let file = File::create(path).map_err(|e| format!("cannot create {path}: {e}"))?;
-    let mut writer = csv::Writer::from_writer(file);
+    let sink = CsvWriter::create(path)?;
+    let mut writer = sink.into_csv_writer();
+    write_csv_body(&mut writer, result)?;
+    let inner = writer
+        .into_inner()
+        .map_err(|e| format!("cannot get CSV writer: {e}"))?;
+    CsvWriter::finish(inner)?;
+    Ok(())
+}
 
-    // Header
+/// Writes CSV header + rows to a `csv::Writer`.
+fn write_csv_body<W: Write>(
+    writer: &mut csv::Writer<W>,
+    result: &QueryResult,
+) -> Result<(), String> {
     let header: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
     writer
         .write_record(&header)
         .map_err(|e| format!("cannot write CSV header: {e}"))?;
 
-    // Rows
     for row in &result.rows {
         let fields: Vec<String> = row.iter().map(|v| value_to_text(v)).collect();
         writer
             .write_record(&fields)
             .map_err(|e| format!("cannot write CSV row: {e}"))?;
     }
-
-    writer
-        .flush()
-        .map_err(|e| format!("cannot flush CSV: {e}"))?;
     Ok(())
 }
 
@@ -272,10 +293,35 @@ fn parse_decimal(s: &str, scale: i8) -> Option<i128> {
 }
 
 /// Writes a `RecordBatch` to a Parquet file.
-fn write_parquet(path: &str, schema: &Schema, batch: &RecordBatch) -> Result<(), String> {
+///
+/// `compression` overrides the default (Snappy): `"snappy"`, `"zstd"`, `"lz4"`, or `"none"`.
+fn write_parquet(
+    path: &str,
+    schema: &Schema,
+    batch: &RecordBatch,
+    compression: Option<&str>,
+) -> Result<(), String> {
+    use std::fs::File;
+    use std::io::BufWriter;
+
     let file = File::create(path).map_err(|e| format!("cannot create {path}: {e}"))?;
     let writer = BufWriter::new(file);
-    let mut writer = ArrowWriter::try_new(writer, Arc::new(schema.clone()), None)
+
+    let codec = match compression {
+        None | Some("snappy") => Compression::SNAPPY,
+        Some("zstd") => Compression::ZSTD(Default::default()),
+        Some("lz4") => Compression::LZ4,
+        Some("none") => Compression::UNCOMPRESSED,
+        Some(other) => {
+            return Err(format!(
+                "unsupported compression '{other}' for Parquet — use 'snappy', 'zstd', 'lz4' or 'none'"
+            ));
+        }
+    };
+
+    let props = WriterProperties::builder().set_compression(codec).build();
+
+    let mut writer = ArrowWriter::try_new(writer, Arc::new(schema.clone()), Some(props))
         .map_err(|e| format!("cannot open Parquet writer: {e}"))?;
     writer
         .write(batch)
@@ -286,46 +332,42 @@ fn write_parquet(path: &str, schema: &Schema, batch: &RecordBatch) -> Result<(),
     Ok(())
 }
 
-// --- Value helpers ---
+/// Writes a `RecordBatch` to an Arrow IPC file (Feather v2).
+///
+/// `compression` overrides the default (ZSTD): `"zstd"`, `"lz4"`, or `"none"`.
+fn write_ipc(
+    path: &str,
+    schema: &Schema,
+    batch: &RecordBatch,
+    compression: Option<&str>,
+) -> Result<(), String> {
+    use std::fs::File;
+    use std::io::BufWriter;
 
-fn value_to_text(v: &Value) -> String {
-    match v {
-        Value::Null => String::new(),
-        Value::Text(s) => s.clone(),
-        Value::Int(n) => n.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::Bool(b) => b.to_string(),
-        Value::Date(d) => d.format("%Y-%m-%d").to_string(),
-        Value::Time(t) => t.format("%H:%M:%S").to_string(),
-        Value::Timestamp(ts) => ts.format("%Y-%m-%d %H:%M:%S").to_string(),
-        Value::Binary(_) => "<BLOB>".to_string(),
-    }
-}
+    let file = File::create(path).map_err(|e| format!("cannot create {path}: {e}"))?;
+    let writer = BufWriter::new(file);
 
-fn int_or_zero(v: &Value) -> i64 {
-    match v {
-        Value::Int(n) => *n,
-        Value::Text(s) => s.parse().unwrap_or(0),
-        Value::Float(f) => *f as i64,
-        Value::Bool(b) => i64::from(*b),
-        _ => 0,
-    }
-}
+    let compression_type = match compression {
+        None | Some("zstd") => Some(CompressionType::ZSTD),
+        Some("lz4") => Some(CompressionType::LZ4_FRAME),
+        Some("none") => None,
+        Some(other) => {
+            return Err(format!(
+                "unsupported compression '{other}' for IPC — use 'zstd', 'lz4' or 'none'"
+            ));
+        }
+    };
 
-fn float_or_zero(v: &Value) -> f64 {
-    match v {
-        Value::Float(f) => *f,
-        Value::Int(n) => *n as f64,
-        Value::Text(s) => s.parse().unwrap_or(0.0),
-        _ => 0.0,
-    }
-}
-
-fn bool_or_false(v: &Value) -> bool {
-    match v {
-        Value::Bool(b) => *b,
-        Value::Int(n) => *n != 0,
-        Value::Text(s) => s.eq_ignore_ascii_case("true") || s == "1",
-        _ => false,
-    }
+    let options = IpcWriteOptions::default()
+        .try_with_compression(compression_type)
+        .map_err(|e| format!("cannot configure IPC compression: {e}"))?;
+    let mut writer = IpcFileWriter::try_new_with_options(writer, schema, options)
+        .map_err(|e| format!("cannot open IPC writer: {e}"))?;
+    writer
+        .write(batch)
+        .map_err(|e| format!("cannot write IPC batch: {e}"))?;
+    writer
+        .finish()
+        .map_err(|e| format!("cannot close IPC file: {e}"))?;
+    Ok(())
 }
