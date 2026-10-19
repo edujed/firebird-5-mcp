@@ -6,7 +6,7 @@ use crate::common::{arg_str, open_client};
 use firebird_5_mcp_core::Config;
 use firebird_5_mcp_migration::{ImportMode, describe_file, export, import};
 
-const SUPPORTED_FORMATS: &str = "'parquet', 'ipc', 'csv' and 'dbf'";
+const SUPPORTED_FORMATS: &str = "'parquet', 'ipc', 'csv', 'dbf' and 'jsonl'";
 
 /// `firebird_export` — export a table, view, or SQL query to a data file.
 pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolResult, String> {
@@ -15,13 +15,7 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
     let output_path = arg_str(args, "output_path")
         .ok_or_else(|| "missing required argument: output_path".to_string())?;
     let format = arg_str(args, "format").unwrap_or("parquet".to_string());
-    let fmt = format.to_lowercase();
-
-    if fmt != "parquet" && fmt != "ipc" && fmt != "csv" && fmt != "dbf" {
-        return Err(format!(
-            "unsupported format '{format}' — supported: {SUPPORTED_FORMATS}"
-        ));
-    }
+    let fmt = normalise_format(&format)?;
 
     let compression = arg_str(args, "compression");
     if let Some(ref c) = compression {
@@ -29,7 +23,7 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         let valid: &[&str] = match fmt.as_str() {
             "parquet" => &["snappy", "zstd", "lz4", "none"],
             "ipc" => &["zstd", "lz4", "none"],
-            "csv" | "dbf" => &["zstd", "gzip", "lz4", "none"],
+            "csv" | "dbf" | "jsonl" => &["zstd", "gzip", "lz4", "none"],
             _ => &["none"],
         };
         if !valid.contains(&cl.as_str()) {
@@ -56,9 +50,9 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         }
     }
 
-    // For CSV and DBF, compression is determined by the file extension.
+    // For CSV, DBF, and JSONL, compression is determined by the file extension.
     // The `compression` param is validated but the extension takes precedence.
-    if fmt == "csv" || fmt == "dbf" {
+    if fmt == "csv" || fmt == "dbf" || fmt == "jsonl" {
         let lower = output_path.to_lowercase();
         let ext_compression = if lower.ends_with(".zst") {
             Some("zstd")
@@ -117,13 +111,7 @@ pub fn handle_import(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         arg_str(args, "mode").ok_or_else(|| "missing required argument: mode".to_string())?;
     let mode = ImportMode::parse(&mode_str)?;
     let format = arg_str(args, "format").unwrap_or("parquet".to_string());
-    let fmt = format.to_lowercase();
-
-    if fmt != "parquet" && fmt != "ipc" && fmt != "csv" && fmt != "dbf" {
-        return Err(format!(
-            "unsupported format '{format}' — supported: {SUPPORTED_FORMATS}"
-        ));
-    }
+    let fmt = normalise_format(&format)?;
 
     let ignore_columns: Vec<String> = args
         .get("ignore_columns")
@@ -193,13 +181,7 @@ pub fn handle_describe_file(
     let path =
         arg_str(args, "path").ok_or_else(|| "missing required argument: path".to_string())?;
     let format = arg_str(args, "format").unwrap_or("parquet".to_string());
-    let fmt = format.to_lowercase();
-
-    if fmt != "parquet" && fmt != "ipc" && fmt != "csv" && fmt != "dbf" {
-        return Err(format!(
-            "unsupported format '{format}' — supported: {SUPPORTED_FORMATS}"
-        ));
-    }
+    let fmt = normalise_format(&format)?;
 
     let codepage = arg_str(args, "codepage");
     if let Some(ref cp) = codepage {
@@ -229,11 +211,16 @@ pub fn handle_describe_file(
         desc.columns.len()
     ));
 
-    if desc.format == "csv" {
-        // CSV: show column names + sample rows
+    if desc.format == "csv" || desc.format == "jsonl" {
+        // CSV/JSONL: show column names + sample rows
         text.push_str("### Columns\n\n");
         for (i, col) in desc.columns.iter().enumerate() {
-            text.push_str(&format!("{}. `{}`\n", i + 1, col));
+            let inferred = desc.arrow_types.get(i).map(|s| s.as_str()).unwrap_or("");
+            if !inferred.is_empty() && inferred != "inferred" {
+                text.push_str(&format!("{}. `{}` — {}\n", i + 1, col, inferred));
+            } else {
+                text.push_str(&format!("{}. `{}`\n", i + 1, col));
+            }
         }
 
         if !desc.sample_rows.is_empty() {
@@ -306,5 +293,19 @@ fn default_compression(fmt: &str) -> &'static str {
         "parquet" => "snappy",
         "ipc" => "zstd",
         _ => "none",
+    }
+}
+
+/// Normalises a format string to its canonical name.
+/// Accepts aliases: `ndjson`/`ldjson` → `jsonl`, `dbase` → `dbf`.
+fn normalise_format(format: &str) -> Result<String, String> {
+    let lower = format.to_lowercase();
+    match lower.as_str() {
+        "parquet" | "ipc" | "csv" | "dbf" | "jsonl" => Ok(lower),
+        "ndjson" | "ldjson" => Ok("jsonl".to_string()),
+        "dbase" => Ok("dbf".to_string()),
+        other => Err(format!(
+            "unsupported format '{other}' — supported: {SUPPORTED_FORMATS}"
+        )),
     }
 }

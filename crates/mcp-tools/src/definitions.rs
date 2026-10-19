@@ -427,15 +427,15 @@ pub fn tool_definitions() -> Vec<Value> {
         // Migration tools (export/import/describe)
         tool(
             "firebird_export",
-            "Exports a table, view, or SQL query to a data file. All three sources go through the same engine (table/view names are wrapped as SELECT * FROM). Supports Parquet (Snappy), Arrow IPC/Feather v2 (ZSTD), CSV, and DBF (dBASE/FoxPro/Clipper). NUMERIC/DECIMAL columns are exported as text (exact decimal strings).",
+            "Exports a table, view, or SQL query to a data file. All three sources go through the same engine (table/view names are wrapped as SELECT * FROM). Supports Parquet (Snappy), Arrow IPC/Feather v2 (ZSTD), CSV, DBF (dBASE/FoxPro/Clipper), and JSON Lines (NDJSON/LDJSON). NUMERIC/DECIMAL columns are exported as text (exact decimal strings).",
             json!({
                 "type": "object",
                 "properties": {
                     "source": { "type": "string", "description": "Table/view name (e.g. 'USERS') or a raw SQL SELECT/WITH statement." },
                     "output_path": { "type": "string", "description": "Full path for the output file. Must be within an allowed path." },
-                    "format": { "type": "string", "enum": ["parquet", "ipc", "csv", "dbf"], "description": "Output format. Default: 'parquet'. IPC = Arrow IPC (Feather v2). DBF = dBASE/FoxPro/Clipper." },
-                    "compression": { "type": "string", "enum": ["snappy", "zstd", "lz4", "gzip", "none"], "description": "Compression codec. Parquet: 'snappy' (default), 'zstd', 'lz4', 'none'. IPC: 'zstd' (default), 'lz4', 'none'. CSV/DBF: determined by file extension (.csv, .csv.zst, .csv.gz, .csv.lz4, .dbf, .dbf.zst, .dbf.gz, .dbf.lz4) — this param is validated against the extension." },
-                    "codepage": { "type": "string", "enum": ["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"], "description": "Character encoding. CSV: 'utf-8' (default), 'iso-8859-1', 'windows-1252', 'cp437', 'cp850'. DBF: 'cp437' (default), 'cp850' — only single-byte DOS codepages are valid." },
+                    "format": { "type": "string", "enum": ["parquet", "ipc", "csv", "dbf", "jsonl"], "description": "Output format. Default: 'parquet'. IPC = Arrow IPC (Feather v2). DBF = dBASE/FoxPro/Clipper. JSONL = JSON Lines (one JSON object per line; also accepts 'ndjson' or 'ldjson')." },
+                    "compression": { "type": "string", "enum": ["snappy", "zstd", "lz4", "gzip", "none"], "description": "Compression codec. Parquet: 'snappy' (default), 'zstd', 'lz4', 'none'. IPC: 'zstd' (default), 'lz4', 'none'. CSV/DBF/JSONL: determined by file extension (.csv, .csv.zst, .csv.gz, .csv.lz4, .dbf, .dbf.zst, .dbf.gz, .dbf.lz4, .jsonl, .jsonl.zst, .jsonl.gz, .jsonl.lz4) — this param is validated against the extension." },
+                    "codepage": { "type": "string", "enum": ["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"], "description": "Character encoding. CSV: 'utf-8' (default), 'iso-8859-1', 'windows-1252', 'cp437', 'cp850'. DBF: 'cp437' (default), 'cp850' — only single-byte DOS codepages are valid. JSONL: always UTF-8 (codepage ignored)." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
                 },
                 "required": ["source", "output_path"]
@@ -450,9 +450,9 @@ pub fn tool_definitions() -> Vec<Value> {
                     "input_path": { "type": "string", "description": "Full path to the file to import." },
                     "table": { "type": "string", "description": "Target table name." },
                     "mode": { "type": "string", "enum": ["create", "append"], "description": "'create' = create table + insert; 'append' = insert into existing table." },
-                    "format": { "type": "string", "enum": ["parquet", "ipc", "csv", "dbf"], "description": "Input format. Default: 'parquet'. IPC = Arrow IPC (Feather v2), supports LZ4 and ZSTD compression. For CSV, column types are inferred from sample data. For DBF, types come from the file header." },
+                    "format": { "type": "string", "enum": ["parquet", "ipc", "csv", "dbf", "jsonl"], "description": "Input format. Default: 'parquet'. IPC = Arrow IPC (Feather v2), supports LZ4 and ZSTD compression. For CSV, column types are inferred from sample data. For DBF, types come from the file header. For JSONL, types are inferred from the first 100 rows (also accepts 'ndjson' or 'ldjson')." },
                     "ignore_columns": { "type": "array", "items": { "type": "string" }, "description": "Optional list of file column names to skip (case-insensitive). Excluded from DDL in create mode; excluded from INSERT in append mode." },
-                    "codepage": { "type": "string", "enum": ["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"], "description": "Character encoding. CSV: 'utf-8' (default), 'iso-8859-1', 'windows-1252', 'cp437', 'cp850'. DBF: 'cp437' (default), 'cp850' — only single-byte DOS codepages are valid." },
+                    "codepage": { "type": "string", "enum": ["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"], "description": "Character encoding. CSV: 'utf-8' (default), 'iso-8859-1', 'windows-1252', 'cp437', 'cp850'. DBF: 'cp437' (default), 'cp850' — only single-byte DOS codepages are valid. JSONL: always UTF-8 (codepage ignored)." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
                 },
                 "required": ["input_path", "table", "mode"]
@@ -465,8 +465,8 @@ pub fn tool_definitions() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "path": { "type": "string", "description": "Full path to the file to describe." },
-                    "format": { "type": "string", "enum": ["parquet", "ipc", "csv", "dbf"], "description": "File format. Default: 'parquet'. For CSV, shows column names + first 5 sample rows. For DBF, shows column names + DBF types + mapped Firebird types." },
-                    "codepage": { "type": "string", "enum": ["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"], "description": "Character encoding. CSV: 'utf-8' (default), 'iso-8859-1', 'windows-1252', 'cp437', 'cp850'. DBF: 'cp437' (default), 'cp850' — only single-byte DOS codepages are valid." }
+                    "format": { "type": "string", "enum": ["parquet", "ipc", "csv", "dbf", "jsonl"], "description": "File format. Default: 'parquet'. For CSV, shows column names + first 5 sample rows. For DBF, shows column names + DBF types + mapped Firebird types. For JSONL, shows column names + inferred types + first 5 sample rows (also accepts 'ndjson' or 'ldjson')." },
+                    "codepage": { "type": "string", "enum": ["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"], "description": "Character encoding. CSV: 'utf-8' (default), 'iso-8859-1', 'windows-1252', 'cp437', 'cp850'. DBF: 'cp437' (default), 'cp850' — only single-byte DOS codepages are valid. JSONL: always UTF-8 (codepage ignored)." }
                 },
                 "required": ["path"]
             }),

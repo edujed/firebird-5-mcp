@@ -13,6 +13,7 @@ use std::fs::File;
 use crate::dbf::describe_dbase;
 use crate::format::{CodePage, Format};
 use crate::io::TextReader;
+use crate::jsonl::describe_jsonl;
 use crate::types::arrow_to_firebird;
 
 /// Number of sample rows to show for CSV files.
@@ -53,6 +54,7 @@ pub fn describe_file(
         Format::Ipc => describe_ipc(path),
         Format::Csv => describe_csv(path, cp),
         Format::Dbase => describe_dbase(path, cp),
+        Format::Jsonl => describe_jsonl(path),
     }
 }
 

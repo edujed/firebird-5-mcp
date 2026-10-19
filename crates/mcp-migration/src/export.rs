@@ -32,6 +32,7 @@ use firebird_5_mcp_types::QueryResult;
 use crate::dbf::write_dbase;
 use crate::format::{CodePage, Format};
 use crate::io::TextWriter;
+use crate::jsonl::write_jsonl;
 use crate::types::column_meta_to_arrow;
 use crate::value::{bool_or_false, float_or_zero, int_or_zero, value_to_text};
 
@@ -89,6 +90,9 @@ pub fn export(
         }
         Format::Dbase => {
             write_dbase(output_path, &result, cp)?;
+        }
+        Format::Jsonl => {
+            write_jsonl(output_path, &result)?;
         }
     }
 

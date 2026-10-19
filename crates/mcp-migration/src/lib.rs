@@ -55,6 +55,7 @@ pub mod export;
 pub mod format;
 pub mod import;
 pub mod io;
+pub mod jsonl;
 pub mod table;
 pub mod types;
 pub mod value;
@@ -66,10 +67,11 @@ pub use export::{ExportResult, export};
 pub use format::{CodePage, Compression, Format, file_compression_from_path};
 pub use import::{ImportMode, ImportResult, import_ipc, import_parquet};
 pub use io::{TextReader, TextWriter};
+pub use jsonl::{describe_jsonl, import_jsonl, write_jsonl};
 
 /// Imports a data file into a Firebird table.
 ///
-/// Dispatches on `format`: `"parquet"`, `"ipc"`, `"csv"`, or `"dbf"`.
+/// Dispatches on `format`: `"parquet"`, `"ipc"`, `"csv"`, `"dbf"`, or `"jsonl"`.
 pub fn import(
     client: &mut firebird_5_mcp_core::client::FirebirdClient,
     input_path: &str,
@@ -89,5 +91,6 @@ pub fn import(
         Format::Ipc => import_ipc(client, input_path, table, mode, ignore_columns),
         Format::Csv => import_csv(client, input_path, table, mode, ignore_columns, cp),
         Format::Dbase => import_dbase(client, input_path, table, mode, ignore_columns, cp),
+        Format::Jsonl => import_jsonl(client, input_path, table, mode, ignore_columns),
     }
 }

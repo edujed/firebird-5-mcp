@@ -11,6 +11,7 @@ pub enum Format {
     Ipc,
     Csv,
     Dbase,
+    Jsonl,
 }
 
 impl Format {
@@ -21,8 +22,9 @@ impl Format {
             "ipc" => Ok(Self::Ipc),
             "csv" => Ok(Self::Csv),
             "dbf" | "dbase" => Ok(Self::Dbase),
+            "jsonl" | "ndjson" | "ldjson" => Ok(Self::Jsonl),
             other => Err(format!(
-                "unsupported format '{other}' — only 'parquet', 'ipc', 'csv' and 'dbf' are supported"
+                "unsupported format '{other}' — only 'parquet', 'ipc', 'csv', 'dbf' and 'jsonl' are supported"
             )),
         }
     }
@@ -34,6 +36,7 @@ impl Format {
             Self::Ipc => "ipc",
             Self::Csv => "csv",
             Self::Dbase => "dbf",
+            Self::Jsonl => "jsonl",
         }
     }
 
@@ -44,6 +47,7 @@ impl Format {
             Self::Ipc => Compression::Zstd,
             Self::Csv => Compression::None,
             Self::Dbase => Compression::None,
+            Self::Jsonl => Compression::None,
         }
     }
 
@@ -57,7 +61,7 @@ impl Format {
                 Compression::None,
             ],
             Self::Ipc => &[Compression::Zstd, Compression::Lz4, Compression::None],
-            Self::Csv | Self::Dbase => &[
+            Self::Csv | Self::Dbase | Self::Jsonl => &[
                 Compression::Zstd,
                 Compression::Gzip,
                 Compression::Lz4,
@@ -167,6 +171,12 @@ impl CodePage {
             Format::Dbase => Self::Cp437,
             _ => Self::Utf8,
         }
+    }
+
+    /// Whether the format is text-based (uses codepage encoding).
+    /// JSON Lines is always UTF-8 — codepage is ignored.
+    pub fn is_text_based(format: Format) -> bool {
+        matches!(format, Format::Csv | Format::Dbase)
     }
 
     /// Valid codepages for a format.
