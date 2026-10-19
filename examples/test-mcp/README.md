@@ -19,9 +19,11 @@ This database provides all of that in a single, reproducible setup.
 |------|-------------|
 | `01_drop_schema.sql` | Idempotent drop — removes all objects (triggers, procs, functions, sequences, tables, views, domains) in dependency order. |
 | `02_create_schema.sql` | DDL — domains, sequences, tables, views. |
-| `03_create_triggers.sql` | Triggers, functions, and procedures (uses `SET TERM ^`). |
-| `04_poulate.sql` | Sample data — branches, departments, users, profiles, permissions, screens, approvals, log entries. |
-| `create_test_db.sh` | Orchestrator — creates the `.fdb` (if missing), runs all 4 scripts, verifies by listing objects and counting rows. |
+| `03_create_triggers.sql` | Triggers, functions (incl. name generators), and procedures (uses `SET TERM ^`). |
+| `04_poulate.sql` | Static seed data — branches (4), departments (35), profiles (5), permissions (10), screens (8), profile-permissions (25), profile-screens (20). |
+| `05_poulate_2.sql` | Procedural seed data using `RAND()` — users (100), user-department assignments (~350-400), user-profiles (100), approvals (~400-500), action log (1500). |
+| `06_views.sql` | 4 additional views with JOINs (VW_EMPLOYEES, VW_USER_ASSIGNMENTS, VW_APPROVAL_FLOW, VW_DEPT_HEADCOUNT). |
+| `create_test_db.sh` | Orchestrator — creates the `.fdb` (if missing), runs all 6 scripts, verifies by listing objects and counting rows. |
 
 ## Objects
 
@@ -30,24 +32,28 @@ This database provides all of that in a single, reproducible setup.
 | Table | PK | FKs | Notes |
 |-------|----|-----|-------|
 | `BRANCH` | ID | — | 4 rows, UNIQUE code |
-| `DEPARTMENT` | ID | BRANCH, DEPARTMENT (self-ref) | 10 rows, hierarchical |
-| `USERS` | ID | DEPARTMENT | 10 rows, UNIQUE email |
+| `DEPARTMENT` | ID | BRANCH, DEPARTMENT (self-ref) | 35 rows (15 physical + 20 temporary), hierarchical |
+| `USERS` | ID | DEPARTMENT | 100 rows, UNIQUE email |
 | `PROFILE` | ID | — | 5 rows |
 | `PERMISSION` | ID | — | 10 rows, UNIQUE code |
 | `SCREEN` | ID | — | 8 rows |
-| `USER_DEPARTMENT` | ID | USERS, DEPARTMENT | 12 rows, composite UNIQUE |
-| `USER_PROFILE` | ID | USERS, PROFILE | 10 rows |
+| `USER_DEPARTMENT` | ID | USERS, DEPARTMENT | ~350-400 rows (100 primary + 1-5 temporary per user), composite UNIQUE |
+| `USER_PROFILE` | ID | USERS, PROFILE | 100 rows |
 | `PROFILE_PERMISSION` | ID | PROFILE, PERMISSION | 25 rows |
 | `PROFILE_SCREEN` | ID | PROFILE, SCREEN | 20 rows |
-| `APPROVAL` | ID | USERS (x2: requester, approver) | 8 rows |
-| `ACTION_LOG` | ID | USERS | 10 rows |
+| `APPROVAL` | ID | USERS (x2: requester, approver) | ~400-500 rows (2-5 physical + 0-2 temporary per user) |
+| `ACTION_LOG` | ID | USERS | 1500 rows |
 
-### Views (2)
+### Views (6)
 
 | View | Description |
 |------|-------------|
 | `VW_USER_DEPARTMENT` | JOIN USERS + USER_DEPARTMENT + DEPARTMENT + BRANCH |
 | `VW_APPROVAL_SUMMARY` | JOIN APPROVAL + USERS (requester) + USERS (approver) |
+| `VW_EMPLOYEES` | JOIN USERS + DEPARTMENT (primary) + BRANCH + PROFILE (~100 rows) |
+| `VW_USER_ASSIGNMENTS` | JOIN USERS + USER_DEPARTMENT + DEPARTMENT + BRANCH (~500 rows) |
+| `VW_APPROVAL_FLOW` | JOIN APPROVAL + USERS (requester) + USERS (approver) + DEPARTMENT (~350 rows) |
+| `VW_DEPT_HEADCOUNT` | Aggregated by department: COUNT, AVG salary (~35 rows) |
 
 ### Procedures (2)
 
@@ -56,11 +62,13 @@ This database provides all of that in a single, reproducible setup.
 | `SP_LIST_USERS` | Returns users filtered by branch, with department and branch info |
 | `SP_COUNT_APPROVALS` | Returns count of approvals filtered by user and status |
 
-### Functions (1)
+### Functions (3)
 
 | Function | Description |
 |----------|-------------|
 | `FC_CALCULATE_AGE` | Returns age in years from a birth date |
+| `FC_FIRST_NAME` | Returns a first name based on an index (for seed data) |
+| `FC_LAST_NAME` | Returns a last name based on an index (for seed data) |
 
 ### Triggers (4)
 
@@ -114,8 +122,10 @@ The script:
 2. Runs `01_drop_schema.sql` (idempotent drop)
 3. Runs `02_create_schema.sql` (DDL)
 4. Runs `03_create_triggers.sql` (triggers, functions, procedures)
-5. Runs `04_poulate.sql` (sample data)
-6. Verifies by listing objects and counting rows
+5. Runs `04_poulate.sql` (static seed data)
+6. Runs `05_poulate_2.sql` (procedural seed data with `RAND()`)
+7. Runs `06_views.sql` (additional views with JOINs)
+8. Verifies by listing objects and counting rows
 
 The MCP config is resolved by the binary itself (`~/.firebird-mcp/config.json` by default). No need to set `MCP_CONFIG`.
 
@@ -161,4 +171,6 @@ The schema exercises the following Firebird types for codegen testing:
 
 ## Re-running
 
-All 4 SQL scripts are idempotent. You can re-run `create_test_db.sh` at any time to reset the database to its initial state.
+All 6 SQL scripts are idempotent. You can re-run `create_test_db.sh` at any time to reset the database to its initial state.
+
+> **Note:** `05_poulate_2.sql` uses `RAND()` for procedural data generation, so volumes vary slightly per run (e.g., APPROVAL: ~400-500 rows, USER_DEPARTMENT: ~350-400 rows).

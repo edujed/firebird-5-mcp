@@ -18,8 +18,10 @@
 #   2. Runs 01_drop_schema.sql (idempotent drop)
 #   3. Runs 02_create_schema.sql (DDL: domains, sequences, tables, views)
 #   4. Runs 03_create_triggers.sql (triggers, functions, procedures)
-#   5. Runs 04_poulate.sql (sample data)
-#   6. Verifies by listing tables and row counts
+#   5. Runs 04_poulate.sql (static seed data)
+#   6. Runs 05_poulate_2.sql (procedural seed data with RAND())
+#   7. Runs 06_views.sql (additional views with JOINs)
+#   8. Verifies by listing tables and row counts
 # =============================================================================
 
 set -euo pipefail
@@ -67,8 +69,6 @@ if [[ ! -x "$MCP_BINARY" ]]; then
     exit 1
 fi
 
-
-
 # --- Step 1: Create database -------------------------------------------------
 
 echo "=== Step 1: Creating database '$DB_NAME' at $DB_PATH ==="
@@ -105,18 +105,34 @@ echo "=== Step 4: Creating triggers/procs (03_create_triggers.sql) ==="
 mcp_call "firebird_run_script" "{\"database\":\"$DB_NAME\",\"path\":\"$SCRIPT_DIR/03_create_triggers.sql\"}"
 echo "Triggers, functions and procedures created."
 
-# --- Step 5: Populate data ----------------------------------------------------
+# --- Step 5: Populate static data ---------------------------------------------
 
 echo ""
-echo "=== Step 5: Populating data (04_poulate.sql) ==="
+echo "=== Step 5: Populating static data (04_poulate.sql) ==="
 
 mcp_call "firebird_run_script" "{\"database\":\"$DB_NAME\",\"path\":\"$SCRIPT_DIR/04_poulate.sql\"}"
-echo "Seed data loaded."
+echo "Static seed data loaded."
 
-# --- Step 6: Verify -----------------------------------------------------------
+# --- Step 6: Populate procedural data (RAND()) --------------------------------
 
 echo ""
-echo "=== Step 6: Verification ==="
+echo "=== Step 6: Populating procedural data (05_poulate_2.sql) ==="
+
+mcp_call "firebird_run_script" "{\"database\":\"$DB_NAME\",\"path\":\"$SCRIPT_DIR/05_poulate_2.sql\"}"
+echo "Procedural seed data loaded (RAND-based)."
+
+# --- Step 7: Create additional views ------------------------------------------
+
+echo ""
+echo "=== Step 7: Creating additional views (06_views.sql) ==="
+
+mcp_call "firebird_run_script" "{\"database\":\"$DB_NAME\",\"path\":\"$SCRIPT_DIR/06_views.sql\"}"
+echo "Additional views created."
+
+# --- Step 8: Verify -----------------------------------------------------------
+
+echo ""
+echo "=== Step 8: Verification ==="
 
 echo ""
 echo "--- Tables ---"

@@ -80,6 +80,66 @@ END
 ^
 
 -- ---------------------------------------------------------------------------
+-- NAME GENERATOR FUNCTIONS (for seed data)
+-- ---------------------------------------------------------------------------
+
+CREATE FUNCTION FC_FIRST_NAME(N INTEGER) RETURNS VARCHAR(50)
+AS
+BEGIN
+    IF (N IS NULL) THEN RETURN NULL;
+    N = MOD(N - 1, 20) + 1;
+    IF (N = 1) THEN RETURN 'Alice';
+    IF (N = 2) THEN RETURN 'Bob';
+    IF (N = 3) THEN RETURN 'Carol';
+    IF (N = 4) THEN RETURN 'David';
+    IF (N = 5) THEN RETURN 'Eve';
+    IF (N = 6) THEN RETURN 'Frank';
+    IF (N = 7) THEN RETURN 'Grace';
+    IF (N = 8) THEN RETURN 'Henry';
+    IF (N = 9) THEN RETURN 'Iris';
+    IF (N = 10) THEN RETURN 'Jack';
+    IF (N = 11) THEN RETURN 'Karen';
+    IF (N = 12) THEN RETURN 'Leo';
+    IF (N = 13) THEN RETURN 'Maria';
+    IF (N = 14) THEN RETURN 'Nina';
+    IF (N = 15) THEN RETURN 'Oscar';
+    IF (N = 16) THEN RETURN 'Paula';
+    IF (N = 17) THEN RETURN 'Quinn';
+    IF (N = 18) THEN RETURN 'Rita';
+    IF (N = 19) THEN RETURN 'Sam';
+    RETURN 'Tina';
+END
+^
+
+CREATE FUNCTION FC_LAST_NAME(N INTEGER) RETURNS VARCHAR(50)
+AS
+BEGIN
+    IF (N IS NULL) THEN RETURN NULL;
+    N = MOD(N - 1, 20) + 1;
+    IF (N = 1) THEN RETURN 'Johnson';
+    IF (N = 2) THEN RETURN 'Smith';
+    IF (N = 3) THEN RETURN 'Williams';
+    IF (N = 4) THEN RETURN 'Brown';
+    IF (N = 5) THEN RETURN 'Davis';
+    IF (N = 6) THEN RETURN 'Miller';
+    IF (N = 7) THEN RETURN 'Wilson';
+    IF (N = 8) THEN RETURN 'Taylor';
+    IF (N = 9) THEN RETURN 'Anderson';
+    IF (N = 10) THEN RETURN 'Thomas';
+    IF (N = 11) THEN RETURN 'Jackson';
+    IF (N = 12) THEN RETURN 'White';
+    IF (N = 13) THEN RETURN 'Harris';
+    IF (N = 14) THEN RETURN 'Martin';
+    IF (N = 15) THEN RETURN 'Thompson';
+    IF (N = 16) THEN RETURN 'Garcia';
+    IF (N = 17) THEN RETURN 'Martinez';
+    IF (N = 18) THEN RETURN 'Robinson';
+    IF (N = 19) THEN RETURN 'Clark';
+    RETURN 'Lewis';
+END
+^
+
+-- ---------------------------------------------------------------------------
 -- PROCEDURES
 -- ---------------------------------------------------------------------------
 

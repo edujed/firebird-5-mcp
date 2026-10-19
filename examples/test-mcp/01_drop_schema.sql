@@ -56,7 +56,7 @@ DECLARE VARIABLE f_name VARCHAR(63);
 BEGIN
     FOR SELECT rdb$function_name
         FROM rdb$functions
-        WHERE trim(rdb$function_name) in ('FC_CALCULATE_AGE')
+        WHERE trim(rdb$function_name) in ('FC_CALCULATE_AGE', 'FC_FIRST_NAME', 'FC_LAST_NAME')
           AND COALESCE(rdb$system_flag, 0) = 0
         INTO :f_name
     DO
@@ -116,7 +116,7 @@ DECLARE VARIABLE v_name VARCHAR(63);
 BEGIN
     FOR SELECT rdb$relation_name
         FROM rdb$relations
-        WHERE trim(rdb$relation_name) in ('VW_USER_DEPARTMENT', 'VW_APPROVAL_SUMMARY')
+        WHERE trim(rdb$relation_name) in ('VW_USER_DEPARTMENT', 'VW_APPROVAL_SUMMARY', 'VW_EMPLOYEES', 'VW_USER_ASSIGNMENTS', 'VW_APPROVAL_FLOW', 'VW_DEPT_HEADCOUNT')
           AND COALESCE(rdb$system_flag, 0) = 0
           AND rdb$view_blr IS NOT NULL
         INTO :v_name
