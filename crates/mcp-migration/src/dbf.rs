@@ -11,8 +11,8 @@
 
 use std::io::Cursor;
 
-use chrono::{Datelike, Timelike};
-use dbase::{Date, DateTime, FieldName, FieldValue, Record, TableWriterBuilder, Time};
+use chrono::Datelike;
+use dbase::{Date, DateTime, FieldName, FieldValue, Record, TableWriterBuilder};
 
 use firebird_5_mcp_core::client::FirebirdClient;
 use firebird_5_mcp_core::mlog;
@@ -29,21 +29,32 @@ use crate::value::{bool_or_false, float_or_zero, value_to_text};
 // --- Type mapping: Arrow DataType → DBF field (for export) ---
 
 /// Determines the DBF field type + length + decimal for an Arrow DataType.
+///
+/// Only dBASE III field types are used (C, N, D, L) so the output file
+/// stays at version `0x03` and opens in LibreOffice, Excel, and legacy
+/// tools. FoxPro-only types (T/DateTime, I/Integer, F/Float, B/Double,
+/// Y/Currency) would bump the header to FoxPro2 (`0xfb`) and break
+/// compatibility.
 fn arrow_to_dbf_field(dt: &arrow::datatypes::DataType) -> (dbase::FieldType, u8, u8) {
     use arrow::datatypes::DataType::*;
     match dt {
         Boolean => (dbase::FieldType::Logical, 1, 0),
         Int16 => (dbase::FieldType::Numeric, 6, 0),
         Int32 => (dbase::FieldType::Numeric, 11, 0),
-        Int64 => (dbase::FieldType::Numeric, 15, 0),
-        Float32 => (dbase::FieldType::Float, 12, 4),
-        Float64 => (dbase::FieldType::Numeric, 18, 6),
+        Int64 | UInt64 => (dbase::FieldType::Numeric, 15, 0),
+        Float32 => (dbase::FieldType::Numeric, 12, 4),
+        Float64 => (dbase::FieldType::Numeric, 19, 6),
         Utf8 | LargeUtf8 => (dbase::FieldType::Character, 254, 0),
         Binary | FixedSizeBinary(_) => (dbase::FieldType::Character, 254, 0),
         Date32 | Date64 => (dbase::FieldType::Date, 8, 0),
-        Timestamp(_, _) => (dbase::FieldType::DateTime, 8, 0),
+        // dBASE III has no binary datetime — store as "YYYY-MM-DD HH:MM:SS"
+        Timestamp(_, _) => (dbase::FieldType::Character, 19, 0),
         Time32(_) | Time64(_) => (dbase::FieldType::Character, 8, 0),
-        Decimal128(p, s) => (dbase::FieldType::Numeric, (*p).min(15) as u8, *s as u8),
+        Decimal128(p, s) => {
+            let precision = (*p).min(15) as u8;
+            let scale = (*s).min(precision.saturating_sub(1) as i8) as u8;
+            (dbase::FieldType::Numeric, precision, scale)
+        }
         _ => (dbase::FieldType::Character, 254, 0),
     }
 }
@@ -208,9 +219,15 @@ pub fn write_dbase(path: &str, result: &QueryResult, codepage: CodePage) -> Resu
     // Write to a temp file first (TableWriter needs Write + Seek)
     let tmp_path = format!("{path}.tmp");
 
+    // Use LossyCodePage so characters without a mapping in the DOS code page
+    // are replaced with '?' instead of aborting the entire export.
     let mut builder = match codepage {
-        CodePage::Cp437 => TableWriterBuilder::with_encoding(dbase::yore::code_pages::CP437),
-        _ => TableWriterBuilder::with_encoding(dbase::yore::code_pages::CP850),
+        CodePage::Cp437 => TableWriterBuilder::with_encoding(dbase::encoding::LossyCodePage(
+            dbase::yore::code_pages::CP437,
+        )),
+        _ => TableWriterBuilder::with_encoding(dbase::encoding::LossyCodePage(
+            dbase::yore::code_pages::CP850,
+        )),
     };
     for field in schema.fields() {
         let name = field.name().trim();
@@ -220,14 +237,11 @@ pub fn write_dbase(path: &str, result: &QueryResult, codepage: CodePage) -> Resu
         builder = match ft {
             dbase::FieldType::Character => builder.add_character_field(field_name, length),
             dbase::FieldType::Numeric => builder.add_numeric_field(field_name, length, decimal),
-            dbase::FieldType::Float => builder.add_float_field(field_name, length, decimal),
             dbase::FieldType::Logical => builder.add_logical_field(field_name),
             dbase::FieldType::Date => builder.add_date_field(field_name),
-            dbase::FieldType::DateTime => builder.add_datetime_field(field_name),
-            dbase::FieldType::Integer => builder.add_integer_field(field_name),
-            dbase::FieldType::Double => builder.add_double_field(field_name),
-            dbase::FieldType::Currency => builder.add_currency_field(field_name),
-            dbase::FieldType::Memo => builder.add_character_field(field_name, 255),
+            // arrow_to_dbf_field only returns dBASE III types, so these
+            // arms are unreachable — kept for exhaustiveness.
+            _ => builder.add_character_field(field_name, length),
         };
     }
 
@@ -252,17 +266,8 @@ pub fn write_dbase(path: &str, result: &QueryResult, codepage: CodePage) -> Resu
         .map_err(|e| format!("cannot finalize DBF writer: {e}"))?;
 
     // Read the written bytes from the temp file, then write (compressed) to the final path
-    let mut data = std::fs::read(&tmp_path).map_err(|e| format!("cannot read temp DBF: {e}"))?;
+    let data = std::fs::read(&tmp_path).map_err(|e| format!("cannot read temp DBF: {e}"))?;
     let _ = std::fs::remove_file(&tmp_path);
-
-    // DEBUG: force-append the 0x1A terminator to test if it fixes the file
-    if !data.ends_with(&[0x1A]) {
-        mlog!(
-            "DBF export: 0x1A terminator missing from dbase output, appending (size before: {})",
-            data.len()
-        );
-        data.push(0x1A);
-    }
 
     let mut sink = TextWriter::create(path)?;
     sink.write_bytes(&data)?;
@@ -297,17 +302,10 @@ fn value_to_dbf_field(value: &Value, dt: &arrow::datatypes::DataType) -> FieldVa
             }
         }
         DataType::Timestamp(_, _) => {
-            if let Value::Timestamp(ts) = value {
-                let date = Date::new(ts.day() as u32, ts.month() as u32, ts.year() as u32)
-                    .unwrap_or_else(|_| Date::new(1, 1, 1900).unwrap());
-                let time = Time::new(ts.hour() as u32, ts.minute() as u32, ts.second() as u32)
-                    .unwrap_or_else(|_| Time::new(0, 0, 0).unwrap());
-                FieldValue::DateTime(DateTime::new(date, time))
-            } else {
-                let date = Date::new(1, 1, 1900).unwrap();
-                let time = Time::new(0, 0, 0).unwrap();
-                FieldValue::DateTime(DateTime::new(date, time))
-            }
+            // dBASE III has no binary datetime — store as "YYYY-MM-DD HH:MM:SS"
+            let s = value_to_text(value);
+            let s: String = s.chars().take(19).collect();
+            FieldValue::Character(Some(s))
         }
         DataType::Time64(_) => {
             let s = value_to_text(value);

@@ -46,8 +46,8 @@ A lightweight, pure-Rust MCP (Model Context Protocol) server for Firebird 5 data
 - `firebird_index_usage` — Show all indexes with columns, uniqueness, and type
 
 ### Data Migration
-- `firebird_export` — Export table/view/SQL to Parquet, Arrow IPC, or CSV (with compression)
-- `firebird_import` — Import Parquet/IPC/CSV into Firebird table (create/append + ignore_columns)
+- `firebird_export` — Export table/view/SQL to Parquet, Arrow IPC, CSV, or DBF (with compression)
+- `firebird_import` — Import Parquet/IPC/CSV/DBF into Firebird table (create/append + ignore_columns)
 - `firebird_describe_file` — Inspect file schema without loading data (no DB connection needed)
 
 > **⚠️ Not recommended for production databases.**
@@ -139,7 +139,7 @@ The base directory can be overridden with `FIREBIRD_MCP_HOME` (e.g. for testing 
 | [examples/freePascal/README.md](examples/freePascal/README.md) | Free Pascal / Lazarus integration |
 | [README_CODEGEN.md](README_CODEGEN.md) | Code generation examples (all languages) |
 | [README_FOR_DEVS.md](README_FOR_DEVS.md) | Build, cross-compilation, project structure |
-| [README_MIGRATIONS.md](README_MIGRATIONS.md) | Data migration (Parquet/CSV) |
+| [README_MIGRATIONS.md](README_MIGRATIONS.md) | Data migration (Parquet/IPC/CSV/DBF) |
 
 ## Tools
 

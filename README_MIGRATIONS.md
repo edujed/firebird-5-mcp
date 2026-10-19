@@ -1,6 +1,6 @@
-# Data Migration (Parquet / Arrow IPC / CSV)
+# Data Migration (Parquet / Arrow IPC / CSV / DBF)
 
-Tools for exporting and importing data between Firebird and data files (Parquet, Arrow IPC, CSV).
+Tools for exporting and importing data between Firebird and data files (Parquet, Arrow IPC, CSV, DBF).
 
 ## `firebird_export`
 
@@ -9,8 +9,9 @@ Exports a table, view, or SQL query to a data file. All three sources go through
 **Arguments:**
 - `source` (required): Table/view name (e.g. `'USERS'`) or a raw SQL `SELECT`/`WITH` statement
 - `output_path` (required): Full path for the output file. Must be within an allowed path
-- `format` (optional): Output format — `parquet` (default), `ipc`, or `csv`
+- `format` (optional): Output format — `parquet` (default), `ipc`, `csv`, or `dbf`
 - `compression` (optional): Compression codec — see table below
+- `codepage` (optional): Character encoding — `cp437` (default for DBF), `cp850`, `iso-8859-1`, `windows-1252`, `utf-8` (default for CSV). For DBF, only `cp437` and `cp850` are valid (single-byte DOS codepages)
 - `database` (optional): Database name (defaults to `default_database`)
 
 **Compression options per format:**
@@ -20,15 +21,16 @@ Exports a table, view, or SQL query to a data file. All three sources go through
 | `parquet` | `snappy`, `zstd`, `lz4`, `none` | `snappy` |
 | `ipc` | `zstd`, `lz4`, `none` | `zstd` |
 | `csv` | determined by file extension (see below) | — |
+| `dbf` | determined by file extension (see below) | — |
 
-**CSV compression by file extension:**
+**CSV/DBF compression by file extension:**
 
 | Extension | Codec |
 |-----------|-------|
-| `.csv` | none |
-| `.csv.zst` | ZSTD |
-| `.csv.gz` | GZIP |
-| `.csv.lz4` | LZ4 |
+| `.csv` / `.dbf` | none |
+| `.csv.zst` / `.dbf.zst` | ZSTD |
+| `.csv.gz` / `.dbf.gz` | GZIP |
+| `.csv.lz4` / `.dbf.lz4` | LZ4 |
 
 **Example (export table to Parquet with ZSTD):**
 ```json
@@ -61,7 +63,19 @@ Exports a table, view, or SQL query to a data file. All three sources go through
 }
 ```
 
+**Example (export to DBF for LibreOffice/legacy tools):**
+```json
+{
+  "source": "SELECT ID, NAME, CREATED_AT FROM USERS",
+  "output_path": "/tmp/users.dbf",
+  "format": "dbf",
+  "database": "test-mcp"
+}
+```
+
 > **Note:** NUMERIC/DECIMAL columns are exported as `Float64` (approximate). Binary data is exported as raw bytes.
+>
+> **DBF note:** Output is strictly dBASE III (version `0x03`) for maximum compatibility with LibreOffice, Excel, and legacy tools. TIMESTAMP columns are stored as `Character(19)` with format `YYYY-MM-DD HH:MM:SS`. Field names must be ≤10 characters (use aliases in your SELECT if needed).
 
 ## `firebird_import`
 
@@ -73,8 +87,9 @@ Imports a data file into a Firebird table. Two modes:
 - `input_path` (required): Full path to the file to import
 - `table` (required): Target table name
 - `mode` (required): `create` or `append`
-- `format` (optional): Input format — `parquet` (default), `ipc`, or `csv`. For CSV, column types are inferred from a sample of the first 100 rows
+- `format` (optional): Input format — `parquet` (default), `ipc`, `csv`, or `dbf`. For CSV, column types are inferred from a sample of the first 100 rows. For DBF, types come from the file header (no inference)
 - `ignore_columns` (optional): Array of file column names to skip (case-insensitive). Excluded from DDL in `create` mode; excluded from INSERT in `append` mode
+- `codepage` (optional): Character encoding — `cp437` (default for DBF), `cp850`, `iso-8859-1`, `windows-1252`, `utf-8` (default for CSV). For DBF, only `cp437` and `cp850` are valid
 - `database` (optional): Database name (defaults to `default_database`)
 
 > **Note:** Compression is auto-detected from the file header — no `compression` parameter needed on import.
@@ -113,7 +128,20 @@ Imports a data file into a Firebird table. Two modes:
 }
 ```
 
+**Example (import DBF, create table):**
+```json
+{
+  "input_path": "/tmp/employees.dbf",
+  "table": "EMPLOYEES",
+  "mode": "create",
+  "format": "dbf",
+  "database": "test-mcp"
+}
+```
+
 > **Note:** For CSV import, column types are inferred from sample data: INTEGER → DOUBLE PRECISION → BOOLEAN → DATE → TIMESTAMP → VARCHAR(255) fallback.
+>
+> **DBF note:** The file header defines the schema — no type inference. Codepage defaults to `cp437` (use `codepage: "cp850"` for files encoded in CP850).
 
 ## `firebird_describe_file`
 
@@ -121,7 +149,8 @@ Describes a data file's schema without loading its data: column names, Arrow typ
 
 **Arguments:**
 - `path` (required): Full path to the file to describe
-- `format` (optional): File format — `parquet` (default), `ipc`, or `csv`. For CSV, shows column names + first 5 sample rows
+- `format` (optional): File format — `parquet` (default), `ipc`, `csv`, or `dbf`. For CSV, shows column names + first 5 sample rows. For DBF, shows column names + DBF types + mapped Firebird types
+- `codepage` (optional): Character encoding — `cp437` (default for DBF), `cp850`, `iso-8859-1`, `windows-1252`, `utf-8` (default for CSV). For DBF, only `cp437` and `cp850` are valid
 
 **Example (describe Parquet file):**
 ```json
@@ -144,6 +173,14 @@ Describes a data file's schema without loading its data: column names, Arrow typ
 {
   "path": "/tmp/employees.csv",
   "format": "csv"
+}
+```
+
+**Example (describe DBF file):**
+```json
+{
+  "path": "/tmp/employees.dbf",
+  "format": "dbf"
 }
 ```
 
@@ -198,9 +235,45 @@ When importing CSV files, column types are inferred from a sample of the first 1
 
 Empty strings are compatible with all types (treated as NULL).
 
+## DBF Type Mapping
+
+### Firebird → DBF (Export)
+
+| Firebird Type | DBF Type | Notes |
+|---------------|----------|-------|
+| SMALLINT | N(6,0) | |
+| INTEGER | N(11,0) | |
+| BIGINT | N(15,0) | |
+| FLOAT | N(12,4) | |
+| DOUBLE PRECISION | N(19,6) | |
+| NUMERIC/DECIMAL | N(min(p,15), min(s,p-1)) | |
+| BOOLEAN | L(1) | |
+| VARCHAR/CHAR | C(254) | Truncated to 254 bytes |
+| BLOB | C(254) | Hex-encoded |
+| DATE | D(8) | YYYYMMDD |
+| TIME | C(8) | HH:MM:SS |
+| TIMESTAMP | C(19) | YYYY-MM-DD HH:MM:SS |
+
+### DBF → Firebird (Import, `create` mode)
+
+| DBF Type | Firebird Type |
+|----------|---------------|
+| C(len) | VARCHAR(len) |
+| N(p,s) | DOUBLE PRECISION |
+| F(len) | DOUBLE PRECISION |
+| L(1) | BOOLEAN |
+| D(8) | DATE |
+| T(8) | TIMESTAMP |
+| I(4) | INTEGER |
+| M(4) | BLOB SUB_TYPE 1 |
+
+> **Note:** DBF export is strictly dBASE III (version `0x03`). FoxPro-only types (T, I, F, B, Y) are not used in export — TIMESTAMP becomes `C(19)`. On import, FoxPro types are read and mapped to Firebird equivalents.
+
 ## Limitations
 
 - **NUMERIC/DECIMAL → Float64:** Loses exact decimal precision (e.g. `80.005` may become `80.004999...`). The value is preserved but not bit-exact.
 - **INT128 → Int64:** Lossy conversion (truncated) during export.
 - **Binary data:** Exported as raw bytes, imported as hex strings (Firebird interprets hex strings as BLOB data on insert).
-- **CSV compression:** Determined by file extension, not the `compression` parameter.
+- **CSV/DBF compression:** Determined by file extension, not the `compression` parameter.
+- **DBF field names:** Max 10 characters. Export aborts with an error listing offending columns + alias suggestion.
+- **DBF codepage:** CP437 or CP850 only. Characters without a mapping in the DOS code page are replaced with `?` (lossy encoding).

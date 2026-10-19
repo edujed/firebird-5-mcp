@@ -31,7 +31,7 @@
 | `src/export.rs` | 389 | Export engine: query → Arrow → file (Parquet/IPC/CSV/DBF) |
 | `src/import.rs` | 252 | Import engine: Parquet/IPC → Firebird table (shared logic) |
 | `src/csv.rs` | 213 | CSV import + type inference from sample |
-| `src/dbf.rs` | 377 | DBF import, export, describe (dBASE/FoxPro/Clipper) |
+| `src/dbf.rs` | 375 | DBF import, export, describe (dBASE/FoxPro/Clipper) |
 | `src/describe.rs` | 162 | Describe: file schema (Parquet/IPC footer / CSV header / DBF header) |
 
 ## `src/format.rs`
@@ -136,20 +136,23 @@
 
 | Function | Summary |
 |---|---|
-| `arrow_to_dbf_field()` | Maps Arrow `DataType` → (DBF `FieldType`, length, decimal). Int16→N(5), Int32→N(10), Int64→N(15), Float32→F(15), Float64→N(15,4), Utf8→C(254), Boolean→L(1), Binary→C(254), Date32→D(8), Timestamp→T(8), Time64→C(8), Decimal128→N(min(p,15),s) |
+| `arrow_to_dbf_field()` | Maps Arrow `DataType` → (DBF `FieldType`, length, decimal). **dBASE III only** (C, N, D, L) to keep header at `0x03` for LibreOffice/legacy compatibility. Int16→N(6), Int32→N(11), Int64/UInt64→N(15), Float32→N(12,4), Float64→N(19,6), Utf8→C(254), Boolean→L(1), Binary→C(254), Date32→D(8), Timestamp→C(19) "YYYY-MM-DD HH:MM:SS", Time64→C(8), Decimal128→N(min(p,15),min(s,p-1)) |
 | `import_dbase()` | Reads DBF via `TextReader` (compression-aware) + codepage. Schema from file header (no inference). Creates/verifies table, inserts in batches |
 | `dbf_value_to_json()` | Converts DBF `FieldValue` → `serde_json::Value` for `insert_batch`. Character→String (trimmed), Numeric→f64, Logical→Bool, Date→"YYYY-MM-DD", DateTime→"YYYY-MM-DD HH:MM:SS" |
-| `write_dbase()` | **DBF export.** Validates field names ≤10 chars (abort with list if not). Writes to temp file via `TableWriterBuilder` (codepage-encoded), reads back, appends `0x1A` terminator if missing (dbase 0.8.0 bug), writes to final path via `TextWriter` (compression from extension) |
-| `value_to_dbf_field()` | Converts Firebird `Value` → DBF `FieldValue` based on Arrow `DataType`. Integers/floats→Numeric, Utf8→Character (truncated to 254), Boolean→Logical, Date32→Date, Timestamp→DateTime, Binary→Character (hex, truncated to 254) |
+| `write_dbase()` | **DBF export.** Validates field names ≤10 chars (abort with list if not). Writes to temp file via `TableWriterBuilder` (dBASE III types only, `LossyCodePage` encoding so unmappable chars become `?` instead of aborting), reads back, writes to final path via `TextWriter` (compression from extension) |
+| `value_to_dbf_field()` | Converts Firebird `Value` → DBF `FieldValue` based on Arrow `DataType`. Integers/floats→Numeric, Utf8→Character (truncated to 254), Boolean→Logical, Date32→Date, Timestamp→Character "YYYY-MM-DD HH:MM:SS" (truncated to 19), Time64→Character (truncated to 254), Binary→Character (hex, truncated to 254) |
 | `describe_dbase()` | Reads DBF header via `TextReader` + codepage. Returns column names, DBF types, Firebird types, row count. No data loaded |
 
-**DBF constraints (dBASE 3/4/Clipper):**
+**DBF constraints (dBASE III only — for LibreOffice/legacy compatibility):**
+- **Version byte: `0x03` (dBASE III, no memo).** Only field types C, N, D, L are used. FoxPro-only types (T/DateTime, I/Integer, F/Float, B/Double, Y/Currency) would bump the header to FoxPro2 (`0xfb`) and break LibreOffice/legacy readers.
 - Field names: max **10 characters** (11th byte is reserved for field type). Export aborts with error listing offending columns + alias suggestion.
 - Character fields: max **254 bytes** (not 255 — first byte indicates length in some implementations).
-- Numeric fields: max **15 digits** (for LibreOffice/Excel compatibility; dBASE III allows 19 but parsers reject >15).
+- Numeric fields: max **19 digits** (dBASE III allows 19; Float64→N(19,6), Int64→N(15,0)).
+- Timestamp: stored as **Character(19)** with format `"YYYY-MM-DD HH:MM:SS"` (dBASE III has no binary datetime).
 - Record size: max 4000 bytes (not currently enforced).
 - Codepage: CP437 or CP850 only (single-byte DOS pages). Multi-byte encodings (UTF-8, ISO-8859-1, Win1252) would corrupt the file.
-- `0x1A` terminator: dbase crate 0.8.0 `finalize()` sometimes omits it. We check and append if missing (logged via `mlog!`).
+- **Lossy encoding:** `LossyCodePage` wraps the DOS code page so characters without a mapping (e.g. `Ã` in "São Paulo" under CP437) are replaced with `?` instead of aborting the export. The `dbase` crate's default `encode()` would fail on unmappable characters.
+- `0x1A` terminator: written by `dbase` crate `finalize()` — no manual append needed.
 - Temp file: `TableWriter` needs `Write + Seek`, so we write to `{path}.tmp`, `finalize()`, read bytes, delete temp, then write to final path via `TextWriter` (for compression support).
 
 ## `src/describe.rs`

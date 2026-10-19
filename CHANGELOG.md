@@ -21,9 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     column names, Arrow types, mapped Firebird types, and row count. No
     database connection needed.
   - The public API is format-agnostic (`format` param dispatch); supports
-    **Parquet** (Apache Arrow v55) and **CSV** (`csv` crate v1.3). CSV import
-    infers column types from a sample of the first 100 rows (INTEGER, DOUBLE
-    PRECISION, BOOLEAN, DATE, TIMESTAMP, or VARCHAR(255) fallback).
+    **Parquet** (Apache Arrow v55), **Arrow IPC** (Feather v2), **CSV**
+    (`csv` crate v1.3), and **DBF** (dBASE/FoxPro/Clipper via `dbase` crate
+    v0.8). CSV import infers column types from a sample of the first 100 rows
+    (INTEGER, DOUBLE PRECISION, BOOLEAN, DATE, TIMESTAMP, or VARCHAR(255)
+    fallback). DBF import reads types from the file header (no inference).
+    DBF export is strictly dBASE III (version `0x03`) for LibreOffice/legacy
+    compatibility — TIMESTAMP becomes `C(19)`, FoxPro binary types are not used.
 - **`mcp-types` crate** (`crates/mcp-types/`) — shared value types
   (`Value`, `ColumnMeta`, `QueryResult`) and pure formatting helpers
   (`format_column_type`, `is_valid_identifier`, `format_cell`) extracted
@@ -61,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `README_COMMAND_LINE.md` — Command line usage (no IDE)
   - `README_CODEGEN.md` — Code generation examples (all languages)
   - `README_FOR_DEVS.md` — Build, cross-compilation, project structure
-  - `README_MIGRATIONS.md` — Data migration (Parquet/CSV)
+  - `README_MIGRATIONS.md` — Data migration (Parquet/IPC/CSV/DBF)
   - `examples/freePascal/README.md` — Free Pascal / Lazarus integration
 
 ## [1.2.0]

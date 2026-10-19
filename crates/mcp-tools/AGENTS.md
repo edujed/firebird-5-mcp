@@ -18,7 +18,7 @@
 | `Cargo.toml` | 15 | Package `firebird-5-mcp-tools`; deps: `firebird-5-mcp-core`, `firebird-5-mcp-types`, `firebird-5-mcp-migration`, `serde_json`, `chrono` |
 | `src/lib.rs` | 160 | `ToolResult`, `dispatch()`, `build_time()`, re-exports |
 | `src/common.rs` | 199 | Shared helpers (arg parsing, client, Markdown, file save) |
-| `src/definitions.rs` | 471 | JSON input schemas for `tools/list` |
+| `src/definitions.rs` | 475 | JSON input schemas for `tools/list` |
 | `src/query_tools.rs` | 221 | SQL execution tools |
 | `src/schema_tools.rs` | 948 | Schema inspection tools (largest file) |
 | `src/stats_tools.rs` | 233 | MON$ statistics tools |
@@ -58,7 +58,7 @@
 | Function | Lines | Summary |
 |---|---|---|
 | `tool()` | 6–12 | Builds one `{name, description, inputSchema}` object |
-| `tool_definitions()` | 15–471 | Returns all tool JSON schemas (one `tool(...)` per MCP tool). **Source of truth for tool descriptions/args** — keep in sync with `dispatch_inner` |
+| `tool_definitions()` | 15–475 | Returns all tool JSON schemas (one `tool(...)` per MCP tool). **Source of truth for tool descriptions/args** — keep in sync with `dispatch_inner` |
 
 ## `src/query_tools.rs`
 

@@ -435,6 +435,7 @@ pub fn tool_definitions() -> Vec<Value> {
                     "output_path": { "type": "string", "description": "Full path for the output file. Must be within an allowed path." },
                     "format": { "type": "string", "enum": ["parquet", "ipc", "csv", "dbf"], "description": "Output format. Default: 'parquet'. IPC = Arrow IPC (Feather v2). DBF = dBASE/FoxPro/Clipper." },
                     "compression": { "type": "string", "enum": ["snappy", "zstd", "lz4", "gzip", "none"], "description": "Compression codec. Parquet: 'snappy' (default), 'zstd', 'lz4', 'none'. IPC: 'zstd' (default), 'lz4', 'none'. CSV/DBF: determined by file extension (.csv, .csv.zst, .csv.gz, .csv.lz4, .dbf, .dbf.zst, .dbf.gz, .dbf.lz4) — this param is validated against the extension." },
+                    "codepage": { "type": "string", "enum": ["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"], "description": "Character encoding. CSV: 'utf-8' (default), 'iso-8859-1', 'windows-1252', 'cp437', 'cp850'. DBF: 'cp437' (default), 'cp850' — only single-byte DOS codepages are valid." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
                 },
                 "required": ["source", "output_path"]
@@ -451,6 +452,7 @@ pub fn tool_definitions() -> Vec<Value> {
                     "mode": { "type": "string", "enum": ["create", "append"], "description": "'create' = create table + insert; 'append' = insert into existing table." },
                     "format": { "type": "string", "enum": ["parquet", "ipc", "csv", "dbf"], "description": "Input format. Default: 'parquet'. IPC = Arrow IPC (Feather v2), supports LZ4 and ZSTD compression. For CSV, column types are inferred from sample data. For DBF, types come from the file header." },
                     "ignore_columns": { "type": "array", "items": { "type": "string" }, "description": "Optional list of file column names to skip (case-insensitive). Excluded from DDL in create mode; excluded from INSERT in append mode." },
+                    "codepage": { "type": "string", "enum": ["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"], "description": "Character encoding. CSV: 'utf-8' (default), 'iso-8859-1', 'windows-1252', 'cp437', 'cp850'. DBF: 'cp437' (default), 'cp850' — only single-byte DOS codepages are valid." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
                 },
                 "required": ["input_path", "table", "mode"]
@@ -463,7 +465,8 @@ pub fn tool_definitions() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "path": { "type": "string", "description": "Full path to the file to describe." },
-                    "format": { "type": "string", "enum": ["parquet", "ipc", "csv", "dbf"], "description": "File format. Default: 'parquet'. For CSV, shows column names + first 5 sample rows. For DBF, shows column names + DBF types + mapped Firebird types." }
+                    "format": { "type": "string", "enum": ["parquet", "ipc", "csv", "dbf"], "description": "File format. Default: 'parquet'. For CSV, shows column names + first 5 sample rows. For DBF, shows column names + DBF types + mapped Firebird types." },
+                    "codepage": { "type": "string", "enum": ["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"], "description": "Character encoding. CSV: 'utf-8' (default), 'iso-8859-1', 'windows-1252', 'cp437', 'cp850'. DBF: 'cp437' (default), 'cp850' — only single-byte DOS codepages are valid." }
                 },
                 "required": ["path"]
             }),
