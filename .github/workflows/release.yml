@@ -50,7 +50,7 @@ jobs:
         if: matrix.target == 'x86_64-pc-windows-gnu'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq mingw-w64-x86-64-dev binutils-mingw-w64-x86-64
+          sudo apt-get install -y -qq mingw-w64 mingw-w64-x86-64-dev binutils-mingw-w64-x86-64
           # Verifica que o gcc cross está disponível
           x86_64-w64-mingw32-gcc --version
 
