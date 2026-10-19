@@ -28,7 +28,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-MCP_BINARY="${MCP_BINARY:-$SCRIPT_DIR/../../target/release/firebird-5-mcp}"
+# Resolve MCP_BINARY: env var > target/release (local build) > PATH
+if [[ -z "${MCP_BINARY:-}" ]]; then
+    if [[ -x "$SCRIPT_DIR/../../target/release/firebird-5-mcp" ]]; then
+        MCP_BINARY="$SCRIPT_DIR/../../target/release/firebird-5-mcp"
+    else
+        MCP_BINARY="firebird-5-mcp"
+    fi
+fi
 DB_NAME="${DB_NAME:-test-mcp}"
 DB_PATH="${DB_PATH:-/database/test-mcp.fdb}"
 

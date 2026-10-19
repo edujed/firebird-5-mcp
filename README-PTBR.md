@@ -140,6 +140,8 @@ O diretório base pode ser sobrescrito com `FIREBIRD_MCP_HOME` (ex.: para testes
 | [README_CODEGEN.md](README_CODEGEN.md) | Exemplos de geração de código (todas as linguagens) |
 | [README_FOR_DEVS.md](README_FOR_DEVS.md) | Build, cross-compilação, estrutura do projeto |
 | [README_MIGRATIONS.md](README_MIGRATIONS.md) | Migração de dados (Parquet/IPC/CSV/DBF) |
+| [LEIAME_PARA_HUMANOS.md](LEIAME_PARA_HUMANOS.md) | Uso como CLI puro — sem agente de IA |
+| [README.md](README.md) | Este README em inglês |
 
 ## Ferramentas
 

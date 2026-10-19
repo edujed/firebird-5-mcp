@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — WIP
+
+### Added
+
+### Changed
+- **README cross-references** — `README.md` and `README-PTBR.md` now link to
+  all root-level READMEs (including `README_FOR_HUMANS.md` / `LEIAME_PARA_HUMANOS.md`
+  and the cross-language counterpart). `LEIAME_PARA_HUMANOS.md` fixed a swapped
+  language description in its references table.
+
 ## [1.3.0]
 
 ### Added

@@ -19,7 +19,7 @@
 
 set -euo pipefail
 
-MCP_BINARY="${MCP_BINARY:-~/Downloads/firebird-5-mcp-linux-amd64}"
+MCP_BINARY="${MCP_BINARY:-firebird-5-mcp}"
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: $0 <tool_name> '<json_arguments>'" >&2
