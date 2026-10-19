@@ -115,6 +115,53 @@ pub fn import_ipc(
     )
 }
 
+/// Filters column indices, excluding those in `ignore_columns` (case-insensitive).
+///
+/// `name_at` returns the column name for a given index.
+pub fn keep_column_indices<'a, F: Fn(usize) -> &'a str>(
+    len: usize,
+    name_at: F,
+    ignore_columns: &[String],
+) -> Vec<usize> {
+    (0..len)
+        .filter(|&i| {
+            !ignore_columns
+                .iter()
+                .any(|ic| ic.to_uppercase() == name_at(i).to_uppercase())
+        })
+        .collect()
+}
+
+/// Inserts rows into a table in batches of 500 (single transaction per batch).
+///
+/// Shared by all import paths (Parquet, IPC, CSV, DBF).
+pub fn insert_rows_in_batches(
+    client: &mut FirebirdClient,
+    table: &str,
+    columns: &[String],
+    rows: impl Iterator<Item = Result<Vec<serde_json::Value>, String>>,
+) -> Result<usize, String> {
+    const BATCH_SIZE: usize = 500;
+    let mut inserted = 0;
+    let mut batch: Vec<Vec<serde_json::Value>> = Vec::with_capacity(BATCH_SIZE);
+
+    for row in rows {
+        batch.push(row?);
+        if batch.len() >= BATCH_SIZE {
+            let n = insert_batch(client, table, columns, &batch).map_err(|e| e.to_string())?;
+            inserted += n;
+            batch.clear();
+        }
+    }
+
+    if !batch.is_empty() {
+        let n = insert_batch(client, table, columns, &batch).map_err(|e| e.to_string())?;
+        inserted += n;
+    }
+
+    Ok(inserted)
+}
+
 /// Shared import logic: takes a schema + batches, applies `ignore_columns`,
 /// creates/verifies the table, and inserts data.
 fn import_record_batches(
@@ -132,17 +179,11 @@ fn import_record_batches(
     }
 
     // Determine which column indices to keep (exclude ignored columns)
-    let keep_indices: Vec<usize> = full_schema
-        .fields()
-        .iter()
-        .enumerate()
-        .filter(|(_, f)| {
-            !ignore_columns
-                .iter()
-                .any(|ic| ic.to_uppercase() == f.name().to_uppercase())
-        })
-        .map(|(i, _)| i)
-        .collect();
+    let keep_indices = keep_column_indices(
+        full_schema.fields().len(),
+        |i| full_schema.fields()[i].name(),
+        ignore_columns,
+    );
 
     if keep_indices.is_empty() {
         return Err("all columns are in ignore_columns — nothing to import".to_string());
@@ -165,16 +206,17 @@ fn import_record_batches(
     }
 
     // Insert data in batches (only kept columns)
-    let mut inserted = 0;
-    for batch in batches {
-        let rows = batch_to_rows_filtered(batch, full_schema, &keep_indices)?;
-        let columns: Vec<String> = keep_indices
-            .iter()
-            .map(|&i| full_schema.fields()[i].name().clone())
-            .collect();
-        let n = insert_batch(client, table, &columns, &rows).map_err(|e| e.to_string())?;
-        inserted += n;
-    }
+    let columns: Vec<String> = keep_indices
+        .iter()
+        .map(|&i| full_schema.fields()[i].name().clone())
+        .collect();
+    let rows_iter = batches.iter().flat_map(|batch| {
+        batch_to_rows_filtered(batch, full_schema, &keep_indices)
+            .unwrap_or_default()
+            .into_iter()
+            .map(Ok)
+    });
+    let inserted = insert_rows_in_batches(client, table, &columns, rows_iter)?;
 
     mlog!("{label} import: imported {} rows into {}", inserted, table);
 

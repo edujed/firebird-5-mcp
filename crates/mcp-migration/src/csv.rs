@@ -15,10 +15,10 @@
 
 use firebird_5_mcp_core::client::FirebirdClient;
 use firebird_5_mcp_core::mlog;
-use firebird_5_mcp_core::query::insert_batch;
 
-use crate::format::CsvReader;
-use crate::import::{ImportMode, ImportResult};
+use crate::format::{CodePage, Format};
+use crate::import::{ImportMode, ImportResult, insert_rows_in_batches, keep_column_indices};
+use crate::io::TextReader;
 use crate::table::{create_table_from_types, table_exists};
 
 /// Number of sample rows to read for type inference.
@@ -34,8 +34,14 @@ pub fn import_csv(
     table: &str,
     mode: ImportMode,
     ignore_columns: &[String],
+    codepage: CodePage,
 ) -> Result<ImportResult, String> {
-    let mut reader = CsvReader::open(input_path)?.into_csv_reader();
+    codepage.validate_for(Format::Csv)?;
+
+    // Read raw bytes, decompress, then decode with the specified codepage
+    let raw_bytes = TextReader::open(input_path)?.into_bytes()?;
+    let csv_text = codepage.decode(&raw_bytes);
+    let mut reader = csv::Reader::from_reader(csv_text.as_bytes());
 
     // Read header
     let headers = reader
@@ -49,16 +55,11 @@ pub fn import_csv(
     }
 
     // Determine which columns to keep
-    let keep_indices: Vec<usize> = all_columns
-        .iter()
-        .enumerate()
-        .filter(|(_, c)| {
-            !ignore_columns
-                .iter()
-                .any(|ic| ic.to_uppercase() == c.to_uppercase())
-        })
-        .map(|(i, _)| i)
-        .collect();
+    let keep_indices = keep_column_indices(
+        all_columns.len(),
+        |i| all_columns[i].as_str(),
+        ignore_columns,
+    );
 
     if keep_indices.is_empty() {
         return Err("all columns are in ignore_columns — nothing to import".to_string());
@@ -112,30 +113,13 @@ pub fn import_csv(
         }
     }
 
-    // Insert sample rows
-    let mut inserted = 0;
+    // Insert all rows in batches
     let columns: Vec<String> = kept_columns.clone();
-    for row in &sample_rows {
+    let all_rows_iter = sample_rows.iter().chain(remaining_rows.iter()).map(|row| {
         let values: Vec<serde_json::Value> = row.iter().map(|v| csv_value_to_json(v)).collect();
-        let n = insert_batch(client, table, &columns, &[values]).map_err(|e| e.to_string())?;
-        inserted += n;
-    }
-
-    // Insert remaining rows (batches of 500)
-    let mut batch: Vec<Vec<serde_json::Value>> = Vec::with_capacity(500);
-    for row in &remaining_rows {
-        let values: Vec<serde_json::Value> = row.iter().map(|v| csv_value_to_json(v)).collect();
-        batch.push(values);
-        if batch.len() >= 500 {
-            let n = insert_batch(client, table, &columns, &batch).map_err(|e| e.to_string())?;
-            inserted += n;
-            batch.clear();
-        }
-    }
-    if !batch.is_empty() {
-        let n = insert_batch(client, table, &columns, &batch).map_err(|e| e.to_string())?;
-        inserted += n;
-    }
+        Ok(values)
+    });
+    let inserted = insert_rows_in_batches(client, table, &columns, all_rows_iter)?;
 
     mlog!("CSV import: imported {inserted} rows from {input_path} into {table}");
 

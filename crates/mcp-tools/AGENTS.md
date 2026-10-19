@@ -26,7 +26,7 @@
 | `src/generator_tools.rs` | 173 | `firebird_generate_dev` handler |
 | `src/view_dto_tools.rs` | 78 | `firebird_generate_view_dto` handler |
 | `src/ddl_tools.rs` | 229 | DDL create/alter/drop tools |
-| `src/migration_tools.rs` | 247 | Export/import/describe handlers (format-agnostic: Parquet, IPC, CSV + compression) |
+| `src/migration_tools.rs` | 310 | Export/import/describe handlers (format-agnostic: Parquet, IPC, CSV, DBF + compression + codepage) |
 
 ## `src/lib.rs`
 
@@ -136,10 +136,10 @@
 
 | Function | Lines | Summary |
 |---|---|---|
-| `handle_export` | 12–91 | Exports table/view/SQL to data file. Args: `source`, `output_path`, optional `format` (default "parquet": `parquet`/`ipc`/`csv`), optional `compression` (validated per format: Parquet → snappy/zstd/lz4/none; IPC → zstd/lz4/none; CSV → zstd/gzip/lz4/none, but extension takes precedence), `database`. Returns structured `{path, rows, columns, format, compression}` |
-| `handle_import` | 94–152 | Imports data file into Firebird table. Args: `input_path`, `table`, `mode` (create/append), optional `format` (default "parquet"), `ignore_columns` (array), `database`. Returns structured `{table, rows, columns, mode, format, ignored_columns}` |
-| `handle_describe_file` | 155–238 | Describes a file's schema without loading data. Args: `path`, optional `format` (default "parquet"). Returns Markdown (Parquet/IPC: types table; CSV: columns + 5 sample rows) + structured `{path, format, rows, columns, arrow_types, firebird_types, sample_rows}`. **No DB connection needed** |
-| `default_compression` | 241–247 | Returns default codec per format: Parquet → snappy, IPC → zstd, CSV → none |
+| `handle_export` | 12–108 | Exports table/view/SQL to data file. Args: `source`, `output_path`, optional `format` (default "parquet": `parquet`/`ipc`/`csv`/`dbf`), optional `compression` (validated per format: Parquet → snappy/zstd/lz4/none; IPC → zstd/lz4/none; CSV/DBF → zstd/gzip/lz4/none, but extension takes precedence), optional `codepage` (DBF → cp437/cp850; CSV → cp437/cp850/iso-8859-1/windows-1252/utf-8), `database`. Returns structured `{path, rows, columns, format, compression}` |
+| `handle_import` | 111–186 | Imports data file into Firebird table. Args: `input_path`, `table`, `mode` (create/append), optional `format` (default "parquet"), `ignore_columns` (array), optional `codepage` (same validation as export), `database`. Returns structured `{table, rows, columns, mode, format, ignored_columns}` |
+| `handle_describe_file` | 189–301 | Describes a file's schema without loading data. Args: `path`, optional `format` (default "parquet"), optional `codepage`. Returns Markdown (Parquet/IPC/DBF: types table; CSV: columns + 5 sample rows) + structured `{path, format, rows, columns, arrow_types, firebird_types, sample_rows}`. **No DB connection needed** |
+| `default_compression` | 304–310 | Returns default codec per format: Parquet → snappy, IPC → zstd, CSV/DBF → none |
 
 ## Conventions
 

@@ -113,6 +113,24 @@ pub fn column_meta_to_arrow(columns: &[ColumnMeta]) -> Schema {
     Schema::new(fields)
 }
 
+/// Maps a DBF field type to a Firebird DDL type string.
+///
+/// Used by the DBF import path (the file header defines the schema).
+pub fn dbf_type_to_firebird(field_type: &dbase::FieldType, length: u8) -> String {
+    match field_type {
+        dbase::FieldType::Character => format!("VARCHAR({length})"),
+        dbase::FieldType::Numeric => "DOUBLE PRECISION".to_string(),
+        dbase::FieldType::Float | dbase::FieldType::Double | dbase::FieldType::Currency => {
+            "DOUBLE PRECISION".to_string()
+        }
+        dbase::FieldType::Logical => "BOOLEAN".to_string(),
+        dbase::FieldType::Date => "DATE".to_string(),
+        dbase::FieldType::DateTime => "TIMESTAMP".to_string(),
+        dbase::FieldType::Integer => "INTEGER".to_string(),
+        dbase::FieldType::Memo => "BLOB SUB_TYPE 1".to_string(),
+    }
+}
+
 /// Checks whether an Arrow schema is compatible with an existing Firebird
 /// table for `append` mode.
 ///

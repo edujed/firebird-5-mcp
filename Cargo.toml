@@ -45,10 +45,17 @@ parquet = { version = "55", default-features = false, features = ["arrow", "snap
 # CSV parsing/writing (migration crate)
 csv = "1.3"
 
-# Compression for CSV export (pure-Rust, no C deps)
+# Compression for CSV/DBF export (pure-Rust, no C deps)
 flate2 = { version = "1.0", default-features = false, features = ["rust_backend"] }
 zstd = { version = "0.13", default-features = false }
 lz4_flex = { version = "0.11", default-features = false }
+
+# dBASE / FoxPro / Clipper DBF file read/write (migration crate)
+dbase = { version = "0.8", features = ["yore", "encoding_rs"] }
+
+# Character encoding conversion (CP437, CP850, ISO-8859-1, Windows-1252, UTF-8)
+encoding_rs = "0.8"
+yore = "0.2"
 
 [patch.crates-io]
 # Vendored copy that stops coercing NUMERIC/DECIMAL columns to f64.

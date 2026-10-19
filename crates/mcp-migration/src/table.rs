@@ -135,3 +135,62 @@ pub fn verify_append(
     check_append_compatibility(schema, &fb_columns)?;
     Ok(())
 }
+
+/// Verifies that the table exists and its column names match the given list
+/// for `append` mode. Used by the DBF import path where types are not
+/// available as an Arrow schema.
+pub fn verify_append_types(
+    client: &mut FirebirdClient,
+    table: &str,
+    columns: &[String],
+) -> Result<(), String> {
+    let sql = r#"
+        SELECT RF.RDB$FIELD_NAME
+        FROM RDB$RELATION_FIELDS RF
+        WHERE RF.RDB$RELATION_NAME = ?
+        ORDER BY RF.RDB$FIELD_POSITION
+    "#;
+    let result = query_with_param(client, sql, table).map_err(|e| e.to_string())?;
+
+    if result.rows.is_empty() {
+        return Err(format!(
+            "table '{table}' not found (use mode 'create' to create it)"
+        ));
+    }
+
+    let fb_names: Vec<String> = result
+        .rows
+        .iter()
+        .map(|row| {
+            row.first()
+                .and_then(|v| match v {
+                    Value::Text(s) => Some(s.trim().to_uppercase()),
+                    _ => None,
+                })
+                .unwrap_or_default()
+        })
+        .collect();
+
+    if fb_names.len() != columns.len() {
+        return Err(format!(
+            "column count mismatch: file has {} columns, table '{}' has {}",
+            columns.len(),
+            table,
+            fb_names.len()
+        ));
+    }
+
+    for (i, col) in columns.iter().enumerate() {
+        let col_upper = col.trim().to_uppercase();
+        if fb_names[i] != col_upper {
+            return Err(format!(
+                "column name mismatch at position {}: file has '{}', table has '{}'",
+                i + 1,
+                col,
+                fb_names[i]
+            ));
+        }
+    }
+
+    Ok(())
+}

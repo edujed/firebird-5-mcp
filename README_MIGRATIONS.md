@@ -1,6 +1,6 @@
-# Data Migration (Parquet/CSV)
+# Data Migration (Parquet / Arrow IPC / CSV)
 
-Tools for exporting and importing data between Firebird and data files (Parquet/CSV).
+Tools for exporting and importing data between Firebird and data files (Parquet, Arrow IPC, CSV).
 
 ## `firebird_export`
 
@@ -9,30 +9,59 @@ Exports a table, view, or SQL query to a data file. All three sources go through
 **Arguments:**
 - `source` (required): Table/view name (e.g. `'USERS'`) or a raw SQL `SELECT`/`WITH` statement
 - `output_path` (required): Full path for the output file. Must be within an allowed path
-- `format` (optional): Output format — `parquet` (default) or `csv`
+- `format` (optional): Output format — `parquet` (default), `ipc`, or `csv`
+- `compression` (optional): Compression codec — see table below
 - `database` (optional): Database name (defaults to `default_database`)
 
-**Example (export table to Parquet):**
+**Compression options per format:**
+
+| Format | Options | Default |
+|--------|---------|---------|
+| `parquet` | `snappy`, `zstd`, `lz4`, `none` | `snappy` |
+| `ipc` | `zstd`, `lz4`, `none` | `zstd` |
+| `csv` | determined by file extension (see below) | — |
+
+**CSV compression by file extension:**
+
+| Extension | Codec |
+|-----------|-------|
+| `.csv` | none |
+| `.csv.zst` | ZSTD |
+| `.csv.gz` | GZIP |
+| `.csv.lz4` | LZ4 |
+
+**Example (export table to Parquet with ZSTD):**
 ```json
 {
   "source": "USERS",
   "output_path": "/tmp/users.parquet",
   "format": "parquet",
+  "compression": "zstd",
   "database": "test-mcp"
 }
 ```
 
-**Example (export SQL query to CSV):**
+**Example (export SQL query to Arrow IPC):**
 ```json
 {
   "source": "SELECT ID, NAME, EMAIL FROM USERS WHERE ACTIVE = TRUE",
-  "output_path": "/tmp/active_users.csv",
+  "output_path": "/tmp/active_users.arrow",
+  "format": "ipc",
+  "database": "test-mcp"
+}
+```
+
+**Example (export to compressed CSV):**
+```json
+{
+  "source": "USERS",
+  "output_path": "/tmp/users.csv.zst",
   "format": "csv",
   "database": "test-mcp"
 }
 ```
 
-> **Note:** NUMERIC/DECIMAL columns are exported as text (exact decimal strings). Binary data is exported as raw bytes.
+> **Note:** NUMERIC/DECIMAL columns are exported as `Float64` (approximate). Binary data is exported as raw bytes.
 
 ## `firebird_import`
 
@@ -44,9 +73,11 @@ Imports a data file into a Firebird table. Two modes:
 - `input_path` (required): Full path to the file to import
 - `table` (required): Target table name
 - `mode` (required): `create` or `append`
-- `format` (optional): Input format — `parquet` (default) or `csv`. For CSV, column types are inferred from a sample of the first 100 rows
+- `format` (optional): Input format — `parquet` (default), `ipc`, or `csv`. For CSV, column types are inferred from a sample of the first 100 rows
 - `ignore_columns` (optional): Array of file column names to skip (case-insensitive). Excluded from DDL in `create` mode; excluded from INSERT in `append` mode
 - `database` (optional): Database name (defaults to `default_database`)
+
+> **Note:** Compression is auto-detected from the file header — no `compression` parameter needed on import.
 
 **Example (import Parquet, create table):**
 ```json
@@ -59,10 +90,21 @@ Imports a data file into a Firebird table. Two modes:
 }
 ```
 
-**Example (import CSV, append to existing table, skip columns):**
+**Example (import Arrow IPC, append to existing table):**
 ```json
 {
-  "input_path": "/tmp/new_employees.csv",
+  "input_path": "/tmp/new_employees.arrow",
+  "table": "USERS",
+  "mode": "append",
+  "format": "ipc",
+  "database": "test-mcp"
+}
+```
+
+**Example (import compressed CSV, skip columns):**
+```json
+{
+  "input_path": "/tmp/new_employees.csv.zst",
   "table": "USERS",
   "mode": "append",
   "format": "csv",
@@ -79,13 +121,21 @@ Describes a data file's schema without loading its data: column names, Arrow typ
 
 **Arguments:**
 - `path` (required): Full path to the file to describe
-- `format` (optional): File format — `parquet` (default) or `csv`. For CSV, shows column names + first 5 sample rows
+- `format` (optional): File format — `parquet` (default), `ipc`, or `csv`. For CSV, shows column names + first 5 sample rows
 
 **Example (describe Parquet file):**
 ```json
 {
   "path": "/tmp/users.parquet",
   "format": "parquet"
+}
+```
+
+**Example (describe Arrow IPC file):**
+```json
+{
+  "path": "/tmp/users.arrow",
+  "format": "ipc"
 }
 ```
 
@@ -106,7 +156,7 @@ Describes a data file's schema without loading its data: column names, Arrow typ
 | INTEGER | Int32 | |
 | BIGINT | Int64 | |
 | SMALLINT | Int16 | |
-| NUMERIC/DECIMAL | Utf8 | Exported as exact decimal string |
+| NUMERIC/DECIMAL | Float64 | Approximate — loses exact decimal precision |
 | DOUBLE PRECISION | Float64 | |
 | FLOAT | Float32 | |
 | BOOLEAN | Boolean | |
@@ -150,7 +200,7 @@ Empty strings are compatible with all types (treated as NULL).
 
 ## Limitations
 
-- **Export:** Currently only `parquet` format is fully supported. CSV export may have limitations.
+- **NUMERIC/DECIMAL → Float64:** Loses exact decimal precision (e.g. `80.005` may become `80.004999...`). The value is preserved but not bit-exact.
 - **INT128 → Int64:** Lossy conversion (truncated) during export.
-- **NUMERIC/DECIMAL:** Exported as `Utf8` (exact decimal strings) because `ColumnMeta` doesn't carry precision/scale.
 - **Binary data:** Exported as raw bytes, imported as hex strings (Firebird interprets hex strings as BLOB data on insert).
+- **CSV compression:** Determined by file extension, not the `compression` parameter.

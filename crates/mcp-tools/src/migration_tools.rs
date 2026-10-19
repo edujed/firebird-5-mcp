@@ -6,7 +6,7 @@ use crate::common::{arg_str, open_client};
 use firebird_5_mcp_core::Config;
 use firebird_5_mcp_migration::{ImportMode, describe_file, export, import};
 
-const SUPPORTED_FORMATS: &str = "'parquet', 'ipc' and 'csv'";
+const SUPPORTED_FORMATS: &str = "'parquet', 'ipc', 'csv' and 'dbf'";
 
 /// `firebird_export` — export a table, view, or SQL query to a data file.
 pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolResult, String> {
@@ -17,7 +17,7 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
     let format = arg_str(args, "format").unwrap_or("parquet".to_string());
     let fmt = format.to_lowercase();
 
-    if fmt != "parquet" && fmt != "ipc" && fmt != "csv" {
+    if fmt != "parquet" && fmt != "ipc" && fmt != "csv" && fmt != "dbf" {
         return Err(format!(
             "unsupported format '{format}' — supported: {SUPPORTED_FORMATS}"
         ));
@@ -29,7 +29,7 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         let valid: &[&str] = match fmt.as_str() {
             "parquet" => &["snappy", "zstd", "lz4", "none"],
             "ipc" => &["zstd", "lz4", "none"],
-            "csv" => &["zstd", "gzip", "lz4", "none"],
+            "csv" | "dbf" => &["zstd", "gzip", "lz4", "none"],
             _ => &["none"],
         };
         if !valid.contains(&cl.as_str()) {
@@ -40,15 +40,31 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         }
     }
 
-    // For CSV, compression is determined by the file extension (.csv, .csv.zst, .csv.gz).
+    let codepage = arg_str(args, "codepage");
+    if let Some(ref cp) = codepage {
+        let cpl = cp.to_lowercase();
+        let valid: &[&str] = match fmt.as_str() {
+            "dbf" => &["cp437", "cp850"],
+            "csv" => &["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"],
+            _ => &[],
+        };
+        if !valid.contains(&cpl.as_str()) {
+            return Err(format!(
+                "unsupported codepage '{cp}' for {fmt} — valid: {}",
+                valid.join(", ")
+            ));
+        }
+    }
+
+    // For CSV and DBF, compression is determined by the file extension.
     // The `compression` param is validated but the extension takes precedence.
-    if fmt == "csv" {
+    if fmt == "csv" || fmt == "dbf" {
         let lower = output_path.to_lowercase();
-        let ext_compression = if lower.ends_with(".csv.zst") || lower.ends_with(".zst") {
+        let ext_compression = if lower.ends_with(".zst") {
             Some("zstd")
-        } else if lower.ends_with(".csv.gz") || lower.ends_with(".gz") {
+        } else if lower.ends_with(".gz") {
             Some("gzip")
-        } else if lower.ends_with(".csv.lz4") || lower.ends_with(".lz4") {
+        } else if lower.ends_with(".lz4") {
             Some("lz4")
         } else {
             Some("none")
@@ -72,6 +88,7 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         &output_path,
         &fmt,
         compression.as_deref(),
+        codepage.as_deref(),
     )?;
 
     let text = format!(
@@ -102,7 +119,7 @@ pub fn handle_import(config: &Config, args: &serde_json::Value) -> Result<ToolRe
     let format = arg_str(args, "format").unwrap_or("parquet".to_string());
     let fmt = format.to_lowercase();
 
-    if fmt != "parquet" && fmt != "ipc" && fmt != "csv" {
+    if fmt != "parquet" && fmt != "ipc" && fmt != "csv" && fmt != "dbf" {
         return Err(format!(
             "unsupported format '{format}' — supported: {SUPPORTED_FORMATS}"
         ));
@@ -118,6 +135,22 @@ pub fn handle_import(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         })
         .unwrap_or_default();
 
+    let codepage = arg_str(args, "codepage");
+    if let Some(ref cp) = codepage {
+        let cpl = cp.to_lowercase();
+        let valid: &[&str] = match fmt.as_str() {
+            "dbf" => &["cp437", "cp850"],
+            "csv" => &["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"],
+            _ => &[],
+        };
+        if !valid.contains(&cpl.as_str()) {
+            return Err(format!(
+                "unsupported codepage '{cp}' for {fmt} — valid: {}",
+                valid.join(", ")
+            ));
+        }
+    }
+
     let mut client = open_client(config, args)?;
 
     let result = import(
@@ -127,6 +160,7 @@ pub fn handle_import(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         mode,
         &fmt,
         &ignore_columns,
+        codepage.as_deref(),
     )?;
 
     let mode_label = match result.mode {
@@ -161,13 +195,29 @@ pub fn handle_describe_file(
     let format = arg_str(args, "format").unwrap_or("parquet".to_string());
     let fmt = format.to_lowercase();
 
-    if fmt != "parquet" && fmt != "ipc" && fmt != "csv" {
+    if fmt != "parquet" && fmt != "ipc" && fmt != "csv" && fmt != "dbf" {
         return Err(format!(
             "unsupported format '{format}' — supported: {SUPPORTED_FORMATS}"
         ));
     }
 
-    let desc = describe_file(&path, &fmt)?;
+    let codepage = arg_str(args, "codepage");
+    if let Some(ref cp) = codepage {
+        let cpl = cp.to_lowercase();
+        let valid: &[&str] = match fmt.as_str() {
+            "dbf" => &["cp437", "cp850"],
+            "csv" => &["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"],
+            _ => &[],
+        };
+        if !valid.contains(&cpl.as_str()) {
+            return Err(format!(
+                "unsupported codepage '{cp}' for {fmt} — valid: {}",
+                valid.join(", ")
+            ));
+        }
+    }
+
+    let desc = describe_file(&path, &fmt, codepage.as_deref())?;
 
     // Render as Markdown
     let mut text = String::new();
@@ -208,6 +258,19 @@ pub fn handle_describe_file(
                 }
                 text.push('\n');
             }
+        }
+    } else if desc.format == "dbf" {
+        // DBF: show types table (same as Parquet/IPC)
+        text.push_str("| # | Column | DBF Type | Firebird Type |\n");
+        text.push_str("|---|--------|---------|---------------|\n");
+        for i in 0..desc.columns.len() {
+            text.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                i + 1,
+                desc.columns[i],
+                desc.arrow_types[i],
+                desc.firebird_types[i]
+            ));
         }
     } else {
         // Parquet: show types table

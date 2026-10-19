@@ -10,7 +10,9 @@ use arrow::ipc::reader::FileReader as IpcFileReader;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use std::fs::File;
 
-use crate::format::{CsvReader, Format};
+use crate::dbf::describe_dbase;
+use crate::format::{CodePage, Format};
+use crate::io::TextReader;
 use crate::types::arrow_to_firebird;
 
 /// Number of sample rows to show for CSV files.
@@ -36,12 +38,21 @@ pub struct FileDescription {
 }
 
 /// Describes a data file's schema.
-pub fn describe_file(path: &str, format: &str) -> Result<FileDescription, String> {
+pub fn describe_file(
+    path: &str,
+    format: &str,
+    codepage: Option<&str>,
+) -> Result<FileDescription, String> {
     let fmt = Format::parse(format)?;
+    let cp = match codepage {
+        Some(s) => CodePage::parse(s)?,
+        None => CodePage::default_for(fmt),
+    };
     match fmt {
         Format::Parquet => describe_parquet(path),
         Format::Ipc => describe_ipc(path),
-        Format::Csv => describe_csv(path),
+        Format::Csv => describe_csv(path, cp),
+        Format::Dbase => describe_dbase(path, cp),
     }
 }
 
@@ -90,8 +101,13 @@ fn describe_ipc(path: &str) -> Result<FileDescription, String> {
     })
 }
 
-fn describe_csv(path: &str) -> Result<FileDescription, String> {
-    let mut reader = CsvReader::open(path)?.into_csv_reader();
+fn describe_csv(path: &str, codepage: CodePage) -> Result<FileDescription, String> {
+    codepage.validate_for(Format::Csv)?;
+
+    // Read raw bytes, decompress, then decode with the specified codepage
+    let raw_bytes = TextReader::open(path)?.into_bytes()?;
+    let csv_text = codepage.decode(&raw_bytes);
+    let mut reader = csv::Reader::from_reader(csv_text.as_bytes());
 
     // Read header
     let headers = reader

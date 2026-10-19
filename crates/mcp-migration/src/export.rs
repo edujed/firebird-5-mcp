@@ -9,7 +9,6 @@
 //! are mapped to `Float64` — the query layer sets `ColumnMeta.is_numeric`
 //! so the export path can distinguish them from real BIGINT columns.
 
-use std::io::Write;
 use std::sync::Arc;
 
 use arrow::array::{
@@ -30,7 +29,9 @@ use firebird_5_mcp_core::mlog;
 use firebird_5_mcp_core::query::{Value, query_unbounded};
 use firebird_5_mcp_types::QueryResult;
 
-use crate::format::{CsvWriter, Format};
+use crate::dbf::write_dbase;
+use crate::format::{CodePage, Format};
+use crate::io::TextWriter;
 use crate::types::column_meta_to_arrow;
 use crate::value::{bool_or_false, float_or_zero, int_or_zero, value_to_text};
 
@@ -59,8 +60,13 @@ pub fn export(
     output_path: &str,
     format: &str,
     compression: Option<&str>,
+    codepage: Option<&str>,
 ) -> Result<ExportResult, String> {
     let fmt = Format::parse(format)?;
+    let cp = match codepage {
+        Some(s) => CodePage::parse(s)?,
+        None => CodePage::default_for(fmt),
+    };
     let sql = normalise_source(source);
     let result = query_unbounded(client, &sql).map_err(|e| e.to_string())?;
     if result.columns.is_empty() {
@@ -79,7 +85,10 @@ pub fn export(
             write_ipc(output_path, &schema, &batch, compression)?;
         }
         Format::Csv => {
-            write_csv(output_path, &result)?;
+            write_csv(output_path, &result, cp)?;
+        }
+        Format::Dbase => {
+            write_dbase(output_path, &result, cp)?;
         }
     }
 
@@ -100,34 +109,41 @@ pub fn export(
 /// Writes a `QueryResult` to a CSV file (header + rows).
 ///
 /// Compression is determined by the file extension (see
-/// [`crate::format::csv_compression_from_path`]).
-fn write_csv(path: &str, result: &QueryResult) -> Result<(), String> {
-    let sink = CsvWriter::create(path)?;
-    let mut writer = sink.into_csv_writer();
-    write_csv_body(&mut writer, result)?;
-    let inner = writer
-        .into_inner()
-        .map_err(|e| format!("cannot get CSV writer: {e}"))?;
-    CsvWriter::finish(inner)?;
-    Ok(())
-}
+/// [`crate::format::file_compression_from_path`]).
+fn write_csv(path: &str, result: &QueryResult, codepage: CodePage) -> Result<(), String> {
+    codepage.validate_for(Format::Csv)?;
 
-/// Writes CSV header + rows to a `csv::Writer`.
-fn write_csv_body<W: Write>(
-    writer: &mut csv::Writer<W>,
-    result: &QueryResult,
-) -> Result<(), String> {
+    // Build CSV content as UTF-8, then encode to the target codepage
+    let mut csv_content = String::new();
     let header: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
-    writer
-        .write_record(&header)
-        .map_err(|e| format!("cannot write CSV header: {e}"))?;
+    csv_content.push_str(&header.join(","));
+    csv_content.push('\n');
 
     for row in &result.rows {
         let fields: Vec<String> = row.iter().map(|v| value_to_text(v)).collect();
-        writer
-            .write_record(&fields)
-            .map_err(|e| format!("cannot write CSV row: {e}"))?;
+        // Simple CSV escaping: quote fields containing commas, quotes, or newlines
+        let escaped: Vec<String> = fields
+            .iter()
+            .map(|f| {
+                if f.contains(',') || f.contains('"') || f.contains('\n') {
+                    format!("\"{}\"", f.replace('"', "\"\""))
+                } else {
+                    f.clone()
+                }
+            })
+            .collect();
+        csv_content.push_str(&escaped.join(","));
+        csv_content.push('\n');
     }
+
+    // Encode to target codepage
+    let encoded = codepage.encode(&csv_content);
+
+    // Write (with compression if extension indicates)
+    let mut sink = TextWriter::create(path)?;
+    sink.write_bytes(&encoded)?;
+    let inner = sink.into_inner();
+    TextWriter::finish(inner)?;
     Ok(())
 }
 

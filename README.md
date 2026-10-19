@@ -45,6 +45,11 @@ A lightweight, pure-Rust MCP (Model Context Protocol) server for Firebird 5 data
 - `firebird_blob_info` — List BLOB columns with subtype (TEXT/BINARY)
 - `firebird_index_usage` — Show all indexes with columns, uniqueness, and type
 
+### Data Migration
+- `firebird_export` — Export table/view/SQL to Parquet, Arrow IPC, or CSV (with compression)
+- `firebird_import` — Import Parquet/IPC/CSV into Firebird table (create/append + ignore_columns)
+- `firebird_describe_file` — Inspect file schema without loading data (no DB connection needed)
+
 > **⚠️ Not recommended for production databases.**
 > This MCP is designed for development and analysis workflows. Tools like code generation,
 > DDL operations, and refactoring instructions can be destructive. For production,
