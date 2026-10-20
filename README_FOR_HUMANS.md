@@ -18,8 +18,8 @@ procedures on a schedule, snapshotting your schema for version control.
 
 | Scenario | What you get |
 |---|---|
-| **DataLake / BI** | Export any table, view, or SQL query to Parquet, CSV, or DBF — one command, cron-ready |
-| **Data consolidation** | Import Parquet/CSV/DBF from other tools into Firebird — create or append, skip columns |
+| **DataLake / BI** | Export any table, view, or SQL query to Parquet, CSV, DBF, or JSON Lines — one command, cron-ready |
+| **Data consolidation** | Import Parquet/CSV/DBF/JSONL from other tools into Firebird — create or append, skip columns |
 | **Batch jobs** | Run stored procedures or SQL scripts on a schedule (month-end close, nightly ETL) |
 | **Health checks** | Database stats, active queries, table row counts — pipe to your monitoring/alerting |
 | **Schema versioning** | Extract full DDL, diff it in git, track every change |
@@ -191,6 +191,15 @@ You can also export a **SQL query** (not just a table):
   "format": "dbf",
   "ignore_columns": ["_DELETED", "FILLER"]
 }'
+
+# Import JSON Lines (one JSON object per line) — types are inferred automatically
+./examples/mcp-call.sh firebird_import '{
+  "input_path": "/incoming/events.jsonl.zst",
+  "database": "test-mcp",
+  "table": "EVENTS",
+  "mode": "create",
+  "format": "jsonl"
+}'
 ```
 
 ### Run a stored procedure in a batch job
@@ -310,7 +319,7 @@ fi
 
 | Tool | Human use case |
 |---|---|
-| `firebird_export` | Publish a table/view/query to your DataLake (Parquet/CSV/DBF) |
+| `firebird_export` | Publish a table/view/query to your DataLake (Parquet/CSV/DBF/JSONL) |
 | `firebird_import` | Consolidate data from other tools into Firebird |
 | `firebird_describe_file` | Inspect an incoming file's schema before importing |
 | `firebird_query` | Run any SQL — SELECT, DML, DDL, stored procedures |

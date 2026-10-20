@@ -20,6 +20,8 @@
 | `test_isolation.sh` | 23 | `firebird_run_script` — default, snapshot, readonly, bogus, consistency |
 | `test_createdb.sh` | 18 | `firebird_create_database` — default page size, explicit, invalid |
 | `test_cleanup.sh` | 10 | Removes `.fdb` files created by `test_createdb.sh` |
+| `test_jsonl.sh` | 32 | `firebird_export`/`firebird_describe_file`/`firebird_import` — JSONL format (plain + zstd, create + append, invalid format) |
+| `test_jsonl_cleanup.sh` | 12 | Drops the `JSONL_TEST` table created by `test_jsonl.sh` |
 | `test_pagination.bat` | 18 | Windows equivalent of `test_pagination.sh` |
 | `test_stats.bat` | 17 | Windows equivalent of `test_stats.sh` |
 | `test_query_history.bat` | 19 | Windows equivalent of `test_query_history.sh` |
@@ -47,6 +49,8 @@ sh tests/test_query_history.sh
 sh tests/test_isolation.sh
 sh tests/test_createdb.sh     # creates real .fdb files
 sh tests/test_cleanup.sh      # removes the files from test_createdb.sh
+sh tests/test_jsonl.sh        # requires the test-mcp database
+sh tests/test_jsonl_cleanup.sh # drops the JSONL_TEST table
 
 # Windows
 tests\test_pagination.bat
@@ -56,7 +60,7 @@ tests\test_createdb.bat       :: creates real .fdb files
 tests\test_cleanup.bat        :: removes the files from test_createdb.bat
 ```
 
-> **Note:** `test_isolation.bat` does not exist yet (Linux-only for now).
+> **Note:** `test_isolation.bat` and `test_jsonl*.sh` do not exist yet (Linux-only for now).
 
 ## Prerequisites
 
@@ -68,6 +72,7 @@ tests\test_cleanup.bat        :: removes the files from test_createdb.bat
 
 - **Smoke tests, not unit tests** — they verify the deployed binary works end-to-end.
 - **`test_createdb` writes to the server's allowed path** (`/database` on Linux). Always follow it with `test_cleanup`.
+- **`test_jsonl` writes to `~/.firebird-mcp/output/` and creates a table in `test-mcp`.** Always follow it with `test_jsonl_cleanup`.
 - **`.sh` scripts** use `#!/bin/sh` (POSIX), not bash. No arrays, no `[[ ]]`.
 - **`.bat` scripts** use `%USERPROFILE%\.local\bin\firebird-5-mcp.exe` (same as `.sh` but Windows path). No `FIREBIRD_CONFIG` — the binary uses its default config.
 - **Expected failures:** `test_isolation.sh` id=4 (readonly) and id=5 (bogus) should return `"isError":true`. `test_createdb.sh` id=4 (invalid page size) should return `"isError":true`.

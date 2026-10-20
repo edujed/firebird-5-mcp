@@ -168,6 +168,7 @@ pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<ToolResult, Str
         Language::OpenApi => "openapi",
         Language::Graphql => "graphql",
         Language::Python => "python",
+        Language::JsonSchema => "json-schema",
         _ => "unknown",
     };
     save_or_inline(cfg, args, &db_name, format, &files)

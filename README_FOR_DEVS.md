@@ -51,7 +51,7 @@ firebird-5-mcp/             # Repository root
 │   ├── mcp-core/           # Core library — client, query, schema, DDL, metadata, stats, config, codegen
 │   ├── mcp-tools/          # Shared MCP tool handlers (transport-agnostic)
 │   ├── mcp-stdio-bin/      # MCP stdio server binary (firebird-5-mcp)
-│   └── mcp-migration/      # Data file export/import (Parquet/CSV)
+│   └── mcp-migration/      # Data file export/import (Parquet/IPC/CSV/DBF/JSONL)
 ├── vendor/
 │   └── rsfbclient-rust/    # Vendored driver with NUMERIC/DECIMAL precision patch
 ├── scripts/
@@ -82,7 +82,7 @@ The project is split into five crates:
 
 4. **`mcp-stdio-bin`** — Thin MCP-stdio layer: JSON-RPC protocol loop + config management. Depends on `mcp-tools`.
 
-5. **`mcp-migration`** — Data file export/import: tables, views, SQL → Parquet/CSV; Parquet/CSV → tables (create/append).
+5. **`mcp-migration`** — Data file export/import: tables, views, SQL → Parquet/IPC/CSV/DBF/JSONL; Parquet/IPC/CSV/DBF/JSONL → tables (create/append).
 
 ## Vendored Driver
 

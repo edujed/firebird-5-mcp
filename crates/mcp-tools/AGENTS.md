@@ -24,8 +24,8 @@
 | `src/schema_tools.rs` | 948 | Schema inspection tools (largest file) |
 | `src/stats_tools.rs` | 233 | MON$ statistics tools |
 | `src/introspection_tools.rs` | 270 | RDB$ introspection tools |
-| `src/generator_tools.rs` | 195 | `firebird_generate_dev` handler (Python emits `__init__.py`) |
-| `src/view_dto_tools.rs` | 78 | `firebird_generate_view_dto` handler |
+| `src/generator_tools.rs` | 175 | `firebird_generate_dev` handler (Python emits `__init__.py`, JSON Schema emits `.json`) |
+| `src/view_dto_tools.rs` | 80 | `firebird_generate_view_dto` handler |
 | `src/ddl_tools.rs` | 229 | DDL create/alter/drop tools |
 | `src/migration_tools.rs` | 390 | Export/import/describe handlers (format-agnostic: Parquet, IPC, CSV, DBF, JSONL + compression + codepage + POST_EVENT) |
 

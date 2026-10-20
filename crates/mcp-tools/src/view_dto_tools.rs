@@ -73,6 +73,7 @@ pub fn handle_generate_view_dto(cfg: &Config, args: &Value) -> Result<ToolResult
         Language::OpenApi => "openapi",
         Language::Graphql => "graphql",
         Language::Python => "python",
+        Language::JsonSchema => "json-schema",
         _ => "unknown",
     };
     save_or_inline(cfg, args, &db_name, format, &files)

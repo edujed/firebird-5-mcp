@@ -20,8 +20,8 @@ versionamento.
 
 | Cenário | O que você ganha |
 |---|---|
-| **DataLake / BI** | Exporte qualquer tabela, view ou query SQL para Parquet, CSV ou DBF — um comando, pronto para cron |
-| **Consolidação de dados** | Importe Parquet/CSV/DBF de outras ferramentas para o Firebird — crie ou acrescente, pule colunas |
+| **DataLake / BI** | Exporte qualquer tabela, view ou query SQL para Parquet, CSV, DBF ou JSON Lines — um comando, pronto para cron |
+| **Consolidação de dados** | Importe Parquet/CSV/DBF/JSONL de outras ferramentas para o Firebird — crie ou acrescente, pule colunas |
 | **Jobs em lote** | Execute procedures armazenadas ou scripts SQL em agendamento (fechamento mensal, ETL noturno) |
 | **Health checks** | Estatísticas do banco, queries ativas, contagem de linhas — pipe para seu monitoramento/alertas |
 | **Versionamento de schema** | Extraia o DDL completo, faça diff no git, rastreie cada mudança |
@@ -194,6 +194,15 @@ Você também pode exportar uma **query SQL** (não apenas uma tabela):
   "format": "dbf",
   "ignore_columns": ["_DELETED", "FILLER"]
 }'
+
+# Importar JSON Lines (um objeto JSON por linha) — tipos inferidos automaticamente
+./examples/mcp-call.sh firebird_import '{
+  "input_path": "/incoming/events.jsonl.zst",
+  "database": "test-mcp",
+  "table": "EVENTS",
+  "mode": "create",
+  "format": "jsonl"
+}'
 ```
 
 ### Executar uma procedure em lote
@@ -307,7 +316,7 @@ fi
 
 | Tool | Uso humano |
 |---|---|
-| `firebird_export` | Publicar tabela/view/query no DataLake (Parquet/CSV/DBF) |
+| `firebird_export` | Publicar tabela/view/query no DataLake (Parquet/CSV/DBF/JSONL) |
 | `firebird_import` | Consolidar dados de outras ferramentas no Firebird |
 | `firebird_describe_file` | Inspecionar schema de arquivo recebido antes de importar |
 | `firebird_query` | Executar qualquer SQL — SELECT, DML, DDL, procedures |

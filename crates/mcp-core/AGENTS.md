@@ -388,6 +388,16 @@ Re-exports (L30–43): `FbType`, `GenOptions`, `Language`, `generate`, `to_camel
 | `type_for` | 17–22 | `FbType` → OpenAPI type |
 | `generate` | 24+ | Generates OpenAPI schema |
 
+## `src/codegen/targets/json_schema.rs`
+
+| Item | Lines | Summary |
+|---|---|---|
+| `struct JsonSchemaTarget` | 24 | JSON Schema (draft 2020-12) target |
+| `type_for` | 33–36 | `FbType` → JSON Schema type |
+| `generate` | 38+ | Generates `.json` file with Firebird extensions (`x-numeric`, `x-column-order`, `x-foreign-key`) |
+| `json_schema_type` | 155+ | `FbType` → `(type, format)` mapping |
+| `json_escape` | 29–45 | Escapes strings for JSON literals |
+
 ## `src/codegen/targets/graphql.rs`
 
 | Item | Lines | Summary |

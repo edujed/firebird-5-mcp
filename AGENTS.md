@@ -16,7 +16,7 @@
 | `crates/mcp-core/` | [`crates/mcp-core/AGENTS.md`](crates/mcp-core/AGENTS.md) | Core library — client, query, schema, DDL, metadata, stats, storage, config, codegen |
 | `crates/mcp-tools/` | [`crates/mcp-tools/AGENTS.md`](crates/mcp-tools/AGENTS.md) | Shared MCP tool handlers (transport-agnostic) — handlers, `ToolResult`, `dispatch()`, `tool_definitions()` |
 | `crates/mcp-stdio-bin/` | [`crates/mcp-stdio-bin/AGENTS.md`](crates/mcp-stdio-bin/AGENTS.md) | MCP stdio server binary (`firebird-5-mcp`) — protocol loop + config management |
-| `crates/mcp-migration/` | [`crates/mcp-migration/AGENTS.md`](crates/mcp-migration/AGENTS.md) | Data file export/import — tables, views, SQL → Parquet/IPC/CSV/DBF; Parquet/IPC/CSV/DBF → tables (create/append). Compression: Snappy/ZSTD/LZ4/GZIP. Codepage: CP437/CP850 (DBF), UTF-8/ISO-8859-1/Win1252 (CSV) |
+| `crates/mcp-migration/` | [`crates/mcp-migration/AGENTS.md`](crates/mcp-migration/AGENTS.md) | Data file export/import — tables, views, SQL → Parquet/IPC/CSV/DBF/JSONL; Parquet/IPC/CSV/DBF/JSONL → tables (create/append). Compression: Snappy/ZSTD/LZ4/GZIP. Codepage: CP437/CP850 (DBF), UTF-8/ISO-8859-1/Win1252 (CSV). JSONL always UTF-8. POST_EVENT support (via `mcp-tools`) |
 | `vendor/` | [`vendor/AGENTS.md`](vendor/AGENTS.md) | Vendored `rsfbclient-rust` 0.29.0 with NUMERIC/DECIMAL precision patch (see below) |
 | `examples/` | [`examples/AGENTS.md`](examples/AGENTS.md) | Examples: complete test database (`test-mcp/`), Free Pascal client (`freePascal/`), CLI helpers (`mcp-call.*`) |
 | `tests/` | [`tests/AGENTS.md`](tests/AGENTS.md) | Shell smoke tests — exercise the deployed binary over JSON-RPC (stdio) |

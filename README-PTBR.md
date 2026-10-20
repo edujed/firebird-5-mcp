@@ -46,8 +46,8 @@ Um servidor MCP (Model Context Protocol) leve e 100% em Rust para bancos de dado
 - `firebird_index_usage` — Mostra todos os índices com colunas, unicidade e tipo
 
 ### Migração de Dados
-- `firebird_export` — Exporta tabela/view/SQL para Parquet, Arrow IPC, CSV ou DBF (com compressão)
-- `firebird_import` — Importa Parquet/IPC/CSV/DBF para tabela Firebird (create/append + ignore_columns)
+- `firebird_export` — Exporta tabela/view/SQL para Parquet, Arrow IPC, CSV, DBF ou JSON Lines (com compressão)
+- `firebird_import` — Importa Parquet/IPC/CSV/DBF/JSONL para tabela Firebird (create/append + ignore_columns)
 - `firebird_describe_file` — Inspecciona o schema do arquivo sem carregar dados (sem conexão com o banco)
 
 > **⚠️ Não recomendado para bancos de produção.**

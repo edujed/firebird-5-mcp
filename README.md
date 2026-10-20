@@ -46,8 +46,8 @@ A lightweight, pure-Rust MCP (Model Context Protocol) server for Firebird 5 data
 - `firebird_index_usage` — Show all indexes with columns, uniqueness, and type
 
 ### Data Migration
-- `firebird_export` — Export table/view/SQL to Parquet, Arrow IPC, CSV, or DBF (with compression)
-- `firebird_import` — Import Parquet/IPC/CSV/DBF into Firebird table (create/append + ignore_columns)
+- `firebird_export` — Export table/view/SQL to Parquet, Arrow IPC, CSV, DBF, or JSON Lines (with compression)
+- `firebird_import` — Import Parquet/IPC/CSV/DBF/JSONL into Firebird table (create/append + ignore_columns)
 - `firebird_describe_file` — Inspect file schema without loading data (no DB connection needed)
 
 > **⚠️ Not recommended for production databases.**

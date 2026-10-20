@@ -9,6 +9,7 @@
 mod go;
 mod graphql;
 mod java;
+mod json_schema;
 mod openapi;
 mod protobuf;
 mod python;
@@ -22,6 +23,7 @@ use crate::schema::{ForeignKeyInfo, TableSchema};
 pub use go::GoTarget;
 pub use graphql::GraphqlTarget;
 pub use java::JavaTarget;
+pub use json_schema::JsonSchemaTarget;
 pub use openapi::OpenApiTarget;
 pub use protobuf::ProtobufTarget;
 pub use python::PythonTarget;

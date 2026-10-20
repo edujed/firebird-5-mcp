@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.0] — WIP
 
 ### Added
+- **JSON Schema codegen** — `firebird_generate_dev` and `firebird_generate_view_dto`
+  now accept `language: "json_schema"` (aliases: `jsonschema`, `json-schema`).
+  Each table/view produces one `.json` file (draft 2020-12) with Firebird-specific
+  extensions: `x-numeric` (precision/scale for NUMERIC/DECIMAL), `x-column-order`
+  (preserves column order), `x-foreign-key` (when `include_fks=true`).
+  Type mapping: NUMERIC/DECIMAL → `string` + `x-numeric`, CHAR/VARCHAR/NVARCHAR →
+  `string` + `maxLength`, DATE/TIME/TIMESTAMP → `string` + `format`, BOOLEAN →
+  `boolean`, SMALLINT/INTEGER → `integer` + `format: int32`, BIGINT → `integer`
+  + `format: int64`, INT128 → `string`, FLOAT/DOUBLE/DECFLOAT → `number` +
+  `format: double`, BLOB SUB_TYPE BINARY → `string` + `format: binary`.
+  No new dependencies — JSON is built manually via `push_str`.
 - **JSON Lines (JSONL/NDJSON/LDJSON) export/import/describe** — new `jsonl` format
   for `firebird_export`, `firebird_import`, and `firebird_describe_file`.
   Each row is a single JSON object on its own line. NULL → `null`, NUMERIC/DECIMAL →

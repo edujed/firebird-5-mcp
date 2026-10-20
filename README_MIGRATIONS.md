@@ -1,6 +1,6 @@
-# Data Migration (Parquet / Arrow IPC / CSV / DBF)
+# Data Migration (Parquet / Arrow IPC / CSV / DBF / JSON Lines)
 
-Tools for exporting and importing data between Firebird and data files (Parquet, Arrow IPC, CSV, DBF).
+Tools for exporting and importing data between Firebird and data files (Parquet, Arrow IPC, CSV, DBF, JSON Lines).
 
 ## `firebird_export`
 
@@ -9,9 +9,9 @@ Exports a table, view, or SQL query to a data file. All three sources go through
 **Arguments:**
 - `source` (required): Table/view name (e.g. `'USERS'`) or a raw SQL `SELECT`/`WITH` statement
 - `output_path` (required): Full path for the output file. Must be within an allowed path
-- `format` (optional): Output format — `parquet` (default), `ipc`, `csv`, or `dbf`
+- `format` (optional): Output format — `parquet` (default), `ipc`, `csv`, `dbf`, or `jsonl` (aliases: `ndjson`, `ldjson`)
 - `compression` (optional): Compression codec — see table below
-- `codepage` (optional): Character encoding — `cp437` (default for DBF), `cp850`, `iso-8859-1`, `windows-1252`, `utf-8` (default for CSV). For DBF, only `cp437` and `cp850` are valid (single-byte DOS codepages)
+- `codepage` (optional): Character encoding — `cp437` (default for DBF), `cp850`, `iso-8859-1`, `windows-1252`, `utf-8` (default for CSV). For DBF, only `cp437` and `cp850` are valid (single-byte DOS codepages). JSONL is always UTF-8 (codepage ignored)
 - `database` (optional): Database name (defaults to `default_database`)
 
 **Compression options per format:**
@@ -22,15 +22,16 @@ Exports a table, view, or SQL query to a data file. All three sources go through
 | `ipc` | `zstd`, `lz4`, `none` | `zstd` |
 | `csv` | determined by file extension (see below) | — |
 | `dbf` | determined by file extension (see below) | — |
+| `jsonl` | determined by file extension (see below) | — |
 
-**CSV/DBF compression by file extension:**
+**CSV/DBF/JSONL compression by file extension:**
 
 | Extension | Codec |
 |-----------|-------|
-| `.csv` / `.dbf` | none |
-| `.csv.zst` / `.dbf.zst` | ZSTD |
-| `.csv.gz` / `.dbf.gz` | GZIP |
-| `.csv.lz4` / `.dbf.lz4` | LZ4 |
+| `.csv` / `.dbf` / `.jsonl` | none |
+| `.csv.zst` / `.dbf.zst` / `.jsonl.zst` | ZSTD |
+| `.csv.gz` / `.dbf.gz` / `.jsonl.gz` | GZIP |
+| `.csv.lz4` / `.dbf.lz4` / `.jsonl.lz4` | LZ4 |
 
 **Example (export table to Parquet with ZSTD):**
 ```json
@@ -73,9 +74,21 @@ Exports a table, view, or SQL query to a data file. All three sources go through
 }
 ```
 
-> **Note:** NUMERIC/DECIMAL columns are exported as `Float64` (approximate). Binary data is exported as raw bytes.
+**Example (export to JSON Lines for ETL pipelines):**
+```json
+{
+  "source": "USERS",
+  "output_path": "/tmp/users.jsonl",
+  "format": "jsonl",
+  "database": "test-mcp"
+}
+```
+
+> **Note:** NUMERIC/DECIMAL columns are exported as `Float64` (approximate) in Parquet/IPC, and as exact decimal strings in CSV/JSONL. Binary data is exported as raw bytes (Parquet/IPC) or base64 strings (JSONL).
 >
 > **DBF note:** Output is strictly dBASE III (version `0x03`) for maximum compatibility with LibreOffice, Excel, and legacy tools. TIMESTAMP columns are stored as `Character(19)` with format `YYYY-MM-DD HH:MM:SS`. Field names must be ≤10 characters (use aliases in your SELECT if needed).
+>
+> **JSONL note:** Each row is a single JSON object on its own line. NULL → `null`, NUMERIC/DECIMAL → string (exact decimal), TIMESTAMP → `YYYY-MM-DD HH:MM:SS`, BLOB → base64 string. Always UTF-8.
 
 ## `firebird_import`
 
@@ -87,9 +100,9 @@ Imports a data file into a Firebird table. Two modes:
 - `input_path` (required): Full path to the file to import
 - `table` (required): Target table name
 - `mode` (required): `create` or `append`
-- `format` (optional): Input format — `parquet` (default), `ipc`, `csv`, or `dbf`. For CSV, column types are inferred from a sample of the first 100 rows. For DBF, types come from the file header (no inference)
+- `format` (optional): Input format — `parquet` (default), `ipc`, `csv`, `dbf`, or `jsonl` (aliases: `ndjson`, `ldjson`). For CSV/JSONL, column types are inferred from a sample of the first 100 rows. For DBF, types come from the file header (no inference)
 - `ignore_columns` (optional): Array of file column names to skip (case-insensitive). Excluded from DDL in `create` mode; excluded from INSERT in `append` mode
-- `codepage` (optional): Character encoding — `cp437` (default for DBF), `cp850`, `iso-8859-1`, `windows-1252`, `utf-8` (default for CSV). For DBF, only `cp437` and `cp850` are valid
+- `codepage` (optional): Character encoding — `cp437` (default for DBF), `cp850`, `iso-8859-1`, `windows-1252`, `utf-8` (default for CSV). For DBF, only `cp437` and `cp850` are valid. JSONL is always UTF-8 (codepage ignored)
 - `database` (optional): Database name (defaults to `default_database`)
 
 > **Note:** Compression is auto-detected from the file header — no `compression` parameter needed on import.
@@ -139,9 +152,22 @@ Imports a data file into a Firebird table. Two modes:
 }
 ```
 
-> **Note:** For CSV import, column types are inferred from sample data: INTEGER → DOUBLE PRECISION → BOOLEAN → DATE → TIMESTAMP → VARCHAR(255) fallback.
+**Example (import JSON Lines, create table):**
+```json
+{
+  "input_path": "/incoming/events.jsonl.zst",
+  "table": "EVENTS",
+  "mode": "create",
+  "format": "jsonl",
+  "database": "test-mcp"
+}
+```
+
+> **Note:** For CSV/JSONL import, column types are inferred from sample data: INTEGER → DOUBLE PRECISION → BOOLEAN → DATE → TIMESTAMP → VARCHAR(255) fallback.
 >
 > **DBF note:** The file header defines the schema — no type inference. Codepage defaults to `cp437` (use `codepage: "cp850"` for files encoded in CP850).
+>
+> **JSONL note:** Column names come from the keys of the first row (in file order). JSON numbers map to INTEGER/DOUBLE PRECISION, booleans to BOOLEAN, and `YYYY-MM-DD` / `YYYY-MM-DD HH:MM:SS` strings to DATE/TIMESTAMP.
 
 ## `firebird_describe_file`
 
@@ -149,8 +175,8 @@ Describes a data file's schema without loading its data: column names, Arrow typ
 
 **Arguments:**
 - `path` (required): Full path to the file to describe
-- `format` (optional): File format — `parquet` (default), `ipc`, `csv`, or `dbf`. For CSV, shows column names + first 5 sample rows. For DBF, shows column names + DBF types + mapped Firebird types
-- `codepage` (optional): Character encoding — `cp437` (default for DBF), `cp850`, `iso-8859-1`, `windows-1252`, `utf-8` (default for CSV). For DBF, only `cp437` and `cp850` are valid
+- `format` (optional): File format — `parquet` (default), `ipc`, `csv`, `dbf`, or `jsonl` (aliases: `ndjson`, `ldjson`). For CSV/JSONL, shows column names + first 5 sample rows. For DBF, shows column names + DBF types + mapped Firebird types
+- `codepage` (optional): Character encoding — `cp437` (default for DBF), `cp850`, `iso-8859-1`, `windows-1252`, `utf-8` (default for CSV). For DBF, only `cp437` and `cp850` are valid. JSONL is always UTF-8 (codepage ignored)
 
 **Example (describe Parquet file):**
 ```json
@@ -181,6 +207,14 @@ Describes a data file's schema without loading its data: column names, Arrow typ
 {
   "path": "/tmp/employees.dbf",
   "format": "dbf"
+}
+```
+
+**Example (describe JSON Lines file):**
+```json
+{
+  "path": "/tmp/events.jsonl",
+  "format": "jsonl"
 }
 ```
 
@@ -220,9 +254,9 @@ Describes a data file's schema without loading its data: column names, Arrow typ
 | Timestamp | TIMESTAMP |
 | Decimal128(p,s) | NUMERIC(p,s) |
 
-## CSV Type Inference (Import)
+## CSV / JSONL Type Inference (Import)
 
-When importing CSV files, column types are inferred from a sample of the first 100 rows:
+When importing CSV or JSONL files, column types are inferred from a sample of the first 100 rows:
 
 | Sample Values | Inferred Type |
 |---------------|---------------|
@@ -233,7 +267,7 @@ When importing CSV files, column types are inferred from a sample of the first 1
 | All valid timestamps (YYYY-MM-DD HH:MM:SS) | TIMESTAMP |
 | Mixed or unparseable | VARCHAR(255) |
 
-Empty strings are compatible with all types (treated as NULL).
+Empty strings (CSV) and `null` (JSONL) are compatible with all types (treated as NULL).
 
 ## DBF Type Mapping
 
@@ -271,9 +305,10 @@ Empty strings are compatible with all types (treated as NULL).
 
 ## Limitations
 
-- **NUMERIC/DECIMAL → Float64:** Loses exact decimal precision (e.g. `80.005` may become `80.004999...`). The value is preserved but not bit-exact.
+- **NUMERIC/DECIMAL → Float64:** Loses exact decimal precision (e.g. `80.005` may become `80.004999...`). The value is preserved but not bit-exact. In CSV/JSONL export the exact decimal string is preserved instead.
 - **INT128 → Int64:** Lossy conversion (truncated) during export.
-- **Binary data:** Exported as raw bytes, imported as hex strings (Firebird interprets hex strings as BLOB data on insert).
-- **CSV/DBF compression:** Determined by file extension, not the `compression` parameter.
+- **Binary data:** Exported as raw bytes (Parquet/IPC) or base64 strings (JSONL). Imported as hex strings (Firebird interprets hex strings as BLOB data on insert).
+- **CSV/DBF/JSONL compression:** Determined by file extension, not the `compression` parameter.
 - **DBF field names:** Max 10 characters. Export aborts with an error listing offending columns + alias suggestion.
 - **DBF codepage:** CP437 or CP850 only. Characters without a mapping in the DOS code page are replaced with `?` (lossy encoding).
+- **JSONL:** Always UTF-8. Column names come from the keys of the first row, so all rows should share the same key set (missing keys are imported as NULL).
