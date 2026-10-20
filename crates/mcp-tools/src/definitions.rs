@@ -310,14 +310,14 @@ pub fn tool_definitions() -> Vec<Value> {
         ),
         tool(
             "firebird_generate_dev",
-            "Generates development code (entity/struct/interface) for one or more tables. Supports Java (JPA + Lombok), Go (sqlx), Rust (sqlx), TypeScript, Protobuf, OpenAPI, and Lazarus (.lfm forms). Use include_fks=true to generate named FK relations (Java @ManyToOne) or FK comments (Go/Rust/TS). For Lazarus, generates basic forms with TFBDataSet, TDataSource, and DB components (TDBEdit, TDBMemo, TDBDateTimePicker, TDBCheckBox).",
+            "Generates development code (entity/struct/interface) for one or more tables. Supports Java (JPA + Lombok), Go (sqlx), Rust (sqlx), TypeScript, Protobuf, OpenAPI, Python (SQLAlchemy 2.0 + Pydantic v2), and Lazarus (.lfm forms). Use include_fks=true to generate named FK relations (Java @ManyToOne, Python relationship) or FK comments (Go/Rust/TS). For Lazarus, generates basic forms with TFBDataSet, TDataSource, and DB components (TDBEdit, TDBMemo, TDBDateTimePicker, TDBCheckBox). For Python, generates a SQLAlchemy model + Pydantic schemas (Base/Create/Update/Read).",
             json!({
                 "type": "object",
                 "properties": {
                     "tables": { "type": "array", "items": { "type": "string" }, "description": "Table names to generate code for (max 20)." },
-                    "language": { "type": "string", "enum": ["java", "go", "rust", "typescript", "protobuf", "openapi", "lazarus"], "description": "Target language. Use 'lazarus' to generate .lfm form files." },
+                    "language": { "type": "string", "enum": ["java", "go", "rust", "typescript", "protobuf", "openapi", "python", "lazarus"], "description": "Target language. Use 'lazarus' to generate .lfm form files. Use 'python' to generate SQLAlchemy 2.0 models + Pydantic v2 schemas." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
-                    "include_fks": { "type": "boolean", "description": "If true, generates named FK relations (Java @ManyToOne) or FK comments (Go/Rust/TS). Defaults to false." },
+                    "include_fks": { "type": "boolean", "description": "If true, generates named FK relations (Java @ManyToOne, Python relationship) or FK comments (Go/Rust/TS). Defaults to false." },
                     "outputDirPath": { "type": "string", "description": "Directory path where generated files will be saved. If omitted, uses config.storage.dir or ~/.firebird-mcp/output/ as fallback." }
                 },
                 "required": ["tables", "language"]
@@ -325,12 +325,12 @@ pub fn tool_definitions() -> Vec<Value> {
         ),
         tool(
             "firebird_generate_view_dto",
-            "Generates DTOs/records for one or more views. Uses resolved metadata from the view (executes SELECT FIRST 1 * FROM view) to get accurate column types. Generated code is read-only (no entity annotations, no FKs). Supports Java (Lombok @Data), Go (sqlx tags), Rust (FromRow), TypeScript (interface), Protobuf, OpenAPI, and Lazarus (.lfm forms).",
+            "Generates DTOs/records for one or more views. Uses resolved metadata from the view (executes SELECT FIRST 1 * FROM view) to get accurate column types. Generated code is read-only (no entity annotations, no FKs). Supports Java (Lombok @Data), Go (sqlx tags), Rust (FromRow), TypeScript (interface), Protobuf, OpenAPI, Python (SQLAlchemy + Pydantic), and Lazarus (.lfm forms).",
             json!({
                 "type": "object",
                 "properties": {
                     "views": { "type": "array", "items": { "type": "string" }, "description": "View names to generate DTOs for (max 20)." },
-                    "language": { "type": "string", "enum": ["java", "go", "rust", "typescript", "protobuf", "openapi", "lazarus"], "description": "Target language. Use 'lazarus' to generate .lfm form files." },
+                    "language": { "type": "string", "enum": ["java", "go", "rust", "typescript", "protobuf", "openapi", "python", "lazarus"], "description": "Target language. Use 'lazarus' to generate .lfm form files. Use 'python' to generate SQLAlchemy + Pydantic DTOs." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
                     "outputDirPath": { "type": "string", "description": "Directory path where generated files will be saved. If omitted, uses config.storage.dir or ~/.firebird-mcp/output/ as fallback." }
                 },
@@ -436,7 +436,9 @@ pub fn tool_definitions() -> Vec<Value> {
                     "format": { "type": "string", "enum": ["parquet", "ipc", "csv", "dbf", "jsonl"], "description": "Output format. Default: 'parquet'. IPC = Arrow IPC (Feather v2). DBF = dBASE/FoxPro/Clipper. JSONL = JSON Lines (one JSON object per line; also accepts 'ndjson' or 'ldjson')." },
                     "compression": { "type": "string", "enum": ["snappy", "zstd", "lz4", "gzip", "none"], "description": "Compression codec. Parquet: 'snappy' (default), 'zstd', 'lz4', 'none'. IPC: 'zstd' (default), 'lz4', 'none'. CSV/DBF/JSONL: determined by file extension (.csv, .csv.zst, .csv.gz, .csv.lz4, .dbf, .dbf.zst, .dbf.gz, .dbf.lz4, .jsonl, .jsonl.zst, .jsonl.gz, .jsonl.lz4) — this param is validated against the extension." },
                     "codepage": { "type": "string", "enum": ["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"], "description": "Character encoding. CSV: 'utf-8' (default), 'iso-8859-1', 'windows-1252', 'cp437', 'cp850'. DBF: 'cp437' (default), 'cp850' — only single-byte DOS codepages are valid. JSONL: always UTF-8 (codepage ignored)." },
-                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
+                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
+                    "on_success_event": { "type": "string", "description": "Optional. If set (non-empty), a POST_EVENT with this text is fired when the export succeeds." },
+                    "on_fail_event": { "type": "string", "description": "Optional. If set (non-empty), a POST_EVENT with this text is fired when the export fails." }
                 },
                 "required": ["source", "output_path"]
             }),
@@ -453,7 +455,9 @@ pub fn tool_definitions() -> Vec<Value> {
                     "format": { "type": "string", "enum": ["parquet", "ipc", "csv", "dbf", "jsonl"], "description": "Input format. Default: 'parquet'. IPC = Arrow IPC (Feather v2), supports LZ4 and ZSTD compression. For CSV, column types are inferred from sample data. For DBF, types come from the file header. For JSONL, types are inferred from the first 100 rows (also accepts 'ndjson' or 'ldjson')." },
                     "ignore_columns": { "type": "array", "items": { "type": "string" }, "description": "Optional list of file column names to skip (case-insensitive). Excluded from DDL in create mode; excluded from INSERT in append mode." },
                     "codepage": { "type": "string", "enum": ["cp437", "cp850", "iso-8859-1", "windows-1252", "utf-8"], "description": "Character encoding. CSV: 'utf-8' (default), 'iso-8859-1', 'windows-1252', 'cp437', 'cp850'. DBF: 'cp437' (default), 'cp850' — only single-byte DOS codepages are valid. JSONL: always UTF-8 (codepage ignored)." },
-                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
+                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
+                    "on_success_event": { "type": "string", "description": "Optional. If set (non-empty), a POST_EVENT with this text is fired when the import succeeds." },
+                    "on_fail_event": { "type": "string", "description": "Optional. If set (non-empty), a POST_EVENT with this text is fired when the import fails." }
                 },
                 "required": ["input_path", "table", "mode"]
             }),

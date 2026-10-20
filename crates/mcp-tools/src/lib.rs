@@ -43,6 +43,7 @@ pub fn build_time() -> &'static str {
 pub mod common;
 pub mod ddl_tools;
 pub mod definitions;
+pub mod events;
 pub mod generator_tools;
 pub mod introspection_tools;
 pub mod migration_tools;
@@ -53,6 +54,7 @@ pub mod view_dto_tools;
 
 pub use ddl_tools::*;
 pub use definitions::*;
+pub use events::*;
 pub use generator_tools::*;
 pub use introspection_tools::*;
 pub use migration_tools::*;

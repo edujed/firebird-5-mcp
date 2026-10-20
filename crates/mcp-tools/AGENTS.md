@@ -16,17 +16,18 @@
 | File | Lines | Role |
 |---|---|---|
 | `Cargo.toml` | 15 | Package `firebird-5-mcp-tools`; deps: `firebird-5-mcp-core`, `firebird-5-mcp-types`, `firebird-5-mcp-migration`, `serde_json`, `chrono` |
-| `src/lib.rs` | 160 | `ToolResult`, `dispatch()`, `build_time()`, re-exports |
+| `src/lib.rs` | 162 | `ToolResult`, `dispatch()`, `build_time()`, re-exports |
 | `src/common.rs` | 199 | Shared helpers (arg parsing, client, Markdown, file save) |
-| `src/definitions.rs` | 475 | JSON input schemas for `tools/list` |
+| `src/definitions.rs` | 479 | JSON input schemas for `tools/list` |
+| `src/events.rs` | 209 | POST_EVENT support — `post_event()` (executes `POST_EVENT` SQL + appends JSON line to `{base}/events.jsonl`), `valid_event_name()`, `build_event()` |
 | `src/query_tools.rs` | 221 | SQL execution tools |
 | `src/schema_tools.rs` | 948 | Schema inspection tools (largest file) |
 | `src/stats_tools.rs` | 233 | MON$ statistics tools |
 | `src/introspection_tools.rs` | 270 | RDB$ introspection tools |
-| `src/generator_tools.rs` | 173 | `firebird_generate_dev` handler |
+| `src/generator_tools.rs` | 195 | `firebird_generate_dev` handler (Python emits `__init__.py`) |
 | `src/view_dto_tools.rs` | 78 | `firebird_generate_view_dto` handler |
 | `src/ddl_tools.rs` | 229 | DDL create/alter/drop tools |
-| `src/migration_tools.rs` | 310 | Export/import/describe handlers (format-agnostic: Parquet, IPC, CSV, DBF + compression + codepage) |
+| `src/migration_tools.rs` | 390 | Export/import/describe handlers (format-agnostic: Parquet, IPC, CSV, DBF, JSONL + compression + codepage + POST_EVENT) |
 
 ## `src/lib.rs`
 
@@ -35,9 +36,19 @@
 | `struct ToolResult` | 67–70 | `{ text: String, structured: Option<Value> }` — text always present, structured optional |
 | `ToolResult::text` / `with_structured` | 73–85 | Constructors |
 | `wrap_text()` | 90–92 | Adapts `Result<String,String>` handlers to `Result<ToolResult,String>` |
-| `dispatch()` | 95–102 | Logs the call, delegates to `dispatch_inner` |
-| `dispatch_inner()` | 106–159 | `match` on tool name → handler. **This is the tool registry.** Groups: query, schema, stats, introspection, generators, DDL, migration |
+| `dispatch()` | 97–104 | Logs the call, delegates to `dispatch_inner` |
+| `dispatch_inner()` | 108–161 | `match` on tool name → handler. **This is the tool registry.** Groups: query, schema, stats, introspection, generators, DDL, migration |
 | `build_time()` | 37–41 | Compile-time build timestamp via `OnceLock` + `chrono` (single source of truth, used by both binaries) |
+
+## `src/events.rs`
+
+| Function | Lines | Summary |
+|---|---|---|
+| `events_file()` | 22–24 | Path to `{base}/events.jsonl` |
+| `valid_event_name()` | 28–30 | Returns `Some(trimmed)` if the event name is present and non-empty after trim, `None` otherwise |
+| `build_event()` | 38–64 | Builds the structured event payload: `{event, tool, success, timestamp, database?, duration_ms?, detail?, error?}` |
+| `post_event()` | 78–101 | Emits a POST_EVENT: (1) executes `POST_EVENT '<name>'` SQL on the database (notifies Firebird event manager), (2) appends a JSON line to `events.jsonl`, (3) logs via `mlog!`. Never fails the tool call — SQL/I/O errors are logged and dropped |
+| `append_event_line()` | 105–118 | Appends a JSON line to the events file, creating the base dir if needed |
 
 ## `src/common.rs`
 
@@ -111,13 +122,13 @@
 
 | Function | Lines | Summary |
 |---|---|---|
-| `handle_generate_dev` | 14–173 | Generates dev code for up to 20 tables (java, go, rust, typescript, protobuf, openapi, graphql, lazarus, svelte). Special paths: Lazarus → `.lfm` forms; Svelte → Page + Form components. Rest goes through `generator::generate` + `save_or_inline` |
+| `handle_generate_dev` | 14–195 | Generates dev code for up to 20 tables (java, go, rust, typescript, protobuf, openapi, graphql, python, lazarus, svelte). Special paths: Lazarus → `.lfm` forms; Svelte → Page + Form components; Python → `__init__.py` with cross-module imports. Rest goes through `generator::generate` + `save_or_inline` |
 
 ## `src/view_dto_tools.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
-| `handle_generate_view_dto` | 12–78 | Generates read-only DTOs for up to 20 views (same languages minus lazarus/svelte); uses resolved view metadata |
+| `handle_generate_view_dto` | 12–78 | Generates read-only DTOs for up to 20 views (java, go, rust, typescript, protobuf, openapi, graphql, python); uses resolved view metadata |
 
 ## `src/ddl_tools.rs`
 
@@ -136,10 +147,11 @@
 
 | Function | Lines | Summary |
 |---|---|---|
-| `handle_export` | 12–108 | Exports table/view/SQL to data file. Args: `source`, `output_path`, optional `format` (default "parquet": `parquet`/`ipc`/`csv`/`dbf`), optional `compression` (validated per format: Parquet → snappy/zstd/lz4/none; IPC → zstd/lz4/none; CSV/DBF → zstd/gzip/lz4/none, but extension takes precedence), optional `codepage` (DBF → cp437/cp850; CSV → cp437/cp850/iso-8859-1/windows-1252/utf-8), `database`. Returns structured `{path, rows, columns, format, compression}` |
-| `handle_import` | 111–186 | Imports data file into Firebird table. Args: `input_path`, `table`, `mode` (create/append), optional `format` (default "parquet"), `ignore_columns` (array), optional `codepage` (same validation as export), `database`. Returns structured `{table, rows, columns, mode, format, ignored_columns}` |
-| `handle_describe_file` | 189–301 | Describes a file's schema without loading data. Args: `path`, optional `format` (default "parquet"), optional `codepage`. Returns Markdown (Parquet/IPC/DBF: types table; CSV: columns + 5 sample rows) + structured `{path, format, rows, columns, arrow_types, firebird_types, sample_rows}`. **No DB connection needed** |
-| `default_compression` | 304–310 | Returns default codec per format: Parquet → snappy, IPC → zstd, CSV/DBF → none |
+| `handle_export` | 12–127 | Exports table/view/SQL to data file. Args: `source`, `output_path`, optional `format` (default "parquet": `parquet`/`ipc`/`csv`/`dbf`/`jsonl`, aliases `ndjson`/`ldjson` → `jsonl`), optional `compression` (validated per format: Parquet → snappy/zstd/lz4/none; IPC → zstd/lz4/none; CSV/DBF/JSONL → zstd/gzip/lz4/none, but extension takes precedence), optional `codepage` (DBF → cp437/cp850; CSV → cp437/cp850/iso-8859-1/windows-1252/utf-8; JSONL always UTF-8, codepage rejected), `database`, optional `on_success_event` / `on_fail_event` (POST_EVENT). Returns structured `{path, rows, columns, format, compression}` |
+| `handle_import` | 130–215 | Imports data file into Firebird table. Args: `input_path`, `table`, `mode` (create/append), optional `format` (default "parquet"), `ignore_columns` (array), optional `codepage` (same validation as export), `database`, optional `on_success_event` / `on_fail_event` (POST_EVENT). Returns structured `{table, rows, columns, mode, format, ignored_columns}` |
+| `handle_describe_file` | 218–330 | Describes a file's schema without loading data. Args: `path`, optional `format` (default "parquet"), optional `codepage`. Returns Markdown (Parquet/IPC/DBF: types table; CSV/JSONL: columns + inferred types + 5 sample rows) + structured `{path, format, rows, columns, arrow_types, firebird_types, sample_rows}`. **No DB connection needed** |
+| `default_compression` | 333–339 | Returns default codec per format: Parquet → snappy, IPC → zstd, CSV/DBF/JSONL → none |
+| `normalise_format` | 342–358 | Normalises a format string to its canonical name. Accepts aliases: `ndjson`/`ldjson` → `jsonl`, `dbase` → `dbf` |
 
 ## Conventions
 
@@ -152,5 +164,12 @@
 - File output (generators) resolves dir via `storage_dir` and writes via
   `save_or_inline` (core `storage` module).
 - Logging goes through `mlog!` (core) to `{base}/logs/`.
+- **POST_EVENT:** tools that modify data accept optional `on_success_event` /
+  `on_fail_event` string params. When set (non-empty after trim), two things
+  happen: (1) `POST_EVENT '<name>'` is executed on the database (notifies the
+  Firebird event manager — clients registered via `SET EVENT` receive the
+  notification on commit), and (2) a structured JSON line is appended to
+  `{base}/events.jsonl` + logged via `mlog!`. Emission never fails the tool
+  call. See `src/events.rs` and `mcp-core::query::post_event`.
 - **No transport protocol code** — this crate is consumed by `mcp-stdio-bin`
   (stdio) and will be consumed by `mcp-http-bin` (HTTP/SSE).

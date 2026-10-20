@@ -11,6 +11,7 @@ mod graphql;
 mod java;
 mod openapi;
 mod protobuf;
+mod python;
 mod rust;
 mod typescript;
 
@@ -23,6 +24,7 @@ pub use graphql::GraphqlTarget;
 pub use java::JavaTarget;
 pub use openapi::OpenApiTarget;
 pub use protobuf::ProtobufTarget;
+pub use python::PythonTarget;
 pub use rust::RustTarget;
 pub use typescript::TypeScriptTarget;
 

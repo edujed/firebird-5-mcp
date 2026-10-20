@@ -36,12 +36,12 @@ pub fn handle_generate_view_dto(cfg: &Config, args: &Value) -> Result<ToolResult
     let language_str = arg_str(args, "language")
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
-            "The 'language' argument is required (java, go, rust, typescript, protobuf, openapi)."
+            "The 'language' argument is required (java, go, rust, typescript, protobuf, openapi, python)."
                 .to_string()
         })?;
     let language = Language::parse(&language_str).ok_or_else(|| {
         format!(
-            "Unsupported language: {language_str}. Use: java, go, rust, typescript, protobuf, openapi, graphql."
+            "Unsupported language: {language_str}. Use: java, go, rust, typescript, protobuf, openapi, graphql, python."
         )
     })?;
 
@@ -72,6 +72,7 @@ pub fn handle_generate_view_dto(cfg: &Config, args: &Value) -> Result<ToolResult
         Language::Protobuf => "protobuf",
         Language::OpenApi => "openapi",
         Language::Graphql => "graphql",
+        Language::Python => "python",
         _ => "unknown",
     };
     save_or_inline(cfg, args, &db_name, format, &files)

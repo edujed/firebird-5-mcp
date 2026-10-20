@@ -72,19 +72,12 @@ fn value_to_json(v: &Value) -> serde_json::Value {
     match v {
         Value::Null => serde_json::Value::Null,
         Value::Int(n) => serde_json::Value::Number(serde_json::Number::from(*n)),
-        Value::Text(s) => {
-            // NUMERIC/DECIMAL arrives as exact decimal text — keep as string
-            // to preserve precision (e.g. "12345.6789").
-            if let Ok(n) = s.parse::<i64>() {
-                serde_json::Value::Number(n.into())
-            } else if let Ok(f) = s.parse::<f64>() {
-                serde_json::Number::from_f64(f)
-                    .map(serde_json::Value::Number)
-                    .unwrap_or(serde_json::Value::String(s.clone()))
-            } else {
-                serde_json::Value::String(s.clone())
-            }
-        }
+        // Text is always a JSON string. NUMERIC/DECIMAL arrives as exact
+        // decimal text (vendor patch) and must stay a string to preserve
+        // precision (e.g. "80.00"); a VARCHAR containing "123" must not
+        // silently become the JSON number 123. On import, Firebird coerces
+        // text parameters to the target column type.
+        Value::Text(s) => serde_json::Value::String(s.clone()),
         Value::Bool(b) => serde_json::Value::Bool(*b),
         Value::Date(d) => serde_json::Value::String(d.format("%Y-%m-%d").to_string()),
         Value::Time(t) => serde_json::Value::String(t.format("%H:%M:%S").to_string()),

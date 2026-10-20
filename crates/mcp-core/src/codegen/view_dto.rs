@@ -15,8 +15,8 @@ use rsfbclient::FbError;
 use super::fbtype::FbType;
 use super::generator::{GenOptions, Language};
 use super::targets::{
-    GeneratedFile, GoTarget, GraphqlTarget, JavaTarget, OpenApiTarget, ProtobufTarget, RustTarget,
-    Target, TypeScriptTarget,
+    GeneratedFile, GoTarget, GraphqlTarget, JavaTarget, OpenApiTarget, ProtobufTarget,
+    PythonTarget, RustTarget, Target, TypeScriptTarget,
 };
 use super::ui::{lazarus, svelte};
 use crate::client::FirebirdClient;
@@ -135,6 +135,10 @@ fn generate_single_view_dto(
         Language::Graphql => {
             let schema = view_to_schema(view, fields);
             GraphqlTarget.generate(&schema, &[], opts)
+        }
+        Language::Python => {
+            let schema = view_to_schema(view, fields);
+            PythonTarget.generate(&schema, &[], opts)
         }
         Language::Lazarus => {
             let lazarus_fields: Vec<lazarus::LazarusField> =

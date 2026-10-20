@@ -38,12 +38,12 @@ pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<ToolResult, Str
     let language_str = arg_str(args, "language")
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
-            "The 'language' argument is required (java, go, rust, typescript, protobuf, openapi, lazarus, svelte)."
+            "The 'language' argument is required (java, go, rust, typescript, protobuf, openapi, python, lazarus, svelte)."
                 .to_string()
         })?;
     let language = Language::parse(&language_str).ok_or_else(|| {
         format!(
-            "Unsupported language: {language_str}. Use: java, go, rust, typescript, protobuf, openapi, graphql, lazarus, svelte."
+            "Unsupported language: {language_str}. Use: java, go, rust, typescript, protobuf, openapi, graphql, python, lazarus, svelte."
         )
     })?;
 
@@ -167,6 +167,7 @@ pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<ToolResult, Str
         Language::Protobuf => "protobuf",
         Language::OpenApi => "openapi",
         Language::Graphql => "graphql",
+        Language::Python => "python",
         _ => "unknown",
     };
     save_or_inline(cfg, args, &db_name, format, &files)

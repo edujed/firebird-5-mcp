@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.0] — WIP
 
 ### Added
+- **JSON Lines (JSONL/NDJSON/LDJSON) export/import/describe** — new `jsonl` format
+  for `firebird_export`, `firebird_import`, and `firebird_describe_file`.
+  Each row is a single JSON object on its own line. NULL → `null`, NUMERIC/DECIMAL →
+  string (exact decimal), TIMESTAMP → ISO 8601, BLOB → base64. Compression is
+  transparent via file extension (`.jsonl`, `.jsonl.zst`, `.jsonl.gz`, `.jsonl.lz4`).
+  Aliases: `ndjson` and `ldjson` are accepted as format strings. Import infers
+  column types from the first 100 rows (INTEGER, DOUBLE PRECISION, BOOLEAN, DATE,
+  TIMESTAMP, or VARCHAR(255) fallback). No new dependencies — uses `serde_json`.
+  Text values are always exported as JSON strings (a VARCHAR containing `"123"`
+  stays a string; NUMERIC/DECIMAL stays exact).
+- **POST_EVENT support** — `firebird_export` and `firebird_import` now accept
+  two optional string parameters: `on_success_event` and `on_fail_event`.
+  When set (non-empty after trim), the handler executes `POST_EVENT '<name>'`
+  on the database (notifying the Firebird event manager — clients registered
+  via `SET EVENT` receive the notification on commit) and appends a structured
+  JSON line to `~/.firebird-mcp/events.jsonl`. The event payload includes
+  `{event, tool, success, timestamp, database, duration_ms, detail?, error?}`.
+  Event emission never fails the tool call — SQL and I/O errors are logged
+  and dropped. The `POST_EVENT` SQL execution lives in
+  `mcp-core::query::post_event()`; the orchestration (validation, JSON log,
+  mlog) lives in `mcp-tools::events::post_event()`.
+- **Python (Pydantic + SQLAlchemy) codegen** — `firebird_generate_dev` and
+  `firebird_generate_view_dto` now support `language: "python"`. Generates
+  SQLAlchemy 2.0 models + Pydantic v2 schemas (Base/Create/Update/Read).
+  `firebird_generate_dev` also emits `__init__.py` with cross-module imports.
 
 ### Changed
 - **README cross-references** — `README.md` and `README-PTBR.md` now link to

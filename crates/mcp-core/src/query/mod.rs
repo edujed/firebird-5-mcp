@@ -187,6 +187,32 @@ pub fn exec(client: &mut FirebirdClient, sql: &str) -> Result<usize, FbError> {
     }
 }
 
+/// Posts a Firebird event to the event manager.
+///
+/// Executes `POST_EVENT '<event_name>'` within an explicit read-write
+/// transaction and commits. When the commit completes, the event manager
+/// notifies all clients registered for that event name (via `SET EVENT`).
+///
+/// The event name is limited to 127 bytes by Firebird. Single quotes in
+/// the name are escaped by doubling (standard SQL string literal escaping).
+///
+pub fn post_event(client: &mut FirebirdClient, event_name: &str) -> Result<(), FbError> {
+    let escaped = event_name.replace('"', "''");
+    let sql = format!("POST_EVENT '{escaped}'");
+    client.begin_rw_transaction()?;
+    let result = client.conn.execute(&sql, ());
+    match result {
+        Ok(_) => {
+            client.conn.commit()?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = client.conn.rollback();
+            Err(e)
+        }
+    }
+}
+
 /// Runs a statement, trying SELECT first and falling back to DML/DDL.
 /// Returns the query result if rows were returned, or a success message.
 pub fn execute(

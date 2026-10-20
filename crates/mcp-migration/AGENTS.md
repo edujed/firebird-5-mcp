@@ -9,12 +9,23 @@
 > and `firebird_describe_file` (file schema without loading data).
 > The public API is format-agnostic (`format` param); supports **Parquet**
 > (Snappy default), **Arrow IPC / Feather v2** (ZSTD default), **CSV**
-> (via `csv` crate v1.3), and **DBF** (dBASE/FoxPro/Clipper, via `dbase` crate
-> v0.8). CSV import infers column types from a sample of the first 100 rows.
-> DBF import uses the file header schema (no inference). Compression is
+> (via `csv` crate v1.3), **DBF** (dBASE/FoxPro/Clipper, via `dbase` crate
+> v0.8), and **JSON Lines** (JSONL/NDJSON/LDJSON, via `serde_json`).
+> CSV and JSONL import infer column types from a sample of the first 100
+> rows. DBF import uses the file header schema (no inference). Compression is
 > configurable per format and auto-detected on import (from file extension
-> for CSV/DBF, from file header for Parquet/IPC). Codepage is configurable
-> for CSV and DBF (DBF restricted to CP437/CP850).
+> for CSV/DBF/JSONL, from file header for Parquet/IPC). Codepage is
+> configurable for CSV and DBF (DBF restricted to CP437/CP850). JSONL is
+> always UTF-8 (codepage ignored).
+>
+> **POST_EVENT:** `firebird_export` and `firebird_import` accept optional
+> `on_success_event` / `on_fail_event` string params. When set (non-empty
+> after trim), the handler (in `mcp-tools`) executes `POST_EVENT '<name>'`
+> on the database (notifying the Firebird event manager — clients registered
+> via `SET EVENT` receive the notification on commit) and appends a structured
+> JSON line to `{base}/events.jsonl`. This crate does **not** handle events
+> directly — the event logic lives in `mcp-tools/src/events.rs` and
+> `mcp-core/src/query/mod.rs::post_event()`.
 
 ## File map
 
@@ -32,8 +43,9 @@
 | `src/import.rs` | 252 | Import engine: Parquet/IPC → Firebird table (shared logic) |
 | `src/csv.rs` | 213 | CSV import + type inference from sample |
 | `src/dbf.rs` | 375 | DBF import, export, describe (dBASE/FoxPro/Clipper) |
-| `src/jsonl.rs` | 310 | JSON Lines (JSONL/NDJSON/LDJSON) export, import + type inference, describe |
-| `src/describe.rs` | 166 | Describe: file schema (Parquet/IPC footer / CSV header / DBF header / JSONL sample) |
+| `src/jsonl.rs` | 437 | JSON Lines (JSONL/NDJSON/LDJSON) export, import + type inference, describe |
+| `src/describe.rs` | 164 | Describe: file schema (Parquet/IPC footer / CSV header / DBF header / JSONL sample) |
+
 
 ## `src/format.rs`
 
@@ -41,7 +53,7 @@
 |---|---|
 | `Format` enum | `Parquet` / `Ipc` / `Csv` / `Dbase` / `Jsonl` + `parse()`, `as_str()`, `default_compression()`, `valid_compressions()`. `parse()` accepts aliases: `ndjson`/`ldjson` → `Jsonl`, `dbase` → `Dbase` |
 | `Compression` enum | `Snappy` / `Zstd` / `Lz4` / `Gzip` / `None` + `parse()`, `as_str()` |
-| `CodePage` enum | `Cp437` / `Cp850` / `Iso88591` / `Win1252` / `Utf8` + `parse()`, `as_str()`, `default_for()`, `valid_for()`, `validate_for()`, `encode()`, `decode()` |
+| `CodePage` enum | `Cp437` / `Cp850` / `Iso88591` / `Win1252` / `Utf8` + `parse()`, `as_str()`, `default_for()`, `is_text_based()`, `valid_for()`, `validate_for()`, `encode()`, `decode()` |
 | `file_compression_from_path()` | Detects codec from file extension (`.zst`, `.gz`, `.lz4`, plain). Shared by CSV, DBF, and JSONL |
 
 **Codepage rules:**
@@ -134,6 +146,19 @@
 | `is_integer/float/boolean/date/timestamp()` | Type check predicates (empty string = compatible with all) |
 | `csv_value_to_json()` | Empty string → `Null`, otherwise → `String` |
 
+## `src/jsonl.rs`
+
+| Function | Summary |
+|---|---|
+| `write_jsonl()` | **JSONL export.** One JSON object per line via `TextWriter` (compression from extension). `Value::Text` → JSON string (NUMERIC/DECIMAL exact decimal preserved), `Value::Binary` → base64 string, temporal → ISO string, NULL → `null` |
+| `value_to_json()` | Firebird `Value` → `serde_json::Value`. Text is always a JSON string (never coerced to number) — a VARCHAR containing `"123"` stays a string, NUMERIC `"80.00"` stays exact |
+| `base64_encode()` | Minimal hand-rolled base64 encoder (no new dependency) |
+| `import_jsonl()` | Reads JSONL via `TextReader` (compression-aware). Column names from first row's keys (file order). Infers types from first 100 rows. Creates/verifies table, inserts in batches of 500 |
+| `infer_jsonl_type()` | Infers Firebird DDL type from sample JSON values: INTEGER → DOUBLE PRECISION → BOOLEAN → DATE → TIMESTAMP → VARCHAR(255) |
+| `is_date_str()` / `is_timestamp_str()` | Format predicates (`YYYY-MM-DD`, `YYYY-MM-DD HH:MM:SS`) |
+| `json_value_to_string()` | JSON value → display string (for `create_table_from_types` NOT NULL detection) |
+| `describe_jsonl()` | Column names from first row + inferred types (first 100 rows) + first 5 sample rows + total row count. No DB connection needed |
+
 ## `src/dbf.rs`
 
 | Function | Summary |
@@ -162,16 +187,22 @@
 | Item | Summary |
 |---|---|
 | `FileDescription` | Struct: `path`, `format`, `rows` (i64), `columns`, `arrow_types`, `firebird_types`, `sample_rows` (empty for Parquet/IPC/DBF) |
-| `describe_file()` | Format dispatch: "parquet" → `describe_parquet`; "ipc" → `describe_ipc`; "csv" → `describe_csv`; "dbf" → `describe_dbase` |
+| `describe_file()` | Format dispatch: "parquet" → `describe_parquet`; "ipc" → `describe_ipc`; "csv" → `describe_csv`; "dbf" → `describe_dbase`; "jsonl" → `describe_jsonl` |
 | `describe_parquet()` | `ParquetRecordBatchReaderBuilder::try_new` → schema + row count from footer. No data loaded |
 | `describe_ipc()` | `IpcFileReader::try_new(file, None)` → schema + row count (sums batch rows). No data loaded |
 | `describe_csv()` | `TextReader` (compression-aware) + codepage decode → header + first 5 sample rows + total row count |
+| `describe_jsonl()` | `TextReader` (compression-aware) → column names from first row's keys + inferred types (first 100 rows) + first 5 sample rows + total row count |
 | `schema_to_description()` | Builds (columns, arrow_types, firebird_types) triple from an Arrow schema |
 
 ## Conventions
 
 - Error type is `String` (not `FbError`) — this crate is a leaf that formats
   errors for the MCP layer.
+- **POST_EVENT is handled by `mcp-tools`, not this crate.** The `export()`
+  and `import()` functions here are pure data-movement engines. The event
+  firing (SQL `POST_EVENT` + JSON log) is orchestrated by the handlers in
+  `mcp-tools/src/migration_tools.rs` via `mcp-tools/src/events.rs::post_event()`.
+  This keeps the migration crate transport-agnostic and reusable.
 - **Unified export engine:** table, view, and raw SQL all go through the same
   path — `normalise_source()` → `query_unbounded()` → `column_meta_to_arrow()`
   → `build_record_batch()` → `write_parquet()` / `write_ipc()` / `write_csv()` /
@@ -196,7 +227,7 @@
   path for Parquet and IPC imports (keep_indices, filtered schema, create/append,
   insert_batch). `import_parquet` and `import_ipc` are thin wrappers that read
   the file and delegate. `insert_rows_in_batches()` and `keep_column_indices()`
-  are shared helpers used by all import paths (Parquet, IPC, CSV, DBF).
+  are shared helpers used by all import paths (Parquet, IPC, CSV, DBF, JSONL).
 - **NUMERIC/DECIMAL → Float64:** the vendor patch renders NUMERIC/DECIMAL as
   exact decimal text (e.g. `"80.00"`), but the `raw_type` stays `SQL_INT64` (580),
   so `type_name` alone cannot distinguish a NUMERIC from a real BIGINT. The query
@@ -206,7 +237,14 @@
   Firebird import round-trip. Trade-off: loses exact decimal precision (e.g.
   `80.005` may become `80.004999...`), but the value is no longer zeroed out.
   For exact precision, the driver would need to propagate scale to `ColumnMeta`
-  and the export would use `Decimal128`.
+  and the export would use `Decimal128`. **CSV/JSONL export bypasses this** —
+  they render the exact decimal text directly (NUMERIC stays `"80.00"`).
+- **JSONL:** always UTF-8 (codepage ignored). `Value::Text` is exported as a
+  JSON string, never coerced to a JSON number — a VARCHAR containing `"123"`
+  must stay a string, and NUMERIC/DECIMAL text must stay exact. On import,
+  Firebird coerces text parameters to the target column type. Column names
+  come from the first row's keys in file order (`serde_json::Map` preserves
+  key order). Missing keys in later rows are imported as NULL.
 - `ArrayRef` is `Arc<dyn Array>` in Arrow 55 — use `Arc::new(arr) as ArrayRef`
   to construct, not `Box::new`.
 - `RecordBatch::try_new` takes `Arc<Schema>` (not `&Schema`).

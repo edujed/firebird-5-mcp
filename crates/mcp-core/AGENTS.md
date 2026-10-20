@@ -104,7 +104,8 @@ Re-exports `Value`, `ColumnMeta`, `QueryResult` from `firebird-5-mcp-types`.
 | `sql_type_name()` | 111–135 | Raw ISC_* code → type name string |
 | `row_value()` | 138–150 | Raw cell → `Value` enum |
 | `exec()` | 160–179 | DML/DDL in RW transaction, commit/rollback |
-| `execute()` | 183–199 | SELECT-first, DML/DDL fallback |
+| `post_event()` | 190–214 | Executes `POST_EVENT '<name>'` in RW transaction, commit/rollback. Notifies the Firebird event manager; clients registered via `SET EVENT` receive the notification on commit. Event name limited to 127 bytes; single quotes escaped by doubling |
+| `execute()` | 217–234 | SELECT-first, DML/DDL fallback |
 
 ## `src/query/batch.rs`
 
@@ -303,7 +304,7 @@ Re-exports (L30–43): `FbType`, `GenOptions`, `Language`, `generate`, `to_camel
 
 | Item | Lines | Summary |
 |---|---|---|
-| `enum Language` | 17–27 | `Java`, `Go`, `Rust`, `TypeScript`, `Protobuf`, `OpenApi`, `Graphql`, `Lazarus`, `Svelte` |
+| `enum Language` | 17–28 | `Java`, `Go`, `Rust`, `TypeScript`, `Protobuf`, `OpenApi`, `Graphql`, `Python`, `Lazarus`, `Svelte` |
 | `Language::parse` | 30–43 | String → `Language` |
 | `struct GenOptions` | 48–63 | `{ language, include_fks, include_comments, include_examples, package, is_view }` |
 | `GenOptions::new` | 67–76 | Constructor |
@@ -394,6 +395,20 @@ Re-exports (L30–43): `FbType`, `GenOptions`, `Language`, `generate`, `to_camel
 | `struct GraphqlTarget` | 13 | GraphQL (schema + resolvers) target |
 | `type_for` | 21–41 | `FbType` → GraphQL type |
 | `generate` | 43+ | Produces 2 files: schema + resolvers |
+
+## `src/codegen/targets/python.rs`
+
+| Item | Lines | Summary |
+|---|---|---|
+| `struct PythonTarget` | 28 | SQLAlchemy 2.0 + Pydantic v2 target |
+| `sa_type()` | 59–90 | `FbType` → SQLAlchemy type expression (`Numeric(10, 2)`, `String(100)`, …) |
+| `pydantic_type()` | 93–113 | `FbType` → Pydantic/Python annotation (`Decimal`, `datetime`, …) |
+| `pk_columns()` | 36–55 | PK columns (constraint → unique-index fallback) |
+| `sa_imports()` | 118–148 | Deduped SQLAlchemy import list |
+| `pydantic_imports()` | 151–156 | Returns `[BaseModel, ConfigDict, Field]` (stdlib types imported separately) |
+| `type_for` | 176–178 | `FbType` → SQLAlchemy type (delegates to `sa_type`) |
+| `generate` | 180–340 | Produces 2 files: `<table>.py` (SQLAlchemy model) + `<table>_schemas.py` (Pydantic Base/Create/Update/Read). FK columns use scalar Python type + `ForeignKey(...)` (not `Mapped[RefClass]`) to avoid cross-module import issues. `__init__.py` is emitted by the tool handler, not here. |
+| tests | 338–640 | 14 unit tests: type mapping, generation, FK emission, BLR default suppression, view mode |
 
 ## `src/codegen/ui/lazarus.rs`
 

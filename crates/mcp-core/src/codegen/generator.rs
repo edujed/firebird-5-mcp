@@ -7,8 +7,8 @@
 //! over [`FbType`](super::FbType).
 
 use super::targets::{
-    GeneratedFile, GoTarget, GraphqlTarget, JavaTarget, OpenApiTarget, ProtobufTarget, RustTarget,
-    Target, TypeScriptTarget,
+    GeneratedFile, GoTarget, GraphqlTarget, JavaTarget, OpenApiTarget, ProtobufTarget,
+    PythonTarget, RustTarget, Target, TypeScriptTarget,
 };
 use crate::schema::{ForeignKeyInfo, TableSchema};
 
@@ -22,6 +22,7 @@ pub enum Language {
     Protobuf,
     OpenApi,
     Graphql,
+    Python,
     Lazarus,
     Svelte,
 }
@@ -36,6 +37,7 @@ impl Language {
             "protobuf" | "proto" => Some(Self::Protobuf),
             "openapi" | "open_api" | "open-api" => Some(Self::OpenApi),
             "graphql" | "gql" => Some(Self::Graphql),
+            "python" | "py" => Some(Self::Python),
             "lazarus" | "delphi" => Some(Self::Lazarus),
             "svelte" => Some(Self::Svelte),
             _ => None,
@@ -100,6 +102,7 @@ pub fn generate(
             Language::Protobuf => ProtobufTarget.generate(schema, &table_fks, opts),
             Language::OpenApi => OpenApiTarget.generate(schema, &table_fks, opts),
             Language::Graphql => GraphqlTarget.generate(schema, &table_fks, opts),
+            Language::Python => PythonTarget.generate(schema, &table_fks, opts),
             Language::Lazarus => {
                 // Lazarus is handled separately in the tool handler (generates .lfm files)
                 vec![GeneratedFile::new(
