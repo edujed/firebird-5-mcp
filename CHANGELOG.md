@@ -52,6 +52,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `firebird_generate_view_dto` now support `language: "python"`. Generates
   SQLAlchemy 2.0 models + Pydantic v2 schemas (Base/Create/Update/Read).
   `firebird_generate_dev` also emits `__init__.py` with cross-module imports.
+- **`firebird_data_quality`** — new tool that runs configurable data quality
+  rules on a single table. Args: `table` (required), `rules` (array, default
+  all: `nulls`/`empty_strings`/`outliers`/`date_range`), `columns` (optional
+  filter), `output_format` (`markdown`/`json`, default `markdown`),
+  `sample_limit` (default 5, max 20), `database`. Rules: **nulls** — NULLs in
+  NOT NULL columns (error); **empty_strings** — empty strings in
+  CHAR/VARCHAR/NVARCHAR columns (warning); **outliers** — IQR-based outliers
+  in numeric columns via `FIRST 1 SKIP` quartiles, bounds [Q1−1.5·IQR,
+  Q3+1.5·IQR] (warning); **date_range** — dates outside [1900-01-01,
+  CURRENT_DATE+1], skips TIME columns (info). Each finding includes the
+  column, severity, count, and sample values. Outliers include extra context
+  (`q1`, `q3`, `iqr`, `lower_bound`, `upper_bound`). Output is Markdown
+  (default) or JSON. No new dependencies — uses existing `schema::describe_table`
+  and `query::query` from `mcp-core`.
+- **`firebird_list_files`** — new tool that lists generated files (codegen,
+  export, metadata) in the storage directory. Args (all optional): `database`
+  (filter by database name), `format` (filter by format, e.g. `java`,
+  `parquet`, `sql`), `max_age_hours` (only files modified within the last N
+  hours), `outputDirPath` (override the storage directory). Returns a Markdown
+  table (file name, size, line count, modification time) and structured content
+  with the full file list, total count, and total size. Works in both stdio and
+  SSE transports — in stdio the client reads files from the local filesystem;
+  in SSE the client downloads them via the `/files` HTTP endpoint. No new
+  dependencies — uses `std::fs` and `chrono` (already in the workspace).
+- **MCP SSE transport** — the binary now supports the MCP HTTP+SSE transport
+  (spec `2024-11-05`) in addition to stdio. Enable with `--sse`:
+  ```bash
+  firebird-5-mcp --sse --port 9000                          # no auth
+  firebird-5-mcp --sse --port 9000 --token s3cret           # with auth
+  firebird-5-mcp --sse --host 0.0.0.0 --port 9000 --token-file /etc/mcp/token
+  ```
+  The SSE transport implements the legacy two-endpoint protocol:
+  - `GET /sse` — opens a Server-Sent Events stream. The first event is
+    `endpoint`, carrying the URL of the message endpoint for this session
+    (`/messages?sessionId=<uuid>`).
+  - `POST /messages?sessionId=<uuid>` — receives a JSON-RPC request, processes
+    it via `ProtocolCore` (in `spawn_blocking` to avoid stalling the async
+    runtime), and delivers the response to the session's SSE stream. Returns
+    `202 Accepted` (the response goes via the stream, not the body).
+
+  Each SSE connection is a **session**: a UUID mapped to a
+  `tokio::sync::broadcast` channel. Sessions inactive for >30 minutes
+  (configurable via `--session-timeout`) are reaped by a background task.
+
+  **Concurrency:** each tool call runs in `spawn_blocking` (tokio thread pool),
+  each opening its own Firebird connection. No global mutex — 20 simultaneous
+  users = 20 independent connections (Firebird MVCC handles this well).
+
+  **Authentication:** optional bearer-token auth (disabled by default). Enable
+  with `--token <token>` or `--token-file <path>` (file takes precedence).
+  Validation uses constant-time comparison to mitigate timing attacks. Token
+  expiration/rotation is delegated to an external auth interface (the
+  `AuthConfig` struct is designed for plugging in a more sophisticated
+  validator later).
+
+  **Protocol core extraction:** the JSON-RPC routing logic (the `match` on
+  `initialize`/`ping`/`tools/list`/`tools/call`) was extracted from
+  `mcp-stdio-bin/src/main.rs` into `mcp-tools/src/protocol.rs` as
+  `ProtocolCore`. This is transport-agnostic and shared between stdio and SSE.
+  The stdio `main.rs` is now a thin transport layer (~75 lines).
+
+  **New dependencies** (in `mcp-stdio-bin` only): `tokio` (async runtime),
+  `axum` (HTTP server), `uuid` (session IDs), `async-stream` (SSE stream
+  bridge). All were already declared in the workspace `Cargo.toml` (provisioned
+  for this feature) — no new workspace-level dependencies.
 
 ### Changed
 - **README cross-references** — `README.md` and `README-PTBR.md` now link to

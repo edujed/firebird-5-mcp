@@ -16,10 +16,11 @@
 | File | Lines | Role |
 |---|---|---|
 | `Cargo.toml` | 15 | Package `firebird-5-mcp-tools`; deps: `firebird-5-mcp-core`, `firebird-5-mcp-types`, `firebird-5-mcp-migration`, `serde_json`, `chrono` |
-| `src/lib.rs` | 179 | `ToolResult`, `dispatch()` (with universal POST_EVENT), `build_time()`, re-exports |
+| `src/lib.rs` | ~200 | `ToolResult`, `dispatch()` (with universal POST_EVENT), `build_time()`, re-exports |
 | `src/common.rs` | 199 | Shared helpers (arg parsing, client, Markdown, file save) |
-| `src/definitions.rs` | 479 | JSON input schemas for `tools/list` |
+| `src/definitions.rs` | ~510 | JSON input schemas for `tools/list` |
 | `src/events.rs` | 353 | Universal POST_EVENT support — `emit_tool_event()` (called from `dispatch()`), `valid_event_name()`, `build_event()`, `resolve_database()`, `append_event_line()` |
+| `src/protocol.rs` | ~150 | `ProtocolCore` — transport-agnostic JSON-RPC routing (extracted from `mcp-stdio-bin`). Holds the shared `RwLock<Option<Config>>` and routes `initialize`/`ping`/`tools/list`/`tools/call`. Thread-safe, shared between stdio and SSE transports |
 | `src/query_tools.rs` | 221 | SQL execution tools |
 | `src/schema_tools.rs` | 948 | Schema inspection tools (largest file) |
 | `src/stats_tools.rs` | 233 | MON$ statistics tools |
@@ -28,6 +29,8 @@
 | `src/view_dto_tools.rs` | 80 | `firebird_generate_view_dto` handler |
 | `src/ddl_tools.rs` | 229 | DDL create/alter/drop tools |
 | `src/migration_tools.rs` | 311 | Export/import/describe handlers (format-agnostic: Parquet, IPC, CSV, DBF, JSONL + compression + codepage). **Pure handlers** — no event code (POST_EVENT is universal in `dispatch()`) |
+| `src/quality_tools.rs` | 688 | `firebird_data_quality` handler — rule-based data quality checks (nulls, empty_strings, outliers, date_range) with Markdown/JSON output |
+| `src/file_tools.rs` | ~280 | `firebird_list_files` handler — lists generated files in the storage directory with optional filters (database, format, max_age_hours). Returns Markdown table + structured content |
 
 ## `src/lib.rs`
 
@@ -37,7 +40,7 @@
 | `ToolResult::text` / `with_structured` | 73–85 | Constructors |
 | `wrap_text()` | 90–92 | Adapts `Result<String,String>` handlers to `Result<ToolResult,String>` |
 | `dispatch()` | 100–125 | Logs the call, times the handler, delegates to `dispatch_inner`, then calls `emit_tool_event()` (universal POST_EVENT) |
-| `dispatch_inner()` | 127–179 | `match` on tool name → handler. **This is the tool registry.** Groups: query, schema, stats, introspection, generators, DDL, migration |
+| `dispatch_inner()` | 127–184 | `match` on tool name → handler. **This is the tool registry.** Groups: query, schema, stats, introspection, generators, DDL, migration, data quality |
 | `build_time()` | 37–41 | Compile-time build timestamp via `OnceLock` + `chrono` (single source of truth, used by both binaries) |
 
 ## `src/events.rs`
@@ -71,7 +74,7 @@
 | Function | Lines | Summary |
 |---|---|---|
 | `tool()` | 6–12 | Builds one `{name, description, inputSchema}` object |
-| `tool_definitions()` | 15–475 | Returns all tool JSON schemas (one `tool(...)` per MCP tool). **Source of truth for tool descriptions/args** — keep in sync with `dispatch_inner` |
+| `tool_definitions()` | 15–495 | Returns all tool JSON schemas (one `tool(...)` per MCP tool). **Source of truth for tool descriptions/args** — keep in sync with `dispatch_inner` |
 
 ## `src/query_tools.rs`
 
@@ -154,6 +157,27 @@
 | `handle_describe_file` | 218–330 | Describes a file's schema without loading data. Args: `path`, optional `format` (default "parquet"), optional `codepage`. Returns Markdown (Parquet/IPC/DBF: types table; CSV/JSONL: columns + inferred types + 5 sample rows) + structured `{path, format, rows, columns, arrow_types, firebird_types, sample_rows}`. **No DB connection needed** |
 | `default_compression` | 333–339 | Returns default codec per format: Parquet → snappy, IPC → zstd, CSV/DBF/JSONL → none |
 | `normalise_format` | 342–358 | Normalises a format string to its canonical name. Accepts aliases: `ndjson`/`ldjson` → `jsonl`, `dbase` → `dbf` |
+
+## `src/quality_tools.rs`
+
+| Function | Lines | Summary |
+|---|---|---|
+| `handle_data_quality` | 38–161 | `firebird_data_quality` handler. Args: `table` (required), `rules` (array, default all: `nulls`/`empty_strings`/`outliers`/`date_range`), `columns` (array, optional filter), `output_format` (`markdown`/`json`, default `markdown`), `sample_limit` (default 5, max 20), `database`. Returns `ToolResult` with structured `{table, rules, total_issues, findings[]}` |
+| `run_nulls` | 168–208 | NULLs in NOT NULL columns (severity: error) |
+| `run_empty_strings` | 211–249 | Empty strings in CHAR/VARCHAR/NVARCHAR columns (severity: warning) |
+| `run_outliers` | 252–378 | IQR-based outliers in numeric columns (severity: warning). Q1/Q3 via `FIRST 1 SKIP`, bounds = [Q1−1.5·IQR, Q3+1.5·IQR]. Extra: `{q1, q3, iqr, lower_bound, upper_bound}` |
+| `run_date_range` | 381–431 | Dates outside [1900-01-01, CURRENT_DATE+1] (severity: info). Skips TIME columns |
+| `query_count` / `query_first_value` / `query_sample_values` | 438–470 | Thin wrappers over `query::query` for COUNT, first value, and sample values |
+| `value_as_f64` | 478–486 | Coerces `Value` to `f64` (Float, Int, Bool, Text parsing) |
+| `format_num` | 489–495 | Formats floats for SQL interpolation (avoids scientific notation) |
+| `format_markdown` | 502–569 | Renders findings as a Markdown report (per-rule sections, tables) |
+
+## `src/protocol.rs`
+
+| Item | Lines | Summary |
+|---|---|---|
+| `ProtocolCore` | ~30–150 | Transport-agnostic protocol core. Holds `RwLock<Option<Config>>` (shared, reloadable). `handle_request(&Value) -> Option<Value>` routes JSON-RPC: `initialize` (returns protocol version + capabilities + serverInfo), `ping`, `tools/list` (via `tool_definitions()`), `tools/call` (via `dispatch()`). Returns `None` for notifications (no `id`). Thread-safe — designed to be shared across threads (one instance per SSE session, or a single instance behind an async runtime) |
+| `PROTOCOL_VERSION` / `SERVER_NAME` / `SERVER_VERSION` | ~20–25 | Constants: `"2024-11-05"`, `"jed-personal-mcp"`, `"1.0.0"` |
 
 ## Conventions
 

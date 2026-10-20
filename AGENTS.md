@@ -5,8 +5,11 @@
 >
 > **What this project is:** a Firebird 5 MCP (Model Context Protocol) server
 > written in Rust. It exposes Firebird database operations as MCP tools
-> (query, schema introspection, DDL, codegen, statistics) over JSON-RPC 2.0
-> via stdin/stdout. Pure-Rust driver (`rsfbclient`) — no isql shell-out.
+> (query, schema introspection, DDL, codegen, statistics) over JSON-RPC 2.0.
+> Supports two transports: **stdio** (default, line-delimited JSON-RPC over
+> stdin/stdout) and **HTTP+SSE** (spec `2024-11-05`, for web UIs and
+> non-stdio clients like llama.cpp `--ui-mcp-proxy`, CODEX, ClaudeCode).
+> Pure-Rust driver (`rsfbclient`) — no isql shell-out.
 
 ## Subdirectories
 
@@ -15,7 +18,7 @@
 | `crates/mcp-types/` | [`crates/mcp-types/AGENTS.md`](crates/mcp-types/AGENTS.md) | Shared value types (`Value`, `ColumnMeta` with `is_numeric` flag, `QueryResult`) + pure formatting helpers. No IO, no async, no driver code. |
 | `crates/mcp-core/` | [`crates/mcp-core/AGENTS.md`](crates/mcp-core/AGENTS.md) | Core library — client, query, schema, DDL, metadata, stats, storage, config, codegen |
 | `crates/mcp-tools/` | [`crates/mcp-tools/AGENTS.md`](crates/mcp-tools/AGENTS.md) | Shared MCP tool handlers (transport-agnostic) — handlers, `ToolResult`, `dispatch()` (with universal POST_EVENT), `tool_definitions()` |
-| `crates/mcp-stdio-bin/` | [`crates/mcp-stdio-bin/AGENTS.md`](crates/mcp-stdio-bin/AGENTS.md) | MCP stdio server binary (`firebird-5-mcp`) — protocol loop + config management |
+| `crates/mcp-stdio-bin/` | [`crates/mcp-stdio-bin/AGENTS.md`](crates/mcp-stdio-bin/AGENTS.md) | MCP server binary (`firebird-5-mcp`) — stdio (default) + HTTP+SSE (`--sse`) transports, CLI flags, bearer-token auth |
 | `crates/mcp-migration/` | [`crates/mcp-migration/AGENTS.md`](crates/mcp-migration/AGENTS.md) | Data file export/import — tables, views, SQL → Parquet/IPC/CSV/DBF/JSONL; Parquet/IPC/CSV/DBF/JSONL → tables (create/append). Compression: Snappy/ZSTD/LZ4/GZIP. Codepage: CP437/CP850 (DBF), UTF-8/ISO-8859-1/Win1252 (CSV). JSONL always UTF-8. Pure data-movement engines — POST_EVENT is universal in `mcp-tools` |
 | `vendor/` | [`vendor/AGENTS.md`](vendor/AGENTS.md) | Vendored `rsfbclient-rust` 0.29.0 with NUMERIC/DECIMAL precision patch (see below) |
 | `examples/` | [`examples/AGENTS.md`](examples/AGENTS.md) | Examples: complete test database (`test-mcp/`), Free Pascal client (`freePascal/`), CLI helpers (`mcp-call.*`) |
@@ -78,7 +81,10 @@ The vendor crate is a standalone workspace (its own `[workspace]` in
 
 ## Conventions
 
-- **Five-crate workspace:** `mcp-stdio-bin` (thin MCP-stdio layer) depends on `mcp-tools` (shared handlers) which depends on `mcp-core` (all Firebird logic) and `mcp-migration` (Parquet export/import). `mcp-types` holds shared value types. See each crate's `AGENTS.md` for function-level detail.
+- **Five-crate workspace:** `mcp-stdio-bin` (thin transport layer — stdio + SSE) depends on `mcp-tools` (shared handlers + `ProtocolCore`) which depends on `mcp-core` (all Firebird logic) and `mcp-migration` (Parquet export/import). `mcp-types` holds shared value types. See each crate's `AGENTS.md` for function-level detail.
+- **Two transports, one binary:** the `firebird-5-mcp` binary runs in **stdio** mode by default (JSON-RPC over stdin/stdout) or **SSE** mode with `--sse` (HTTP+SSE, spec `2024-11-05`). The protocol routing logic lives in `mcp-tools::ProtocolCore` (transport-agnostic); each transport is a thin layer in `mcp-stdio-bin` (`main.rs` for stdio, `sse.rs` for SSE). SSE sessions are UUID-keyed broadcast channels, reaped after 30 min of inactivity (configurable). Optional bearer-token auth (`--token` / `--token-file`), disabled by default.
+- **`firebird_list_files`:** tool (in `mcp-tools::file_tools`) that lists generated files in the storage directory. Works in both transports — in stdio the client reads from the local filesystem; in SSE the client downloads via the `/files` HTTP endpoint.
+- **File upload/download (SSE only):** `GET /files?path=<rel>` downloads a file from the storage directory (streaming, with path-traversal protection). `POST /files` accepts a multipart upload (`file` + `target` fields, 500 MB limit). Both use the same bearer-token auth as the SSE endpoints. The storage directory is resolved from the live config. See `crates/mcp-stdio-bin/src/files.rs`.
 - **Build output:** binary lands in `~/.local/bin/firebird-5-mcp` (fixed name, no platform suffix). No `bin/` or `dist/` directories — GitHub Actions handles release artifacts.
 - **Cross-compile caveats:** windows/arm64 is skipped (no stable Rust GNU target); darwin requires osxcross; aarch64-linux requires `aarch64-linux-gnu-gcc`.
 - **Release flow:** `publish_new_tag.sh` commits + tags + pushes; GitHub Actions handles the rest.

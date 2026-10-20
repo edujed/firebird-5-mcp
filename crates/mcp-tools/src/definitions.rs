@@ -475,5 +475,34 @@ pub fn tool_definitions() -> Vec<Value> {
                 "required": ["path"]
             }),
         ),
+        tool(
+            "firebird_data_quality",
+            "Runs data quality rules on a table: NULLs in NOT NULL columns, empty strings in text columns, IQR-based outliers in numeric columns, and dates outside the range [1900-01-01, today+1]. Returns findings with severity, counts, and sample values. Output format: Markdown (default) or JSON.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "table": { "type": "string", "description": "Table name to analyze." },
+                    "rules": { "type": "array", "items": { "type": "string", "enum": ["nulls", "empty_strings", "outliers", "date_range"] }, "description": "Rules to run. Default: all. 'nulls' = NULLs in NOT NULL columns; 'empty_strings' = empty strings in text columns; 'outliers' = IQR-based outliers in numeric columns; 'date_range' = dates outside [1900-01-01, today+1]." },
+                    "columns": { "type": "array", "items": { "type": "string" }, "description": "Optional list of column names to limit the analysis to. Default: all applicable columns." },
+                    "output_format": { "type": "string", "enum": ["markdown", "json"], "description": "Output format. Default: 'markdown'. Use 'json' for machine-readable output." },
+                    "sample_limit": { "type": ["number", "string"], "description": "Maximum number of sample values per finding. Default: 5, max: 20." },
+                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." }
+                },
+                "required": ["table"]
+            }),
+        ),
+        tool(
+            "firebird_list_files",
+            "Lists generated files (codegen, export, metadata) in the storage directory. Returns a table with file name, size, line count, and modification time. Works in both stdio and SSE transports — in SSE, files can be downloaded via the /files HTTP endpoint. All arguments are optional filters.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "database": { "type": "string", "description": "Filter by database name (matches the subdirectory prefix). Default: all databases." },
+                    "format": { "type": "string", "description": "Filter by format (e.g. 'java', 'parquet', 'sql'). Default: all formats." },
+                    "max_age_hours": { "type": ["number", "string"], "description": "Only include files modified within the last N hours. Default: no limit." },
+                    "outputDirPath": { "type": "string", "description": "Override the storage directory (same as other tools). Default: config.storage.dir or ~/.firebird-mcp/output/" }
+                }
+            }),
+        ),
     ]
 }

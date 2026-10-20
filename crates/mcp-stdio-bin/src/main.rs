@@ -1,28 +1,158 @@
-//! MCP stdio server for Firebird.
+//! MCP server for Firebird.
 //!
-//! Implements the MCP protocol (JSON-RPC 2.0, line-delimited) and exposes the
-//! same tool set as the Go implementation, plus the new Rust-only tools
-//! (`firebird_explain_plan`, `firebird_create_procedure`,
-//! `firebird_create_function`, `firebird_create_sequence`).
+//! Supports two transports, selected via CLI flags:
+//!
+//! - **stdio** (default) — JSON-RPC 2.0, line-delimited, over stdin/stdout.
+//!   This is the standard MCP transport for IDEs and CLI tools.
+//! - **SSE** (`--sse`) — HTTP+SSE (spec `2024-11-05`), for web UIs and
+//!   clients that don't support stdio (llama.cpp `--ui-mcp-proxy`, CODEX,
+//!   ClaudeCode, etc.).
+//!
+//! All tool handlers and the protocol routing logic live in the sibling
+//! crate `firebird-5-mcp-tools` (`crates/mcp-tools`). This crate is a thin
+//! transport layer.
 
+mod auth;
+mod files;
+mod sse;
+
+use auth::AuthConfig;
 use firebird_5_mcp_core::{Config, mlog};
-use firebird_5_mcp_tools::{ToolResult, build_time, dispatch, tool_definitions};
-use serde_json::{Value, json};
+use firebird_5_mcp_tools::{ProtocolCore, build_time};
 use std::io::{self, BufRead, Write};
-use std::sync::RwLock;
+use std::sync::Arc;
 
-/// Shared, reloadable configuration.
+/// CLI arguments for the MCP server.
+struct Args {
+    /// Enable the SSE transport (instead of stdio).
+    sse: bool,
+    /// Bind address for the SSE server (default: `0.0.0.0`).
+    host: String,
+    /// Bind port for the SSE server (default: `8080`).
+    port: u16,
+    /// Bearer token for SSE authentication (optional).
+    token: Option<String>,
+    /// Path to a file containing the bearer token (optional, overrides `--token`).
+    token_file: Option<String>,
+    /// Session inactivity timeout in minutes for the SSE transport (default: 30).
+    session_timeout_min: u64,
+}
+
+/// Parses command-line arguments.
 ///
-/// The config is loaded once at startup and can be refreshed by
-/// `firebird_get_databases` (which re-reads the file from disk) or updated
-/// in-memory by `firebird_create_database` (after registering a new db).
-static CONFIG: RwLock<Option<Config>> = RwLock::new(None);
+/// Supported flags:
+/// - `--sse` — enable the SSE transport.
+/// - `--host <addr>` — bind address for SSE (default: `0.0.0.0`).
+/// - `--port <port>` — bind port for SSE (default: `8080`).
+/// - `--token <token>` — bearer token for SSE authentication.
+/// - `--token-file <path>` — path to a file containing the bearer token.
+/// - `--session-timeout <min>` — session inactivity timeout in minutes (default: 30).
+/// - `--help` / `-h` — print usage and exit.
+fn parse_args() -> Result<Args, String> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut result = Args {
+        sse: false,
+        host: "0.0.0.0".to_string(),
+        port: 8080,
+        token: None,
+        token_file: None,
+        session_timeout_min: 30,
+    };
 
-const SERVER_NAME: &str = "jed-personal-mcp";
-const SERVER_VERSION: &str = "1.0.0";
-const PROTOCOL_VERSION: &str = "2024-11-05";
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--sse" => result.sse = true,
+            "--host" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--host requires a value".to_string());
+                }
+                result.host = args[i].clone();
+            }
+            "--port" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--port requires a value".to_string());
+                }
+                result.port = args[i]
+                    .parse()
+                    .map_err(|_| format!("invalid port: {}", args[i]))?;
+            }
+            "--token" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--token requires a value".to_string());
+                }
+                result.token = Some(args[i].clone());
+            }
+            "--token-file" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--token-file requires a value".to_string());
+                }
+                result.token_file = Some(args[i].clone());
+            }
+            "--session-timeout" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--session-timeout requires a value".to_string());
+                }
+                result.session_timeout_min = args[i]
+                    .parse()
+                    .map_err(|_| format!("invalid session timeout: {}", args[i]))?;
+            }
+            "--help" | "-h" => {
+                print_usage();
+                std::process::exit(0);
+            }
+            other => {
+                return Err(format!("unknown argument: {other} (see --help)"));
+            }
+        }
+        i += 1;
+    }
+
+    Ok(result)
+}
+
+/// Prints the usage message.
+fn print_usage() {
+    println!(
+        "firebird-5-mcp — MCP server for Firebird (build {})\n\
+         \n\
+         USAGE:\n\
+         \x20 firebird-5-mcp [OPTIONS]\n\
+         \n\
+         TRANSPORT:\n\
+         \x20 (no flags)        stdio — JSON-RPC over stdin/stdout (default)\n\
+         \x20 --sse             HTTP+SSE — for web UIs and non-stdio clients\n\
+         \n\
+         SSE OPTIONS:\n\
+         \x20 --host <addr>       bind address (default: 0.0.0.0)\n\
+         \x20 --port <port>       bind port (default: 8080)\n\
+         \x20 --token <token>     bearer token for authentication\n\
+         \x20 --token-file <path> path to a file containing the bearer token\n\
+         \x20 --session-timeout <min>  session inactivity timeout (default: 30)\n\
+         \n\
+         EXAMPLES:\n\
+         \x20 firebird-5-mcp                          # stdio mode\n\
+         \x20 firebird-5-mcp --sse --port 9000        # SSE mode on port 9000\n\
+         \x20 firebird-5-mcp --sse --token s3cret     # SSE mode with auth",
+        build_time()
+    );
+}
 
 fn main() {
+    let args = match parse_args() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            eprintln!("Run with --help for usage.");
+            std::process::exit(1);
+        }
+    };
+
     let cfg = match Config::load_or_create() {
         Ok(c) => c,
         Err(e) => {
@@ -45,9 +175,69 @@ fn main() {
         cfg.server.allowed_paths.join(", ")
     );
 
-    // Store in the shared RwLock for tool handlers
-    *CONFIG.write().unwrap() = Some(cfg);
+    let core = Arc::new(ProtocolCore::new(cfg));
 
+    if args.sse {
+        // Resolve the auth token (token-file overrides --token).
+        let auth = resolve_auth(&args);
+        mlog!(
+            "SSE mode: host={} port={} auth={} session_timeout={}min",
+            args.host,
+            args.port,
+            if auth.is_enabled() {
+                "enabled"
+            } else {
+                "disabled"
+            },
+            args.session_timeout_min
+        );
+        let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+        if let Err(e) = rt.block_on(sse::run_sse(
+            core,
+            &args.host,
+            args.port,
+            Arc::new(auth),
+            args.session_timeout_min,
+        )) {
+            eprintln!("SSE server error: {e}");
+            std::process::exit(1);
+        }
+    } else {
+        run_stdio(core);
+    }
+}
+
+/// Resolves the auth configuration from the CLI args.
+///
+/// `--token-file` takes precedence over `--token`. If neither is provided,
+/// authentication is disabled.
+fn resolve_auth(args: &Args) -> AuthConfig {
+    if let Some(path) = &args.token_file {
+        match std::fs::read_to_string(path) {
+            Ok(content) => {
+                let token = content.trim().to_string();
+                if token.is_empty() {
+                    eprintln!("Warning: token file {path} is empty — auth disabled");
+                    AuthConfig::disabled()
+                } else {
+                    AuthConfig::with_token(token)
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to read token file {path}: {e} — auth disabled");
+                AuthConfig::disabled()
+            }
+        }
+    } else if let Some(token) = &args.token {
+        AuthConfig::with_token(token.clone())
+    } else {
+        AuthConfig::disabled()
+    }
+}
+
+/// Runs the stdio transport: reads JSON-RPC lines from stdin and writes
+/// responses to stdout.
+fn run_stdio(core: Arc<ProtocolCore>) {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let reader = stdin.lock();
@@ -61,7 +251,7 @@ fn main() {
         if line.trim().is_empty() {
             continue;
         }
-        let request: Value = match serde_json::from_str(&line) {
+        let request: serde_json::Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(e) => {
                 mlog!("ignoring malformed JSON line: {e}");
@@ -69,77 +259,7 @@ fn main() {
             }
         };
 
-        let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
-
-        // Notifications (no `id`) must not produce a response. The MCP client
-        // sends `notifications/initialized` right after `initialize`; per the
-        // spec we acknowledge it silently. Other notifications are ignored.
-        if request.get("id").is_none() {
-            if method == "notifications/initialized" {
-                mlog!("initialized");
-            }
-            continue;
-        }
-
-        let id = request.get("id").cloned();
-        let params = request.get("params").cloned().unwrap_or(Value::Null);
-
-        let response: Result<Value, ()> = match method {
-            "initialize" => {
-                let result = json!({
-                    "protocolVersion": PROTOCOL_VERSION,
-                    "capabilities": { "tools": {} },
-                    "serverInfo": {
-                        "name": SERVER_NAME,
-                        "version": SERVER_VERSION,
-                        "buildTime": build_time()
-                    }
-                });
-                Ok(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
-            }
-            "ping" => Ok(json!({ "jsonrpc": "2.0", "id": id, "result": json!({}) })),
-            "tools/list" => Ok(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": { "tools": tool_definitions() }
-            })),
-            "tools/call" => {
-                let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                let args = params
-                    .get("arguments")
-                    .cloned()
-                    .unwrap_or(Value::Object(Default::default()));
-                // Get a read guard on the config for this tool call
-                let cfg_guard = CONFIG.read().unwrap();
-                let cfg = cfg_guard.as_ref().unwrap();
-                match dispatch(cfg, name, &args) {
-                    Ok(ToolResult { text, structured }) => {
-                        let mut result = json!({
-                            "content": [{ "type": "text", "text": text }],
-                            "isError": false
-                        });
-                        if let Some(s) = structured {
-                            result["structuredContent"] = s;
-                        }
-                        Ok(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
-                    }
-                    Err(e) => {
-                        let result = json!({
-                            "content": [{ "type": "text", "text": e }],
-                            "isError": true
-                        });
-                        Ok(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
-                    }
-                }
-            }
-            _ => Ok(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": { "code": -32601, "message": format!("Method not found: {method}") }
-            })),
-        };
-
-        if let Ok(response) = response {
+        if let Some(response) = core.handle_request(&request) {
             let mut out = response.to_string();
             out.push('\n');
             if writer.write_all(out.as_bytes()).is_err() {

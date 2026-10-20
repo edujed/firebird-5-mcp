@@ -44,9 +44,12 @@ pub mod common;
 pub mod ddl_tools;
 pub mod definitions;
 pub mod events;
+pub mod file_tools;
 pub mod generator_tools;
 pub mod introspection_tools;
 pub mod migration_tools;
+pub mod protocol;
+pub mod quality_tools;
 pub mod query_tools;
 pub mod schema_tools;
 pub mod stats_tools;
@@ -55,9 +58,12 @@ pub mod view_dto_tools;
 pub use ddl_tools::*;
 pub use definitions::*;
 pub use events::*;
+pub use file_tools::*;
 pub use generator_tools::*;
 pub use introspection_tools::*;
 pub use migration_tools::*;
+pub use protocol::{PROTOCOL_VERSION, ProtocolCore, SERVER_NAME, SERVER_VERSION};
+pub use quality_tools::*;
 pub use query_tools::*;
 pub use schema_tools::*;
 pub use stats_tools::*;
@@ -173,6 +179,12 @@ fn dispatch_inner(cfg: &Config, name: &str, args: &Value) -> Result<ToolResult, 
         "firebird_export" => handle_export(cfg, args),
         "firebird_import" => handle_import(cfg, args),
         "firebird_describe_file" => handle_describe_file(cfg, args),
+
+        // Data quality tools
+        "firebird_data_quality" => handle_data_quality(cfg, args),
+
+        // File tools
+        "firebird_list_files" => handle_list_files(cfg, args),
 
         other => Err(format!("Unknown tool: {other}")),
     }
