@@ -16,10 +16,10 @@
 | File | Lines | Role |
 |---|---|---|
 | `Cargo.toml` | 15 | Package `firebird-5-mcp-tools`; deps: `firebird-5-mcp-core`, `firebird-5-mcp-types`, `firebird-5-mcp-migration`, `serde_json`, `chrono` |
-| `src/lib.rs` | 162 | `ToolResult`, `dispatch()`, `build_time()`, re-exports |
+| `src/lib.rs` | 179 | `ToolResult`, `dispatch()` (with universal POST_EVENT), `build_time()`, re-exports |
 | `src/common.rs` | 199 | Shared helpers (arg parsing, client, Markdown, file save) |
 | `src/definitions.rs` | 479 | JSON input schemas for `tools/list` |
-| `src/events.rs` | 209 | POST_EVENT support — `post_event()` (executes `POST_EVENT` SQL + appends JSON line to `{base}/events.jsonl`), `valid_event_name()`, `build_event()` |
+| `src/events.rs` | 353 | Universal POST_EVENT support — `emit_tool_event()` (called from `dispatch()`), `valid_event_name()`, `build_event()`, `resolve_database()`, `append_event_line()` |
 | `src/query_tools.rs` | 221 | SQL execution tools |
 | `src/schema_tools.rs` | 948 | Schema inspection tools (largest file) |
 | `src/stats_tools.rs` | 233 | MON$ statistics tools |
@@ -27,7 +27,7 @@
 | `src/generator_tools.rs` | 175 | `firebird_generate_dev` handler (Python emits `__init__.py`, JSON Schema emits `.json`) |
 | `src/view_dto_tools.rs` | 80 | `firebird_generate_view_dto` handler |
 | `src/ddl_tools.rs` | 229 | DDL create/alter/drop tools |
-| `src/migration_tools.rs` | 390 | Export/import/describe handlers (format-agnostic: Parquet, IPC, CSV, DBF, JSONL + compression + codepage + POST_EVENT) |
+| `src/migration_tools.rs` | 311 | Export/import/describe handlers (format-agnostic: Parquet, IPC, CSV, DBF, JSONL + compression + codepage). **Pure handlers** — no event code (POST_EVENT is universal in `dispatch()`) |
 
 ## `src/lib.rs`
 
@@ -36,19 +36,21 @@
 | `struct ToolResult` | 67–70 | `{ text: String, structured: Option<Value> }` — text always present, structured optional |
 | `ToolResult::text` / `with_structured` | 73–85 | Constructors |
 | `wrap_text()` | 90–92 | Adapts `Result<String,String>` handlers to `Result<ToolResult,String>` |
-| `dispatch()` | 97–104 | Logs the call, delegates to `dispatch_inner` |
-| `dispatch_inner()` | 108–161 | `match` on tool name → handler. **This is the tool registry.** Groups: query, schema, stats, introspection, generators, DDL, migration |
+| `dispatch()` | 100–125 | Logs the call, times the handler, delegates to `dispatch_inner`, then calls `emit_tool_event()` (universal POST_EVENT) |
+| `dispatch_inner()` | 127–179 | `match` on tool name → handler. **This is the tool registry.** Groups: query, schema, stats, introspection, generators, DDL, migration |
 | `build_time()` | 37–41 | Compile-time build timestamp via `OnceLock` + `chrono` (single source of truth, used by both binaries) |
 
 ## `src/events.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
-| `events_file()` | 22–24 | Path to `{base}/events.jsonl` |
-| `valid_event_name()` | 28–30 | Returns `Some(trimmed)` if the event name is present and non-empty after trim, `None` otherwise |
-| `build_event()` | 38–64 | Builds the structured event payload: `{event, tool, success, timestamp, database?, duration_ms?, detail?, error?}` |
-| `post_event()` | 78–101 | Emits a POST_EVENT: (1) executes `POST_EVENT '<name>'` SQL on the database (notifies Firebird event manager), (2) appends a JSON line to `events.jsonl`, (3) logs via `mlog!`. Never fails the tool call — SQL/I/O errors are logged and dropped |
-| `append_event_line()` | 105–118 | Appends a JSON line to the events file, creating the base dir if needed |
+| `events_file()` | 26–28 | Path to `{base}/events.jsonl` |
+| `valid_event_name()` | 32–36 | Returns `Some(trimmed)` if the event name is present and non-empty after trim, `None` otherwise |
+| `build_event()` | 43–71 | Builds the structured event payload: `{event, tool, success, timestamp, database?, duration_ms?, detail?, error?}` |
+| `resolve_database()` | 77–87 | Resolves the database for a tool call: `database` arg → `cfg.default_database()` → validates via `cfg.server.find_database()`. Returns `None` when no valid db (e.g. `firebird_get_databases` has no `database` arg and no default) |
+| `emit_tool_event()` | 98–162 | **Universal entry point** called from `dispatch()`. (1) Appends a JSON line to `events.jsonl` (always), (2) if a valid database is resolved, opens a **fresh** connection and executes `POST_EVENT '<name>'` in its own transaction. Never fails the tool call — all errors logged via `mlog!` and dropped |
+| `open_client_for_event()` | 165–171 | Opens a fresh `FirebirdClient` for the given database (used by `emit_tool_event`) |
+| `append_event_line()` | 175–188 | Appends a JSON line to the events file, creating the base dir if needed |
 
 ## `src/common.rs`
 
@@ -164,12 +166,17 @@
 - File output (generators) resolves dir via `storage_dir` and writes via
   `save_or_inline` (core `storage` module).
 - Logging goes through `mlog!` (core) to `{base}/logs/`.
-- **POST_EVENT:** tools that modify data accept optional `on_success_event` /
-  `on_fail_event` string params. When set (non-empty after trim), two things
-  happen: (1) `POST_EVENT '<name>'` is executed on the database (notifies the
-  Firebird event manager — clients registered via `SET EVENT` receive the
-  notification on commit), and (2) a structured JSON line is appended to
-  `{base}/events.jsonl` + logged via `mlog!`. Emission never fails the tool
-  call. See `src/events.rs` and `mcp-core::query::post_event`.
+- **Universal POST_EVENT:** every tool call accepts optional `on_success_event`
+  / `on_fail_event` string params. After the handler completes, `dispatch()`
+  calls `events::emit_tool_event()`, which: (1) appends a structured JSON line
+  to `{base}/events.jsonl` (always), and (2) if the call targeted a valid
+  database (resolved from the `database` arg or the configured default), opens
+  a **fresh** connection and executes `POST_EVENT '<name>'` in its own
+  transaction — notifying the Firebird event manager (clients registered via
+  `SET EVENT` receive the notification on commit). Tools without a resolvable
+  database (e.g. `firebird_get_databases`, `firebird_describe_file`) still get
+  the JSON log line but no SQL event. Emission never fails the tool call — all
+  errors are logged via `mlog!` and dropped. See `src/events.rs` and
+  `mcp-core::query::post_event`.
 - **No transport protocol code** — this crate is consumed by `mcp-stdio-bin`
   (stdio) and will be consumed by `mcp-http-bin` (HTTP/SSE).

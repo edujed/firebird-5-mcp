@@ -14,9 +14,9 @@
 |---|---|---|
 | `crates/mcp-types/` | [`crates/mcp-types/AGENTS.md`](crates/mcp-types/AGENTS.md) | Shared value types (`Value`, `ColumnMeta` with `is_numeric` flag, `QueryResult`) + pure formatting helpers. No IO, no async, no driver code. |
 | `crates/mcp-core/` | [`crates/mcp-core/AGENTS.md`](crates/mcp-core/AGENTS.md) | Core library — client, query, schema, DDL, metadata, stats, storage, config, codegen |
-| `crates/mcp-tools/` | [`crates/mcp-tools/AGENTS.md`](crates/mcp-tools/AGENTS.md) | Shared MCP tool handlers (transport-agnostic) — handlers, `ToolResult`, `dispatch()`, `tool_definitions()` |
+| `crates/mcp-tools/` | [`crates/mcp-tools/AGENTS.md`](crates/mcp-tools/AGENTS.md) | Shared MCP tool handlers (transport-agnostic) — handlers, `ToolResult`, `dispatch()` (with universal POST_EVENT), `tool_definitions()` |
 | `crates/mcp-stdio-bin/` | [`crates/mcp-stdio-bin/AGENTS.md`](crates/mcp-stdio-bin/AGENTS.md) | MCP stdio server binary (`firebird-5-mcp`) — protocol loop + config management |
-| `crates/mcp-migration/` | [`crates/mcp-migration/AGENTS.md`](crates/mcp-migration/AGENTS.md) | Data file export/import — tables, views, SQL → Parquet/IPC/CSV/DBF/JSONL; Parquet/IPC/CSV/DBF/JSONL → tables (create/append). Compression: Snappy/ZSTD/LZ4/GZIP. Codepage: CP437/CP850 (DBF), UTF-8/ISO-8859-1/Win1252 (CSV). JSONL always UTF-8. POST_EVENT support (via `mcp-tools`) |
+| `crates/mcp-migration/` | [`crates/mcp-migration/AGENTS.md`](crates/mcp-migration/AGENTS.md) | Data file export/import — tables, views, SQL → Parquet/IPC/CSV/DBF/JSONL; Parquet/IPC/CSV/DBF/JSONL → tables (create/append). Compression: Snappy/ZSTD/LZ4/GZIP. Codepage: CP437/CP850 (DBF), UTF-8/ISO-8859-1/Win1252 (CSV). JSONL always UTF-8. Pure data-movement engines — POST_EVENT is universal in `mcp-tools` |
 | `vendor/` | [`vendor/AGENTS.md`](vendor/AGENTS.md) | Vendored `rsfbclient-rust` 0.29.0 with NUMERIC/DECIMAL precision patch (see below) |
 | `examples/` | [`examples/AGENTS.md`](examples/AGENTS.md) | Examples: complete test database (`test-mcp/`), Free Pascal client (`freePascal/`), CLI helpers (`mcp-call.*`) |
 | `tests/` | [`tests/AGENTS.md`](tests/AGENTS.md) | Shell smoke tests — exercise the deployed binary over JSON-RPC (stdio) |
@@ -83,3 +83,4 @@ The vendor crate is a standalone workspace (its own `[workspace]` in
 - **Cross-compile caveats:** windows/arm64 is skipped (no stable Rust GNU target); darwin requires osxcross; aarch64-linux requires `aarch64-linux-gnu-gcc`.
 - **Release flow:** `publish_new_tag.sh` commits + tags + pushes; GitHub Actions handles the rest.
 - **Config:** the binary auto-loads `~/.firebird-mcp/config.json` (or `FIREBIRD_CONFIG` env, or `./config.json`). Tests rely on the default path — no env var needed.
+- **Universal POST_EVENT:** every tool call accepts optional `on_success_event` / `on_fail_event` string params. After the handler completes, `dispatch()` (in `mcp-tools`) calls `events::emit_tool_event()`, which appends a JSON line to `~/.firebird-mcp/events.jsonl` and — when a valid database is resolved — opens a fresh connection and executes `POST_EVENT '<name>'` in its own transaction (notifying Firebird `SET EVENT` listeners on commit). Emission never fails the tool call. See `crates/mcp-tools/src/events.rs` and `crates/mcp-core/src/query/mod.rs::post_event`.

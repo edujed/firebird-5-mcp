@@ -29,17 +29,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   TIMESTAMP, or VARCHAR(255) fallback). No new dependencies — uses `serde_json`.
   Text values are always exported as JSON strings (a VARCHAR containing `"123"`
   stays a string; NUMERIC/DECIMAL stays exact).
-- **POST_EVENT support** — `firebird_export` and `firebird_import` now accept
-  two optional string parameters: `on_success_event` and `on_fail_event`.
-  When set (non-empty after trim), the handler executes `POST_EVENT '<name>'`
-  on the database (notifying the Firebird event manager — clients registered
-  via `SET EVENT` receive the notification on commit) and appends a structured
-  JSON line to `~/.firebird-mcp/events.jsonl`. The event payload includes
-  `{event, tool, success, timestamp, database, duration_ms, detail?, error?}`.
-  Event emission never fails the tool call — SQL and I/O errors are logged
-  and dropped. The `POST_EVENT` SQL execution lives in
-  `mcp-core::query::post_event()`; the orchestration (validation, JSON log,
-  mlog) lives in `mcp-tools::events::post_event()`.
+- **Universal POST_EVENT support** — every tool call now accepts two optional
+  string parameters: `on_success_event` and `on_fail_event`. After the handler
+  completes, `dispatch()` (in `mcp-tools`) checks the relevant parameter and,
+  if it contains valid non-empty text: (1) appends a structured JSON line to
+  `~/.firebird-mcp/events.jsonl` (always), and (2) if the call targeted a valid
+  database (resolved from the `database` arg or the configured default), opens
+  a **fresh** connection and executes `POST_EVENT '<name>'` in its own
+  transaction — notifying the Firebird event manager, so clients registered
+  via `SET EVENT` receive the notification on commit. The event payload
+  includes `{event, tool, success, timestamp, database?, duration_ms?, detail?,
+  error?}`. Tools without a resolvable database (e.g. `firebird_get_databases`,
+  `firebird_describe_file`) still get the JSON log line but no SQL event.
+  Event emission never fails the tool call — SQL and I/O errors are logged via
+  `mlog!` and dropped. The `POST_EVENT` SQL execution lives in
+  `mcp-core::query::post_event()`; the universal orchestration (validation,
+  database resolution, JSON log, fresh connection) lives in
+  `mcp-tools::events::emit_tool_event()`, called from `dispatch()` after every
+  tool call. The migration handlers (`mcp-tools::migration_tools`) are pure —
+  no event code.
 - **Python (Pydantic + SQLAlchemy) codegen** — `firebird_generate_dev` and
   `firebird_generate_view_dto` now support `language: "python"`. Generates
   SQLAlchemy 2.0 models + Pydantic v2 schemas (Base/Create/Update/Read).

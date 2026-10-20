@@ -96,12 +96,29 @@ fn wrap_text(result: Result<String, String>) -> Result<ToolResult, String> {
 }
 
 /// Dispatches a tool call to the appropriate handler.
+///
+/// After the handler completes, if the call included a valid
+/// `on_success_event` (on success) or `on_fail_event` (on failure), a
+/// POST_EVENT is emitted: a JSON line is appended to `events.jsonl` and,
+/// when a valid database is resolved, `POST_EVENT '<name>'` is executed on
+/// the database in a fresh transaction.
 pub fn dispatch(cfg: &Config, name: &str, args: &Value) -> Result<ToolResult, String> {
     mlog!("tool call: {name}");
+    let started = std::time::Instant::now();
     let result = dispatch_inner(cfg, name, args);
+    let duration_ms = started.elapsed().as_millis();
+
     if let Err(ref e) = result {
         mlog!("tool {name} ERROR: {e}");
     }
+
+    // Universal POST_EVENT: fires for any tool that has a valid event param
+    // and a resolvable database. See `events::emit_tool_event`.
+    let success = result.is_ok();
+    let detail = result.as_ref().ok().and_then(|r| r.structured.as_ref());
+    let error = result.as_ref().err().map(|s| s.as_str());
+    crate::events::emit_tool_event(cfg, name, args, success, duration_ms, detail, error);
+
     result
 }
 

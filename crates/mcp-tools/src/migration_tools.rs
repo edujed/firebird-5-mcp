@@ -3,7 +3,6 @@
 
 use crate::ToolResult;
 use crate::common::{arg_str, open_client};
-use crate::events::{post_event, valid_event_name};
 use firebird_5_mcp_core::Config;
 use firebird_5_mcp_migration::{ImportMode, describe_file, export, import};
 
@@ -76,12 +75,6 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         }
     }
 
-    let on_success_event = valid_event_name(arg_str(args, "on_success_event").as_deref());
-    let on_fail_event = valid_event_name(arg_str(args, "on_fail_event").as_deref());
-    let db_name =
-        arg_str(args, "database").unwrap_or_else(|| config.default_database().to_string());
-
-    let started = std::time::Instant::now();
     let mut client = open_client(config, args)?;
     let result = export(
         &mut client,
@@ -90,27 +83,7 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         &fmt,
         compression.as_deref(),
         codepage.as_deref(),
-    );
-    let duration_ms = started.elapsed().as_millis();
-
-    let result = match result {
-        Ok(r) => r,
-        Err(e) => {
-            if let Some(ref ev) = on_fail_event {
-                post_event(
-                    &mut client,
-                    ev,
-                    "firebird_export",
-                    false,
-                    Some(&db_name),
-                    Some(duration_ms),
-                    None,
-                    Some(&e),
-                );
-            }
-            return Err(e);
-        }
-    };
+    )?;
 
     let text = format!(
         "Exported {} rows × {} columns to `{}` (format: {fmt})",
@@ -124,19 +97,6 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         "format": fmt,
         "compression": compression.unwrap_or_else(|| default_compression(&fmt).to_string()),
     });
-
-    if let Some(ref ev) = on_success_event {
-        post_event(
-            &mut client,
-            ev,
-            "firebird_export",
-            true,
-            Some(&db_name),
-            Some(duration_ms),
-            Some(&structured),
-            None,
-        );
-    }
 
     Ok(ToolResult::with_structured(text, structured))
 }
@@ -179,12 +139,6 @@ pub fn handle_import(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         }
     }
 
-    let on_success_event = valid_event_name(arg_str(args, "on_success_event").as_deref());
-    let on_fail_event = valid_event_name(arg_str(args, "on_fail_event").as_deref());
-    let db_name =
-        arg_str(args, "database").unwrap_or_else(|| config.default_database().to_string());
-
-    let started = std::time::Instant::now();
     let mut client = open_client(config, args)?;
 
     let result = import(
@@ -195,27 +149,7 @@ pub fn handle_import(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         &fmt,
         &ignore_columns,
         codepage.as_deref(),
-    );
-    let duration_ms = started.elapsed().as_millis();
-
-    let result = match result {
-        Ok(r) => r,
-        Err(e) => {
-            if let Some(ref ev) = on_fail_event {
-                post_event(
-                    &mut client,
-                    ev,
-                    "firebird_import",
-                    false,
-                    Some(&db_name),
-                    Some(duration_ms),
-                    None,
-                    Some(&e),
-                );
-            }
-            return Err(e);
-        }
-    };
+    )?;
 
     let mode_label = match result.mode {
         ImportMode::Create => "created table + inserted",
@@ -235,19 +169,6 @@ pub fn handle_import(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         "format": fmt,
         "ignored_columns": ignore_columns,
     });
-
-    if let Some(ref ev) = on_success_event {
-        post_event(
-            &mut client,
-            ev,
-            "firebird_import",
-            true,
-            Some(&db_name),
-            Some(duration_ms),
-            Some(&structured),
-            None,
-        );
-    }
 
     Ok(ToolResult::with_structured(text, structured))
 }

@@ -18,14 +18,18 @@
 > configurable for CSV and DBF (DBF restricted to CP437/CP850). JSONL is
 > always UTF-8 (codepage ignored).
 >
-> **POST_EVENT:** `firebird_export` and `firebird_import` accept optional
-> `on_success_event` / `on_fail_event` string params. When set (non-empty
-> after trim), the handler (in `mcp-tools`) executes `POST_EVENT '<name>'`
-> on the database (notifying the Firebird event manager — clients registered
-> via `SET EVENT` receive the notification on commit) and appends a structured
-> JSON line to `{base}/events.jsonl`. This crate does **not** handle events
-> directly — the event logic lives in `mcp-tools/src/events.rs` and
-> `mcp-core/src/query/mod.rs::post_event()`.
+> **POST_EVENT:** every tool call (including `firebird_export` and
+> `firebird_import`) accepts optional `on_success_event` / `on_fail_event`
+> string params. When set (non-empty after trim), the **universal** event logic
+> in `mcp-tools` (called from `dispatch()` after every tool call) appends a
+> structured JSON line to `{base}/events.jsonl` and — when a valid database is
+> resolved — opens a fresh connection and executes `POST_EVENT '<name>'` in its
+> own transaction (notifying the Firebird event manager; clients registered
+> via `SET EVENT` receive the notification on commit). This crate does **not**
+> handle events directly — the event logic lives in
+> `mcp-tools/src/events.rs` (`emit_tool_event`) and
+> `mcp-core/src/query/mod.rs::post_event()`. The handlers in
+> `mcp-tools/src/migration_tools.rs` are pure (no event code).
 
 ## File map
 
@@ -200,9 +204,15 @@
   errors for the MCP layer.
 - **POST_EVENT is handled by `mcp-tools`, not this crate.** The `export()`
   and `import()` functions here are pure data-movement engines. The event
-  firing (SQL `POST_EVENT` + JSON log) is orchestrated by the handlers in
-  `mcp-tools/src/migration_tools.rs` via `mcp-tools/src/events.rs::post_event()`.
-  This keeps the migration crate transport-agnostic and reusable.
+  firing (SQL `POST_EVENT` + JSON log) is orchestrated **universally** by
+  `mcp-tools/src/lib.rs::dispatch()` — after every tool call, it calls
+  `mcp-tools/src/events.rs::emit_tool_event()`, which reads the optional
+  `on_success_event` / `on_fail_event` args, appends a JSON line to
+  `{base}/events.jsonl`, and (when a valid database is resolved) opens a
+  fresh connection and executes `POST_EVENT '<name>'` via
+  `mcp-core/src/query/mod.rs::post_event()`. The handlers in
+  `mcp-tools/src/migration_tools.rs` are pure (no event code). This keeps
+  the migration crate transport-agnostic and reusable.
 - **Unified export engine:** table, view, and raw SQL all go through the same
   path — `normalise_source()` → `query_unbounded()` → `column_meta_to_arrow()`
   → `build_record_batch()` → `write_parquet()` / `write_ipc()` / `write_csv()` /
