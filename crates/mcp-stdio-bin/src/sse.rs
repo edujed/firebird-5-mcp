@@ -21,7 +21,7 @@
 use crate::auth::{AuthConfig, check_auth};
 use crate::files;
 use axum::extract::{Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -107,7 +107,41 @@ pub fn build_router(core: Arc<ProtocolCore>, auth: Arc<AuthConfig>) -> Router {
                  body: String| { handle_message(state, headers, query, body) },
             ),
         )
+        // Handle CORS preflight requests
+        .route("/sse", axum::routing::options(cors_preflight))
+        .route("/messages", axum::routing::options(cors_preflight))
         .with_state(Arc::new(state))
+}
+
+/// Handles CORS preflight requests (OPTIONS).
+///
+/// Echoes the requested headers from `Access-Control-Request-Headers` so the
+/// browser knows which headers are allowed. This is required for POST requests
+/// with `Content-Type: application/json` (the MCP protocol uses JSON bodies).
+async fn cors_preflight(headers: HeaderMap) -> Response {
+    // Echo the requested headers (e.g. "content-type, authorization").
+    let requested_headers = headers
+        .get(header::ACCESS_CONTROL_REQUEST_HEADERS)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("Authorization, Content-Type");
+
+    (
+        StatusCode::NO_CONTENT,
+        [
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+            (header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS"),
+            (header::ACCESS_CONTROL_ALLOW_HEADERS, requested_headers),
+            (header::ACCESS_CONTROL_MAX_AGE, "86400"),
+        ],
+    )
+        .into_response()
+}
+
+/// Adds CORS headers to a response.
+fn add_cors_headers(mut response: Response) -> Response {
+    let headers = response.headers_mut();
+    headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().unwrap());
+    response
 }
 
 /// `GET /sse` — opens a new SSE session and returns the event stream.
@@ -158,13 +192,14 @@ async fn handle_sse(state: Arc<SseState>, headers: HeaderMap) -> Response {
         }
     };
 
-    Sse::new(stream)
+    let response = Sse::new(stream)
         .keep_alive(
             KeepAlive::new()
                 .interval(Duration::from_secs(15))
                 .text("ping"),
         )
-        .into_response()
+        .into_response();
+    add_cors_headers(response)
 }
 
 /// `POST /messages?sessionId=<uuid>` — receives a JSON-RPC request and
@@ -251,7 +286,8 @@ async fn handle_message(
 
     // Per the MCP SSE spec, the POST returns 202 Accepted with an empty body.
     // The actual response is delivered via the SSE stream.
-    StatusCode::ACCEPTED.into_response()
+    let response = StatusCode::ACCEPTED.into_response();
+    add_cors_headers(response)
 }
 
 /// Starts the background session cleanup task.

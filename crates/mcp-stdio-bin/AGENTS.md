@@ -21,8 +21,8 @@
 |---|---|---|
 | `Cargo.toml` | ~18 | Package `firebird-5-mcp`; deps: `firebird-5-mcp-core`, `firebird-5-mcp-tools`, `serde`, `serde_json`, `tokio`, `axum` (multipart), `uuid`, `async-stream` |
 | `src/main.rs` | ~230 | Entry point, CLI flag parsing, transport dispatch (stdio vs. SSE), config loading, logging init |
-| `src/sse.rs` | ~310 | MCP HTTP+SSE transport (spec `2024-11-05`) — `GET /sse` + `POST /messages`, session management (UUID → broadcast channel), background cleanup. Merges the files router in `run_sse()` |
-| `src/files.rs` | ~280 | File upload/download endpoints — `GET /files?path=<rel>` (download) + `POST /files` (multipart upload, 500 MB limit). Path-traversal protection, same auth as SSE |
+| `src/sse.rs` | ~340 | MCP HTTP+SSE transport (spec `2024-11-05`) — `GET /sse` + `POST /messages`, session management (UUID → broadcast channel), background cleanup, CORS support. Merges the files router in `run_sse()` |
+| `src/files.rs` | ~310 | File upload/download endpoints — `GET /files?path=<rel>` (download) + `POST /files` (multipart upload, 500 MB limit). Path-traversal protection, same auth as SSE, CORS support |
 | `src/auth.rs` | ~160 | Bearer-token authentication (disabled by default) — `AuthConfig`, `check_auth()`, constant-time comparison, 5 unit tests |
 
 ## `src/main.rs`
@@ -103,3 +103,9 @@ the full handler map.
   is blocked (rejects `..`, absolute paths, and symlink escapes). Upload limit:
   500 MB. The `firebird_list_files` tool returns relative paths that can be used
   directly as the `path` query parameter for downloads.
+- **CORS:** all SSE endpoints (`/sse`, `/messages`, `/files`) support CORS for
+  browser clients. Preflight `OPTIONS` requests return 204 with
+  `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, POST,
+  OPTIONS`, and `Access-Control-Allow-Headers: Authorization, Content-Type`.
+  Regular responses include `Access-Control-Allow-Origin: *`. This allows web UIs
+  hosted on different origins to communicate with the MCP server.

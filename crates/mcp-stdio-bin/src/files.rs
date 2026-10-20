@@ -58,9 +58,39 @@ pub fn build_files_router(core: Arc<ProtocolCore>, auth: Arc<AuthConfig>) -> Rou
                 |State(state): State<Arc<FilesState>>, headers: HeaderMap, multipart: Multipart| {
                     handle_upload(state, headers, multipart)
                 },
-            ),
+            )
+            .options(cors_preflight),
         )
         .with_state(Arc::new(state))
+}
+
+/// Handles CORS preflight requests (OPTIONS).
+///
+/// Echoes the requested headers from `Access-Control-Request-Headers` so the
+/// browser knows which headers are allowed.
+async fn cors_preflight(headers: HeaderMap) -> Response {
+    let requested_headers = headers
+        .get(header::ACCESS_CONTROL_REQUEST_HEADERS)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("Authorization, Content-Type");
+
+    (
+        StatusCode::NO_CONTENT,
+        [
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+            (header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS"),
+            (header::ACCESS_CONTROL_ALLOW_HEADERS, requested_headers),
+            (header::ACCESS_CONTROL_MAX_AGE, "86400"),
+        ],
+    )
+        .into_response()
+}
+
+/// Adds CORS headers to a response.
+fn add_cors_headers(mut response: Response) -> Response {
+    let headers = response.headers_mut();
+    headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().unwrap());
+    response
 }
 
 /// Resolves the storage base directory from the live config.
@@ -181,7 +211,7 @@ async fn handle_download(
         Err(e) => return internal_error(format!("failed to read file: {e}")),
     };
 
-    (
+    let response = (
         StatusCode::OK,
         [(
             header::CONTENT_DISPOSITION,
@@ -189,7 +219,8 @@ async fn handle_download(
         )],
         data,
     )
-        .into_response()
+        .into_response();
+    add_cors_headers(response)
 }
 
 /// `POST /files` — multipart upload.
@@ -284,14 +315,15 @@ async fn handle_upload(
 
     mlog!("file upload: {} ({} bytes)", target, file_bytes.len());
 
-    (
+    let response = (
         StatusCode::CREATED,
         Json(json!({
             "path": target,
             "size": file_bytes.len(),
         })),
     )
-        .into_response()
+        .into_response();
+    add_cors_headers(response)
 }
 
 // --- Error helpers -------------------------------------------------------
