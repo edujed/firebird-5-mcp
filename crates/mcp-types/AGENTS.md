@@ -21,21 +21,21 @@
 |---|---|---|
 | `enum Value` | 29–39 | Single column value: Null, Bool, Int, Float, Text, Date, Time, Timestamp, Binary |
 | `struct ColumnMeta` | 43–54 | `{ name, type_name, is_numeric }` — `is_numeric` flags NUMERIC/DECIMAL columns (detected by the query layer) |
-| `struct QueryResult` | 50–53 | `{ columns: Vec<ColumnMeta>, rows: Vec<Vec<Value>> }` |
-| `QueryResult::get` | 57–62 | Value at row/col, Null if out of bounds |
-| `QueryResult::col_index` | 65–69 | Column index by name (case-insensitive) |
-| `Value::as_i64` | 74–81 | Coerce to i64 (parses text, bools) |
-| `Value::as_text` | 84–90 | Coerce to String (text or int) |
-| `FIREBIRD_TYPE_NAMES` | 99–124 | RDB$FIELD_TYPE number → Firebird type name (24 entries, verified vs Firebird 5) |
-| `type_name_for` | 126–131 | Lookup helper |
-| `format_column_type` | 140–198 | Human-readable type: NUMERIC/DECIMAL(p,s), CHAR/VARCHAR/NVARCHAR(n) bytes→chars, BLOB sub-type |
-| `char_size_for` | 205–213 | NVARCHAR = /2 (2-byte units); CHAR/VARCHAR = as-is (already in characters) |
-| `is_valid_identifier` | 217–224 | Letters/digits/underscore, must start with a letter |
+| `struct QueryResult` | 58–61 | `{ columns: Vec<ColumnMeta>, rows: Vec<Vec<Value>> }` |
+| `QueryResult::get` | 63–68 | Value at row/col, Null if out of bounds |
+| `QueryResult::col_index` | 71–75 | Column index by name (case-insensitive) |
+| `Value::as_i64` | 80–87 | Coerce to i64 (parses text, bools) |
+| `Value::as_text` | 90–96 | Coerce to String (text or int) |
+| `FIREBIRD_TYPE_NAMES` | 107–132 | RDB$FIELD_TYPE number → Firebird type name (24 entries, verified vs Firebird 5) |
+| `type_name_for` | 134–139 | Lookup helper |
+| `format_column_type` | 148–198 | Human-readable type: NUMERIC/DECIMAL(p,s), CHAR/VARCHAR/NVARCHAR(n) bytes→chars, BLOB sub-type |
+| `char_size_for` | 213–221 | NVARCHAR = /2 (2-byte units); CHAR/VARCHAR = as-is (already in characters) |
+| `is_valid_identifier` | 261–268 | Letters/digits/underscore, must start with a letter |
 | `is_not_null` | 231–239 | Checks if a column is NOT NULL from RDB$ metadata (single source of truth) |
 | `trigger_type_label` | 243–250 | Maps `RDB$TRIGGER_TYPE` enum (1-6) to human-readable label (BEFORE/AFTER INSERT/UPDATE/DELETE) |
-| `format_cell` | 252–270 | Markdown cell: NULL, flatten newlines, escape pipes, `<BLOB>` for binary |
-| `format_float` | 252–258 | Whole floats render as integers |
-| `flatten` | 260–262 | Newlines → space, pipes → `\|` |
+| `format_cell` | 276–294 | Markdown cell: NULL, flatten newlines, escape pipes, `<BLOB>` for binary |
+| `format_float` | 296–302 | Whole floats render as integers |
+| `flatten` | 304–306 | Newlines → space, pipes → `\|` |
 
 ## Conventions
 

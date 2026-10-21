@@ -20,34 +20,35 @@
 | File | Lines | Role |
 |---|---|---|
 | `Cargo.toml` | ~18 | Package `firebird-5-mcp`; deps: `firebird-5-mcp-core`, `firebird-5-mcp-tools`, `serde`, `serde_json`, `tokio`, `axum` (multipart), `uuid`, `async-stream` |
-| `src/main.rs` | ~230 | Entry point, CLI flag parsing, transport dispatch (stdio vs. SSE), config loading, logging init |
-| `src/sse.rs` | ~340 | MCP HTTP+SSE transport (spec `2024-11-05`) — `GET /sse` + `POST /messages`, session management (UUID → broadcast channel), background cleanup, CORS support. Merges the files router in `run_sse()` |
-| `src/files.rs` | ~310 | File upload/download endpoints — `GET /files?path=<rel>` (download) + `POST /files` (multipart upload, 500 MB limit). Path-traversal protection, same auth as SSE, CORS support |
+| `src/main.rs` | 311 | Entry point, CLI flag parsing, transport dispatch (stdio vs. SSE), config loading, logging init |
+| `src/sse.rs` | 354 | MCP HTTP+SSE transport (spec `2024-11-05`) — `GET /sse` + `POST /messages`, session management (UUID → broadcast channel), background cleanup, CORS support. Merges the files router in `run_sse()` |
+| `src/files.rs` | 357 | File upload/download endpoints — `GET /files?path=<rel>` (download) + `POST /files` (multipart upload, 500 MB limit). Path-traversal protection, same auth as SSE, CORS support |
 | `src/auth.rs` | ~160 | Bearer-token authentication (disabled by default) — `AuthConfig`, `check_auth()`, constant-time comparison, 5 unit tests |
 
 ## `src/main.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
-| `struct Args` | ~25–40 | CLI args: `sse`, `host`, `port`, `token`, `token_file`, `session_timeout_min`, `base_url` |
-| `parse_args()` | ~40–125 | Parses `--sse`, `--host`, `--port`, `--token`, `--token-file`, `--session-timeout`, `--base-url`, `--help`. Returns `Result<Args, String>` |
-| `print_usage()` | ~115–140 | Usage message with examples |
-| `main()` | ~145–225 | Loads `Config`, inits logging, computes `files_base_url` (SSE only: `--base-url` or derived from `--host`/`--port`, `None` for wildcard hosts), creates `ProtocolCore::new(cfg, files_base_url)`, dispatches to `run_sse()` (if `--sse`) or `run_stdio()` |
-| `resolve_auth()` | ~215–240 | Resolves `AuthConfig` from args: `--token-file` > `--token` > disabled |
-| `run_stdio()` | ~245–275 | Stdio transport: reads JSON-RPC lines from stdin, calls `core.handle_request()`, writes to stdout |
+| `struct Args` | 26–40 | CLI args: `sse`, `host`, `port`, `token`, `token_file`, `session_timeout_min`, `base_url` |
+| `parse_args()` | 55–131 | Parses `--sse`, `--host`, `--port`, `--token`, `--token-file`, `--session-timeout`, `--base-url`, `--help`. Returns `Result<Args, String>` |
+| `print_usage()` | 132–158 | Usage message with examples |
+| `main()` | 159–253 | Loads `Config`, inits logging, computes `files_base_url` (SSE only: `--base-url` or derived from `--host`/`--port`, `None` for wildcard hosts), creates `ProtocolCore::new(cfg, files_base_url)`, dispatches to `run_sse()` (if `--sse`) or `run_stdio()` |
+| `resolve_auth()` | 254–279 | Resolves `AuthConfig` from args: `--token-file` > `--token` > disabled |
+| `run_stdio()` | 280–311 | Stdio transport: reads JSON-RPC lines from stdin, calls `core.handle_request()`, writes to stdout |
 
 ## `src/sse.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
-| `struct Session` | ~42–55 | A single SSE session: `broadcast::Sender<Value>` + `last_active` timestamp. `new()` creates the channel (capacity 64) |
-| `struct SseState` | ~60–70 | Shared state: `Arc<ProtocolCore>`, `Arc<Mutex<HashMap<Uuid, Session>>>`, `Arc<AuthConfig>`. `Clone` (all fields are `Arc`) |
-| `struct MessageQuery` | ~75–80 | Query params for `POST /messages`: `sessionId` (renamed from `session_id` via `#[serde(rename)]`) |
-| `build_router()` | ~85–110 | Builds the axum `Router` with `GET /sse` and `POST /messages`, attaches `Arc<SseState>` via `.with_state()` |
-| `handle_sse()` | ~115–165 | `GET /sse` handler. Authenticates, creates a session (UUID + broadcast channel), returns an `Sse` stream: first event is `endpoint` (with the POST URL), then bridges the broadcast channel to `message` events. Keep-alive every 15s |
-| `handle_message()` | ~170–250 | `POST /messages` handler. Authenticates, parses `sessionId` + JSON body, looks up the session, runs `core.handle_request()` in `spawn_blocking` (avoids stalling the async runtime), sends the response via the broadcast channel. Returns `202 Accepted` |
-| `spawn_session_cleanup()` | ~255–280 | Background task: reaps sessions inactive for > timeout (default 30 min). Runs every 60s |
-| `run_sse()` | ~285–310 | Entry point for SSE mode: creates the router, spawns the cleanup task, binds the TCP listener, runs `axum::serve()` |
+| `struct Session` | 43–55 | A single SSE session: `broadcast::Sender<Value>` + `last_active` timestamp. `new()` creates the channel (capacity 64) |
+| `struct SseState` | 66–74 | Shared state: `Arc<ProtocolCore>`, `Arc<Mutex<HashMap<Uuid, Session>>>`, `Arc<AuthConfig>`. `Clone` (all fields are `Arc`) |
+| `struct MessageQuery` | 77–80 | Query params for `POST /messages`: `sessionId` (renamed from `session_id` via `#[serde(rename)]`) |
+| `build_router()` | 87–108 | Builds the axum `Router` with `GET /sse` and `POST /messages`, attaches `Arc<SseState>` via `.with_state()` |
+| `add_cors_headers()` | 141–150 | Appends `Access-Control-Allow-*` headers to a response (shared by all SSE handlers) |
+| `handle_sse()` | 152–205 | `GET /sse` handler. Authenticates, creates a session (UUID + broadcast channel), returns an `Sse` stream: first event is `endpoint` (with the POST URL), then bridges the broadcast channel to `message` events. Keep-alive every 15s |
+| `handle_message()` | 207–294 | `POST /messages` handler. Authenticates, parses `sessionId` + JSON body, looks up the session, runs `core.handle_request()` in `spawn_blocking` (avoids stalling the async runtime), sends the response via the broadcast channel. Returns `202 Accepted` |
+| `spawn_session_cleanup()` | 296–330 | Background task: reaps sessions inactive for > timeout (default 30 min). Runs every 60s |
+| `run_sse()` | 332–354 | Entry point for SSE mode: creates the router, spawns the cleanup task, binds the TCP listener, runs `axum::serve()` |
 
 ## `src/auth.rs`
 
@@ -69,15 +70,16 @@ the full handler map.
 
 | Function | Lines | Summary |
 |---|---|---|
-| `const MAX_UPLOAD_BYTES` | ~28 | Upload size limit: 500 MB |
-| `struct FileQuery` | ~31–35 | Query params for `GET /files`: `path` (relative path in storage dir) |
-| `struct FilesState` | ~38–42 | Shared state: `Arc<ProtocolCore>` + `Arc<AuthConfig>`. `Clone` |
-| `build_files_router()` | ~45–62 | Builds the axum `Router` with `GET /files` and `POST /files` on the same path |
-| `resolve_storage_dir()` | ~65–78 | Resolves the storage base dir from live config (`config.storage.dir` > `~/.firebird-mcp/output/`) |
-| `resolve_safe_path()` | ~81–130 | Resolves a relative path against the storage base, rejecting path traversal (`..`, absolute paths, symlink escape). Handles non-existent paths (for uploads) by canonicalizing the deepest existing ancestor |
-| `handle_download()` | ~133–175 | `GET /files?path=<rel>` — reads the file, returns it with `Content-Disposition: attachment` |
-| `handle_upload()` | ~178–260 | `POST /files` — multipart with `file` (binary) + `target` (relative path). Creates parent dirs, enforces 500 MB limit |
-| Error helpers | ~265–290 | `bad_request()`, `not_found()`, `too_large()`, `internal_error()` — JSON error responses |
+| `const MAX_UPLOAD_BYTES` | 28 | Upload size limit: 500 MB |
+| `struct FileQuery` | 32–35 | Query params for `GET /files`: `path` (relative path in storage dir) |
+| `struct FilesState` | 39–42 | Shared state: `Arc<ProtocolCore>` + `Arc<AuthConfig>`. `Clone` |
+| `build_files_router()` | 45–62 | Builds the axum `Router` with `GET /files` and `POST /files` on the same path |
+| `add_cors_headers()` | 90–99 | Appends `Access-Control-Allow-*` headers to a response (shared by all file handlers) |
+| `resolve_storage_dir()` | 100–113 | Resolves the storage base dir from live config (`config.storage.dir` > `~/.firebird-mcp/output/`) |
+| `resolve_safe_path()` | 115–174 | Resolves a relative path against the storage base, rejecting path traversal (`..`, absolute paths, symlink escape). Handles non-existent paths (for uploads) by canonicalizing the deepest existing ancestor |
+| `handle_download()` | 176–230 | `GET /files?path=<rel>` — reads the file, returns it with `Content-Disposition: attachment` |
+| `handle_upload()` | 232–329 | `POST /files` — multipart with `file` (binary) + `target` (relative path). Creates parent dirs, enforces 500 MB limit |
+| Error helpers | 331–357 | `bad_request()`, `not_found()`, `too_large()`, `internal_error()` — JSON error responses |
 
 ## Conventions
 

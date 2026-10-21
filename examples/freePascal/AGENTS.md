@@ -17,6 +17,8 @@
 | `README.md` | 256 | Build/run instructions, expected output, architecture diagram |
 | `uMCP.pas` | 243 | MCP client unit — POSIX pipe wrappers + `MCPCall` / `MCPListTools` |
 | `test_mcp.pas` | 67 | Test program exercising 8 MCP tools against the `test-mcp` database |
+| `test_events.pas` | 258 | Test program for the universal POST_EVENT feature (`on_success_event` / `on_fail_event`) — verifies `events.jsonl` lines and Firebird `SET EVENT` notifications |
+| `test_migration.pas` | 70 | Test program for the migration tools (`firebird_export` / `firebird_describe_file` / `firebird_import`) |
 
 ## `uMCP.pas`
 

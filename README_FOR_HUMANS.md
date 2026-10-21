@@ -365,6 +365,7 @@ fi
 | [`README.md`](README.md) | Full tool reference (all 36 tools with parameters and examples) |
 | [`README-PTBR.md`](README-PTBR.md) | Same, in Portuguese |
 | [`README_COMMAND_LINE.md`](README_COMMAND_LINE.md) | JSON-RPC protocol details, helper scripts |
+| [`README_WEB_UI.md`](README_WEB_UI.md) | Web UI / non-stdio clients (HTTP+SSE transport) |
 | [`examples/test-mcp/`](examples/test-mcp/) | Complete test database (schema, seed data, creation script) |
 | [`examples/mcp-call.sh`](examples/mcp-call.sh) | CLI helper (Linux/macOS) |
 | [`examples/mcp-call.bat`](examples/mcp-call.bat) | CLI helper (Windows) |

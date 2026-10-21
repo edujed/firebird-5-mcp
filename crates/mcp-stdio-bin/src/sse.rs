@@ -326,7 +326,7 @@ fn spawn_session_cleanup(
 /// # Arguments
 /// * `core` — the protocol core (shared with the stdio transport).
 /// * `host` — the bind address (e.g. `"0.0.0.0"`).
-/// * `port` — the bind port (e.g. `8080`).
+/// * `port` — the bind port (e.g. `9000`).
 /// * `auth` — the authentication configuration (may be disabled).
 /// * `session_timeout_min` — session inactivity timeout in minutes.
 pub async fn run_sse(

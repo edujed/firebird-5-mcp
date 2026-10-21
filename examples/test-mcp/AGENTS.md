@@ -21,7 +21,7 @@
 | `01_drop_schema.sql` | 145 | Idempotent drop (triggers → procs → functions → sequences → tables → views → domains) |
 | `02_create_schema.sql` | 220 | DDL — domains, sequences, 12 tables, 2 views |
 | `03_create_triggers.sql` | 198 | 4 triggers, 3 functions (incl. name generators), 2 procedures (uses `SET TERM ^`) |
-| `04_poulate.sql` | ~130 | Static seed data — DELETE all, then INSERT per table (BRANCH, DEPARTMENT, PROFILE, PERMISSION, SCREEN, PROFILE_PERMISSION, PROFILE_SCREEN) |
+| `04_poulate.sql` | 294 | Static seed data — DELETE all, then INSERT per table (BRANCH, DEPARTMENT, PROFILE, PERMISSION, SCREEN, PROFILE_PERMISSION, PROFILE_SCREEN) |
 | `05_poulate_2.sql` | ~240 | Procedural seed data — 4 `EXECUTE BLOCK`s using `RAND()` (USERS+USER_DEPARTMENT, USER_PROFILE, APPROVAL, ACTION_LOG) |
 | `06_views.sql` | ~120 | 4 additional views with JOINs (VW_EMPLOYEES, VW_USER_ASSIGNMENTS, VW_APPROVAL_FLOW, VW_DEPT_HEADCOUNT) |
 

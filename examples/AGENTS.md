@@ -28,7 +28,7 @@
 
 | Item | Lines | Summary |
 |---|---|---|
-| `MCP_BINARY` | 22 | Default binary path (override via env; currently `~/Downloads/firebird-5-mcp-linux-amd64`) |
+| `MCP_BINARY` | 22 | Default binary name (override via env; currently `firebird-5-mcp`, resolved via `PATH`) |
 | Usage check | 24–33 | Prints usage + examples if fewer than 2 args |
 | Request build + call | 38–43 | Builds `tools/call` JSON-RPC, pipes to MCP binary, extracts `result.content[0].text` via `python3` |
 
@@ -36,7 +36,7 @@
 
 | Item | Lines | Summary |
 |---|---|---|
-| `MCP_BINARY` | 22 | Default binary path (override via env; currently `%~dp0bin\firebird-5-mcp-windows-amd64.exe`) |
+| `MCP_BINARY` | 22 | Default binary name (override via env; currently `firebird-5-mcp.exe`, resolved via `PATH`) |
 | Usage check | 24–33 | Prints usage + examples if fewer than 2 args |
 | Request build + call | 38–40 | Builds `tools/call` JSON-RPC, pipes to MCP binary, extracts text via `python` |
 

@@ -20,9 +20,10 @@
 | `test_isolation.sh` | 23 | `firebird_run_script` — default, snapshot, readonly, bogus, consistency |
 | `test_createdb.sh` | 18 | `firebird_create_database` — default page size, explicit, invalid |
 | `test_cleanup.sh` | 10 | Removes `.fdb` files created by `test_createdb.sh` |
-| `test_jsonl.sh` | 32 | `firebird_export`/`firebird_describe_file`/`firebird_import` — JSONL format (plain + zstd, create + append, invalid format) |
+| `test_jsonl.sh` | 29 | `firebird_export`/`firebird_describe_file`/`firebird_import` — JSONL format (plain + zstd, create + append, invalid format) |
 | `test_jsonl_cleanup.sh` | 12 | Drops the `JSONL_TEST` table created by `test_jsonl.sh` |
-| `test_post_event.sh` | ~100 | Universal POST_EVENT — `on_success_event`, `on_fail_event`, no events (verifies `events.jsonl`) |
+| `test_post_event.sh` | 103 | Universal POST_EVENT — `on_success_event`, `on_fail_event`, no events (verifies `events.jsonl`) |
+| `test_sse_smoke.sh` | 81 | SSE transport smoke test — starts the binary with `--sse`, checks `GET /sse` (endpoint event), `POST /messages` (tools/call round-trip), and `GET /files` (download) |
 | `test_pagination.bat` | 18 | Windows equivalent of `test_pagination.sh` |
 | `test_stats.bat` | 17 | Windows equivalent of `test_stats.sh` |
 | `test_query_history.bat` | 19 | Windows equivalent of `test_query_history.sh` |
@@ -53,6 +54,7 @@ sh tests/test_cleanup.sh      # removes the files from test_createdb.sh
 sh tests/test_jsonl.sh        # requires the test-mcp database
 sh tests/test_jsonl_cleanup.sh # drops the JSONL_TEST table
 sh tests/test_post_event.sh   # tests universal POST_EVENT (on_success_event/on_fail_event)
+sh tests/test_sse_smoke.sh    # tests the SSE transport (--sse, /sse, /messages, /files)
 
 # Windows
 tests\test_pagination.bat

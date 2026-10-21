@@ -151,6 +151,7 @@ The base directory can be overridden with `FIREBIRD_MCP_HOME` (e.g. for testing 
 | [README_FOR_DEVS.md](README_FOR_DEVS.md) | Build, cross-compilation, project structure |
 | [README_MIGRATIONS.md](README_MIGRATIONS.md) | Data migration (Parquet/IPC/CSV/DBF) |
 | [README_FOR_HUMANS.md](README_FOR_HUMANS.md) | Use it as a plain CLI — no AI agent needed |
+| [README_WEB_UI.md](README_WEB_UI.md) | Web UI / non-stdio clients (HTTP+SSE transport) |
 | [README-PTBR.md](README-PTBR.md) | This README in Portuguese (Brazil) |
 
 ## Tools

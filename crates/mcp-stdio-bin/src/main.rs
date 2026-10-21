@@ -28,7 +28,7 @@ struct Args {
     sse: bool,
     /// Bind address for the SSE server (default: `0.0.0.0`).
     host: String,
-    /// Bind port for the SSE server (default: `8080`).
+    /// Bind port for the SSE server (default: `9000`).
     port: u16,
     /// Bearer token for SSE authentication (optional).
     token: Option<String>,
@@ -37,7 +37,7 @@ struct Args {
     /// Session inactivity timeout in minutes for the SSE transport (default: 30).
     session_timeout_min: u64,
     /// Explicit base URL for the `/files` download endpoint (e.g.
-    /// `http://192.168.1.50:8080`). When omitted, it is derived from
+    /// `http://192.168.1.50:9000`). When omitted, it is derived from
     /// `--host`/`--port` (SSE mode only).
     base_url: Option<String>,
 }
@@ -47,7 +47,7 @@ struct Args {
 /// Supported flags:
 /// - `--sse` — enable the SSE transport.
 /// - `--host <addr>` — bind address for SSE (default: `0.0.0.0`).
-/// - `--port <port>` — bind port for SSE (default: `8080`).
+/// - `--port <port>` — bind port for SSE (default: `9000`).
 /// - `--token <token>` — bearer token for SSE authentication.
 /// - `--token-file <path>` — path to a file containing the bearer token.
 /// - `--session-timeout <min>` — session inactivity timeout in minutes (default: 30).
@@ -57,7 +57,7 @@ fn parse_args() -> Result<Args, String> {
     let mut result = Args {
         sse: false,
         host: "0.0.0.0".to_string(),
-        port: 8080,
+        port: 9000,
         token: None,
         token_file: None,
         session_timeout_min: 30,
@@ -142,7 +142,7 @@ fn print_usage() {
          \n\
          SSE OPTIONS:\n\
          \x20 --host <addr>       bind address (default: 0.0.0.0)\n\
-         \x20 --port <port>       bind port (default: 8080)\n\
+         \x20 --port <port>       bind port (default: 9000)\n\
          \x20 --token <token>     bearer token for authentication\n\
          \x20 --token-file <path> path to a file containing the bearer token\n\
          \x20 --session-timeout <min>  session inactivity timeout (default: 30)\n\

@@ -17,30 +17,30 @@
 |---|---|---|
 | `Cargo.toml` | 15 | Package `firebird-5-mcp-tools`; deps: `firebird-5-mcp-core`, `firebird-5-mcp-types`, `firebird-5-mcp-migration`, `serde_json`, `chrono` |
 | `src/lib.rs` | ~200 | `ToolResult`, `dispatch()` (with universal POST_EVENT), `build_time()`, re-exports |
-| `src/common.rs` | 199 | Shared helpers (arg parsing, client, Markdown, file save) |
+| `src/common.rs` | 322 | Shared helpers (arg parsing, client, Markdown, file save, `download_url` builder) |
 | `src/definitions.rs` | ~510 | JSON input schemas for `tools/list` |
 | `src/events.rs` | 353 | Universal POST_EVENT support — `emit_tool_event()` (called from `dispatch()`), `valid_event_name()`, `build_event()`, `resolve_database()`, `append_event_line()` |
 | `src/protocol.rs` | ~150 | `ProtocolCore` — transport-agnostic JSON-RPC routing (extracted from `mcp-stdio-bin`). Holds the shared `RwLock<Option<Config>>` and routes `initialize`/`ping`/`tools/list`/`tools/call`. Thread-safe, shared between stdio and SSE transports |
 | `src/query_tools.rs` | 221 | SQL execution tools |
-| `src/schema_tools.rs` | 874 | Schema inspection tools (largest file) |
+| `src/schema_tools.rs` | 1258 | Schema inspection tools (largest file) |
 | `src/stats_tools.rs` | 233 | MON$ statistics tools |
 | `src/introspection_tools.rs` | 270 | RDB$ introspection tools |
-| `src/generator_tools.rs` | 175 | `firebird_generate_dev` handler (Python emits `__init__.py`, JSON Schema emits `.json`) |
-| `src/view_dto_tools.rs` | 80 | `firebird_generate_view_dto` handler |
+| `src/generator_tools.rs` | 201 | `firebird_generate_dev` handler (Python emits `__init__.py`, JSON Schema emits `.json`) |
+| `src/view_dto_tools.rs` | 90 | `firebird_generate_view_dto` handler |
 | `src/ddl_tools.rs` | 229 | DDL create/alter/drop tools |
-| `src/migration_tools.rs` | 311 | Export/import/describe handlers (format-agnostic: Parquet, IPC, CSV, DBF, JSONL + compression + codepage). **Pure handlers** — no event code (POST_EVENT is universal in `dispatch()`) |
+| `src/migration_tools.rs` | 346 | Export/import/describe handlers (format-agnostic: Parquet, IPC, CSV, DBF, JSONL + compression + codepage). **Pure handlers** — no event code (POST_EVENT is universal in `dispatch()`) |
 | `src/quality_tools.rs` | 687 | `firebird_data_quality` handler — rule-based data quality checks (nulls, empty_strings, outliers, date_range) with Markdown/JSON output |
-| `src/file_tools.rs` | ~280 | `firebird_list_files` handler — lists generated files in the storage directory with optional filters (database, format, max_age_hours). Returns Markdown table + structured content |
+| `src/file_tools.rs` | 337 | `firebird_list_files` handler — lists generated files in the storage directory with optional filters (database, format, max_age_hours). Returns Markdown table + structured content |
 
 ## `src/lib.rs`
 
 | Item | Lines | Summary |
 |---|---|---|
-| `struct ToolResult` | 67–70 | `{ text: String, structured: Option<Value> }` — text always present, structured optional |
-| `ToolResult::text` / `with_structured` | 73–85 | Constructors |
-| `wrap_text()` | 90–92 | Adapts `Result<String,String>` handlers to `Result<ToolResult,String>` |
-| `dispatch()` | 100–125 | Logs the call, times the handler, delegates to `dispatch_inner`, then calls `emit_tool_event()` (universal POST_EVENT). Takes `files_base_url: Option<&str>` (SSE base URL, `None` in stdio) and threads it to file-generating handlers |
-| `dispatch_inner()` | 127–184 | `match` on tool name → handler. **This is the tool registry.** Groups: query, schema, stats, introspection, generators, DDL, migration, data quality. File-generating handlers (generators, `metadata_extract`, export/import/describe_file, `list_files`) receive `files_base_url` |
+| `struct ToolResult` | 77–80 | `{ text: String, structured: Option<Value> }` — text always present, structured optional |
+| `ToolResult::text` / `with_structured` | 83–95 | Constructors |
+| `wrap_text()` | 100–102 | Adapts `Result<String,String>` handlers to `Result<ToolResult,String>` |
+| `dispatch()` | 111–134 | Logs the call, times the handler, delegates to `dispatch_inner`, then calls `emit_tool_event()` (universal POST_EVENT). Takes `files_base_url: Option<&str>` (SSE base URL, `None` in stdio) and threads it to file-generating handlers |
+| `dispatch_inner()` | 136–194 | `match` on tool name → handler. **This is the tool registry.** Groups: query, schema, stats, introspection, generators, DDL, migration, data quality. File-generating handlers (generators, `metadata_extract`, export/import/describe_file, `list_files`) receive `files_base_url` |
 | `build_time()` | 37–41 | Compile-time build timestamp via `OnceLock` + `chrono` (single source of truth, used by both binaries) |
 
 ## `src/events.rs`
@@ -67,9 +67,9 @@
 | `plural_suffix` | 93–95 | `""` if 1 else `"s"` |
 | `cell_text` / `cell_int` / `cell_text_or` | 98–119 | Safe cell accessors (defaults `-`, `0`, or given default) |
 | `storage_dir` | 125–137 | Output dir priority: `outputDirPath` arg > `config.storage.dir` > `~/.firebird-mcp/output/` |
-| `percent_encode_segment` | ~140–155 | Dependency-free percent-encoder for a single path segment (keeps unreserved chars, `%XX`-encodes the rest) |
-| `file_download_url` | ~158–180 | Builds `{base}/files?path=<encoded rel>` for a file inside the storage dir. Returns `None` when `base_url` is `None` (stdio) or the file is outside the storage base. 5 unit tests |
-| `save_or_inline` | ~183–250 | Writes generated files to disk, builds previews (first 10 + last 5 lines) and structured content. Takes `files_base_url: Option<&str>`; adds `download_url` to each file entry when available |
+| `percent_encode_segment` | 144–158 | Dependency-free percent-encoder for a single path segment (keeps unreserved chars, `%XX`-encodes the rest) |
+| `file_download_url` | 166–188 | Builds `{base}/files?path=<encoded rel>` for a file inside the storage dir. Returns `None` when `base_url` is `None` (stdio) or the file is outside the storage base. 5 unit tests |
+| `save_or_inline` | 195–262 | Writes generated files to disk, builds previews (first 10 + last 5 lines) and structured content. Takes `files_base_url: Option<&str>`; adds `download_url` to each file entry when available |
 
 ## `src/definitions.rs`
 
@@ -98,13 +98,17 @@
 | `handle_describe_table` | 22–32 | Full schema of one table/view |
 | `handle_get_databases` | 36–46 | Reloads config from disk, lists configured databases + build time |
 | `handle_describe_database` | 325–483 | Full DB overview: MON$DATABASE health, per-table columns (PK/NOT NULL/comments), optional row counts, Mermaid ER diagram of FKs (shared `build_er_diagram`). Args: `database`, `include_counts`, `include_describes`, `output_mode` (`inline` default / `download`), `output_format` (`markdown` default / `json`), `compression` (zstd/gzip/lz4/none, when saving), `outputDirPath` (optional; `download` without it uses the default storage dir). JSON shape: `{database, health, tables[], er_diagram}`. File naming: `<db>_describe.md` / `<db>_describe.json` (+compression suffix). Returns `ToolResult` (not `wrap_text`) so `files[]`/`download_url` are emitted in SSE mode |
-| `handle_list` | 248–258 | Lists objects by type: TABLES, PROCEDURES, FUNCTIONS, DOMAINS, TRIGGERS, INDEXES, SEQUENCES (one branch each) |
-| `handle_metadata_extract` | 482–519 | DDL extraction (isql `-x` replacement); optional `objects` filter; `outputDirPath` saves to file; `compression` param (zstd/gzip/lz4/none) |
-| `handle_er_diagram` | 554–650 | Generates a Mermaid `erDiagram` (tables + FK relationships). Args: `database`, optional `tables` (filter), `include_columns` (bool, default false), `outputDirPath` (save to `.mmd`), `compression` (zstd/gzip/lz4/none). Returns the diagram as a Markdown code block; when `outputDirPath` is set, saves via `save_or_inline` (with `download_url` in SSE mode) |
-| `handle_describe` | 517–527 | Describes multiple objects by name (tables, views, procs, functions, triggers, sequences, domains) |
-| `handle_check_duplicates` | 537–547 | Finds duplicate values in 1+ columns (GROUP BY/HAVING), then shows full rows of the first duplicate combo |
-| `handle_domains` | 666–676 | Domain analysis: usage counts, most common type signatures, suggestions for missing domains |
-| `handle_find_column` | 812–822 | Finds columns by name pattern (`%` wildcards) across all tables/views |
+| `collect_db_health` | 70–140 | Reads MON$DATABASE + engine version into a health struct (shared by `describe_database` and `database_stats` rendering) |
+| `collect_table_schema` | 142–203 | Fetches columns/PK/NOT NULL/comments for one table (used by `describe_database`) |
+| `render_describe_database_markdown` | 205–323 | Renders the full DB overview as Markdown (health, per-table columns, optional row counts, ER diagram) |
+| `handle_list` | 485–717 | Lists objects by type: TABLES, PROCEDURES, FUNCTIONS, DOMAINS, TRIGGERS, INDEXES, SEQUENCES (one branch each) |
+| `handle_metadata_extract` | 719–770 | DDL extraction (isql `-x` replacement); optional `objects` filter; `outputDirPath` saves to file; `compression` param (zstd/gzip/lz4/none) |
+| `handle_describe` | 772–789 | Describes multiple objects by name (tables, views, procs, functions, triggers, sequences, domains) |
+| `build_er_diagram` | 796–840 | Builds a Mermaid `erDiagram` string (tables + FK relationships) — shared by `handle_er_diagram` and `handle_describe_database` |
+| `handle_er_diagram` | 842–918 | Generates a Mermaid `erDiagram` (tables + FK relationships). Args: `database`, optional `tables` (filter), `include_columns` (bool, default false), `outputDirPath` (save to `.mmd`), `compression` (zstd/gzip/lz4/none). Returns the diagram as a Markdown code block; when `outputDirPath` is set, saves via `save_or_inline` (with `download_url` in SSE mode) |
+| `handle_check_duplicates` | 921–1046 | Finds duplicate values in 1+ columns (GROUP BY/HAVING), then shows full rows of the first duplicate combo |
+| `handle_domains` | 1050–1193 | Domain analysis: usage counts, most common type signatures, suggestions for missing domains |
+| `handle_find_column` | 1196–1258 | Finds columns by name pattern (`%` wildcards) across all tables/views |
 
 ## `src/stats_tools.rs`
 
@@ -130,14 +134,14 @@
 
 | Function | Lines | Summary |
 |---|---|---|
-| `handle_generate_dev` | 14–185 | Generates dev code for up to 20 tables (java, go, rust, typescript, protobuf, openapi, graphql, python, lazarus, svelte). Special paths: Lazarus → `.lfm` forms; Svelte → Page + Form components; Python → `__init__.py` with cross-module imports. Rest goes through `generator::generate` + `save_or_inline`. Supports `compression` param (zstd/gzip/lz4/none) |
+| `handle_generate_dev` | 14–189 | Generates dev code for up to 20 tables (java, go, rust, typescript, protobuf, openapi, graphql, python, lazarus, svelte). Special paths: Lazarus → `.lfm` forms; Svelte → Page + Form components; Python → `__init__.py` with cross-module imports. Rest goes through `generator::generate` + `save_or_inline`. Supports `compression` param (zstd/gzip/lz4/none) |
 | `compression_suffix()` | 190–202 | Reads the `compression` arg and returns the file suffix (`.zst`, `.gz`, `.lz4`, or empty) |
 
 ## `src/view_dto_tools.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
-| `handle_generate_view_dto` | 12–90 | Generates read-only DTOs for up to 20 views (java, go, rust, typescript, protobuf, openapi, graphql, python); uses resolved view metadata. Supports `compression` param (zstd/gzip/lz4/none) |
+| `handle_generate_view_dto` | 12–90 | Generates read-only DTOs for up to 20 views (java, go, rust, typescript, protobuf, openapi, graphql, python, json_schema); uses resolved view metadata. Supports `compression` param (zstd/gzip/lz4/none) | (java, go, rust, typescript, protobuf, openapi, graphql, python); uses resolved view metadata. Supports `compression` param (zstd/gzip/lz4/none) |
 
 ## `src/ddl_tools.rs`
 
@@ -156,25 +160,26 @@
 
 | Function | Lines | Summary |
 |---|---|---|
-| `handle_export` | 12–127 | Exports table/view/SQL to data file. Args: `source`, `output_path`, optional `format` (default "parquet": `parquet`/`ipc`/`csv`/`dbf`/`jsonl`, aliases `ndjson`/`ldjson` → `jsonl`), optional `compression` (validated per format: Parquet → snappy/zstd/lz4/none; IPC → zstd/lz4/none; CSV/DBF/JSONL → zstd/gzip/lz4/none, but extension takes precedence), optional `codepage` (DBF → cp437/cp850; CSV → cp437/cp850/iso-8859-1/windows-1252/utf-8; JSONL always UTF-8, codepage rejected), `database`, optional `on_success_event` / `on_fail_event` (POST_EVENT). Returns structured `{path, rows, columns, format, compression, download_url?}` — `download_url` present only in SSE mode when the file is inside the storage dir |
-| `handle_import` | 130–215 | Imports data file into Firebird table. Args: `input_path`, `table`, `mode` (create/append), optional `format` (default "parquet"), `ignore_columns` (array), optional `codepage` (same validation as export), `database`, optional `on_success_event` / `on_fail_event` (POST_EVENT). Returns structured `{table, rows, columns, mode, format, ignored_columns, input_path, download_url?}` |
-| `handle_describe_file` | 218–330 | Describes a file's schema without loading data. Args: `path`, optional `format` (default "parquet"), optional `codepage`. Returns Markdown (Parquet/IPC/DBF: types table; CSV/JSONL: columns + inferred types + 5 sample rows) + structured `{path, format, rows, columns, arrow_types, firebird_types, sample_rows, download_url?}`. **No DB connection needed** |
-| `default_compression` | 333–339 | Returns default codec per format: Parquet → snappy, IPC → zstd, CSV/DBF/JSONL → none |
-| `normalise_format` | 342–358 | Normalises a format string to its canonical name. Accepts aliases: `ndjson`/`ldjson` → `jsonl`, `dbase` → `dbf` |
+| `handle_export` | 12–121 | Exports table/view/SQL to data file. Args: `source`, `output_path`, optional `format` (default "parquet": `parquet`/`ipc`/`csv`/`dbf`/`jsonl`, aliases `ndjson`/`ldjson` → `jsonl`), optional `compression` (validated per format: Parquet → snappy/zstd/lz4/none; IPC → zstd/lz4/none; CSV/DBF/JSONL → zstd/gzip/lz4/none, but extension takes precedence), optional `codepage` (DBF → cp437/cp850; CSV → cp437/cp850/iso-8859-1/windows-1252/utf-8; JSONL always UTF-8, codepage rejected), `database`, optional `on_success_event` / `on_fail_event` (POST_EVENT). Returns structured `{path, rows, columns, format, compression, download_url?}` — `download_url` present only in SSE mode when the file is inside the storage dir |
+| `handle_import` | 122–205 | Imports data file into Firebird table. Args: `input_path`, `table`, `mode` (create/append), optional `format` (default "parquet"), `ignore_columns` (array), optional `codepage` (same validation as export), `database`, optional `on_success_event` / `on_fail_event` (POST_EVENT). Returns structured `{table, rows, columns, mode, format, ignored_columns, input_path, download_url?}` |
+| `handle_describe_file` | 206–325 | Describes a file's schema without loading data. Args: `path`, optional `format` (default "parquet"), optional `codepage`. Returns Markdown (Parquet/IPC/DBF: types table; CSV/JSONL: columns + inferred types + 5 sample rows) + structured `{path, format, rows, columns, arrow_types, firebird_types, sample_rows, download_url?}`. **No DB connection needed** |
+| `default_compression` | 326–332 | Returns default codec per format: Parquet → snappy, IPC → zstd, CSV/DBF/JSONL → none |
+| `normalise_format` | 336–346 | Normalises a format string to its canonical name. Accepts aliases: `ndjson`/`ldjson` → `jsonl`, `dbase` → `dbf` |
 
 ## `src/quality_tools.rs`
 
 | Function | Lines | Summary |
 |---|---|---|
 | `handle_data_quality` | 38–161 | `firebird_data_quality` handler. Args: `table` (required), `rules` (array, default all: `nulls`/`empty_strings`/`outliers`/`date_range`), `columns` (array, optional filter), `output_format` (`markdown`/`json`, default `markdown`), `sample_limit` (default 5, max 20), `database`. Returns `ToolResult` with structured `{table, rules, total_issues, findings[]}` |
-| `run_nulls` | 168–208 | NULLs in NOT NULL columns (severity: error) |
-| `run_empty_strings` | 211–249 | Empty strings in CHAR/VARCHAR/NVARCHAR columns (severity: warning) |
-| `run_outliers` | 252–378 | IQR-based outliers in numeric columns (severity: warning). Q1/Q3 via `FIRST 1 SKIP`, bounds = [Q1−1.5·IQR, Q3+1.5·IQR]. Extra: `{q1, q3, iqr, lower_bound, upper_bound}` |
-| `run_date_range` | 381–431 | Dates outside [1900-01-01, CURRENT_DATE+1] (severity: info). Skips TIME columns |
-| `query_count` / `query_first_value` / `query_sample_values` | 438–470 | Thin wrappers over `query::query` for COUNT, first value, and sample values |
-| `value_as_f64` | 478–486 | Coerces `Value` to `f64` (Float, Int, Bool, Text parsing) |
-| `format_num` | 489–495 | Formats floats for SQL interpolation (avoids scientific notation) |
-| `format_markdown` | 502–569 | Renders findings as a Markdown report (per-rule sections, tables) |
+| `run_nulls` | 168–209 | NULLs in NOT NULL columns (severity: error) |
+| `run_empty_strings` | 210–249 | Empty strings in CHAR/VARCHAR/NVARCHAR columns (severity: warning) |
+| `run_outliers` | 251–379 | IQR-based outliers in numeric columns (severity: warning). Q1/Q3 via `FIRST 1 SKIP`, bounds = [Q1−1.5·IQR, Q3+1.5·IQR]. Extra: `{q1, q3, iqr, lower_bound, upper_bound}` |
+| `run_date_range` | 380–436 | Dates outside [1900-01-01, CURRENT_DATE+1] (severity: info). Skips TIME columns |
+| `query_count` / `query_first_value` / `query_sample_values` | 437–471 | Thin wrappers over `query::query` for COUNT, first value, and sample values |
+| `format_cell_value` | 472–475 | Renders a `Value` for report cells |
+| `value_as_f64` | 477–485 | Coerces `Value` to `f64` (Float, Int, Bool, Text parsing) |
+| `format_num` | 488–494 | Formats floats for SQL interpolation (avoids scientific notation) |
+| `format_markdown` | 501–568 | Renders findings as a Markdown report (per-rule sections, tables) |
 
 ## `src/protocol.rs`
 
@@ -218,4 +223,4 @@
   errors are logged via `mlog!` and dropped. See `src/events.rs` and
   `mcp-core::query::post_event`.
 - **No transport protocol code** — this crate is consumed by `mcp-stdio-bin`
-  (stdio) and will be consumed by `mcp-http-bin` (HTTP/SSE).
+  (both stdio and SSE transports).

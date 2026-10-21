@@ -8,159 +8,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.0] — WIP
 
 ### Added
-- **`firebird_describe_database` output modes** — the tool now accepts `output_mode`
-  (`inline` default / `download`), `output_format` (`markdown` default / `json`,
-  machine-readable `{database, health, tables[], er_diagram}`), `compression`
-  (`zstd`/`gzip`/`lz4`/`none`, applied when saving), and `outputDirPath`
-  (optional; `download` without it saves to the default storage dir). File naming:
-  `<db>_describe.md` / `<db>_describe.json` (+compression suffix). In SSE mode,
-  saved files include a `download_url` (in `structuredContent.files[]` and in the
-  human-readable text). Inline behavior is unchanged by default.
-- **`firebird_er_diagram`** — new tool that generates a Mermaid `erDiagram` of the
-  database schema (tables + foreign-key relationships). Returns the diagram as a
-  Markdown code block (renders in any Markdown viewer). Optional args: `tables`
-  (filter to specific tables), `include_columns` (add column definitions inside
-  each entity), `outputDirPath` (save to a `.mmd` file), `compression`
-  (`zstd`/`gzip`/`lz4`/`none`). In SSE mode, saved files include a
-  `download_url`.
-- **Compression for generated files** — `firebird_metadata_extract`, `firebird_generate_dev`,
-  and `firebird_generate_view_dto` now accept an optional `compression` parameter
-  (`zstd`, `gzip`, `lz4`, or `none` — default `none`). When set, the output file is
-  compressed and the extension is appended (e.g. `metadata.sql.zst`). The `size` and
-  `lines` in the response still reflect the uncompressed content. Compression is
-  handled by the new `mcp-core::compression` module (shared with `mcp-migration`),
-  which provides `Compression` enum, `from_path()`, `compress()`, and `decompress()`.
-  The `mcp-migration` crate's `Compression` enum and `file_compression_from_path()`
-  are now re-exported from `mcp-core::compression` (single source of truth).
-- **`download_url` in file-generating tool responses (SSE mode)** — when running
-  with `--sse`, every tool that produces or references a file now includes a
-  `download_url` in its structured response, pointing at the `GET /files`
-  endpoint: `{base}/files?path=<url-encoded relative path>`. Affected tools:
-  `firebird_export`, `firebird_import`, `firebird_describe_file`,
-  `firebird_generate_dev`, `firebird_generate_view_dto`, `firebird_metadata_extract`
-  (with `outputDirPath`), and `firebird_list_files`. The URL is only emitted when
-  the file is inside the storage directory (the `/files` endpoint only serves
-  that tree). In stdio mode the base URL is `None`, so only the absolute `path`
-  is returned (the retrieval location on the local machine). The base URL comes
-  from the new `--base-url` flag, or is derived from `--host`/`--port` (skipped
-  for wildcard bind hosts like `0.0.0.0` — pass `--base-url http://<lan-ip>:<port>`
-  to advertise a LAN-reachable host). Built by `mcp-tools::common::file_download_url`
-  (dependency-free percent-encoding). The URL is also included in the human-readable
-  `text` response (`Download:` / `Download URLs:` lines), so agents that only read
-  the text content can retrieve the file without inspecting `structuredContent`.
-- **`firebird_export` creates the output directory** — exporting to a path whose
-  parent directory does not exist (e.g. a fresh `<storage>/<db>_<format>/file.parquet`)
-  no longer fails with `No such file or directory`. The parent directory is created
-  automatically for all formats (Parquet, IPC, CSV, DBF, JSONL).
-- **JSON Schema codegen** — `firebird_generate_dev` and `firebird_generate_view_dto`
-  now accept `language: "json_schema"` (aliases: `jsonschema`, `json-schema`).
-  Each table/view produces one `.json` file (draft 2020-12) with Firebird-specific
-  extensions: `x-numeric` (precision/scale for NUMERIC/DECIMAL), `x-column-order`
-  (preserves column order), `x-foreign-key` (when `include_fks=true`).
-  Type mapping: NUMERIC/DECIMAL → `string` + `x-numeric`, CHAR/VARCHAR/NVARCHAR →
-  `string` + `maxLength`, DATE/TIME/TIMESTAMP → `string` + `format`, BOOLEAN →
-  `boolean`, SMALLINT/INTEGER → `integer` + `format: int32`, BIGINT → `integer`
-  + `format: int64`, INT128 → `string`, FLOAT/DOUBLE/DECFLOAT → `number` +
-  `format: double`, BLOB SUB_TYPE BINARY → `string` + `format: binary`.
-  No new dependencies — JSON is built manually via `push_str`.
-- **JSON Lines (JSONL/NDJSON/LDJSON) export/import/describe** — new `jsonl` format
-  for `firebird_export`, `firebird_import`, and `firebird_describe_file`.
-  Each row is a single JSON object on its own line. NULL → `null`, NUMERIC/DECIMAL →
-  string (exact decimal), TIMESTAMP → ISO 8601, BLOB → base64. Compression is
-  transparent via file extension (`.jsonl`, `.jsonl.zst`, `.jsonl.gz`, `.jsonl.lz4`).
-  Aliases: `ndjson` and `ldjson` are accepted as format strings. Import infers
-  column types from the first 100 rows (INTEGER, DOUBLE PRECISION, BOOLEAN, DATE,
-  TIMESTAMP, or VARCHAR(255) fallback). No new dependencies — uses `serde_json`.
-  Text values are always exported as JSON strings (a VARCHAR containing `"123"`
-  stays a string; NUMERIC/DECIMAL stays exact).
-- **Universal POST_EVENT support** — every tool call now accepts two optional
-  string parameters: `on_success_event` and `on_fail_event`. After the handler
-  completes, `dispatch()` (in `mcp-tools`) checks the relevant parameter and,
-  if it contains valid non-empty text: (1) appends a structured JSON line to
-  `~/.firebird-mcp/events.jsonl` (always), and (2) if the call targeted a valid
-  database (resolved from the `database` arg or the configured default), opens
-  a **fresh** connection and executes `POST_EVENT '<name>'` in its own
-  transaction — notifying the Firebird event manager, so clients registered
-  via `SET EVENT` receive the notification on commit. The event payload
-  includes `{event, tool, success, timestamp, database?, duration_ms?, detail?,
-  error?}`. Tools without a resolvable database (e.g. `firebird_get_databases`,
-  `firebird_describe_file`) still get the JSON log line but no SQL event.
-  Event emission never fails the tool call — SQL and I/O errors are logged via
-  `mlog!` and dropped. The `POST_EVENT` SQL execution lives in
-  `mcp-core::query::post_event()`; the universal orchestration (validation,
-  database resolution, JSON log, fresh connection) lives in
-  `mcp-tools::events::emit_tool_event()`, called from `dispatch()` after every
-  tool call. The migration handlers (`mcp-tools::migration_tools`) are pure —
-  no event code.
-- **Python (Pydantic + SQLAlchemy) codegen** — `firebird_generate_dev` and
-  `firebird_generate_view_dto` now support `language: "python"`. Generates
-  SQLAlchemy 2.0 models + Pydantic v2 schemas (Base/Create/Update/Read).
-  `firebird_generate_dev` also emits `__init__.py` with cross-module imports.
-- **`firebird_data_quality`** — new tool that runs configurable data quality
-  rules on a single table. Args: `table` (required), `rules` (array, default
-  all: `nulls`/`empty_strings`/`outliers`/`date_range`), `columns` (optional
-  filter), `output_format` (`markdown`/`json`, default `markdown`),
-  `sample_limit` (default 5, max 20), `database`. Rules: **nulls** — NULLs in
-  NOT NULL columns (error); **empty_strings** — empty strings in
-  CHAR/VARCHAR/NVARCHAR columns (warning); **outliers** — IQR-based outliers
-  in numeric columns via `FIRST 1 SKIP` quartiles, bounds [Q1−1.5·IQR,
-  Q3+1.5·IQR] (warning); **date_range** — dates outside [1900-01-01,
-  CURRENT_DATE+1], skips TIME columns (info). Each finding includes the
-  column, severity, count, and sample values. Outliers include extra context
-  (`q1`, `q3`, `iqr`, `lower_bound`, `upper_bound`). Output is Markdown
-  (default) or JSON. No new dependencies — uses existing `schema::describe_table`
-  and `query::query` from `mcp-core`.
-- **`firebird_list_files`** — new tool that lists generated files (codegen,
-  export, metadata) in the storage directory. Args (all optional): `database`
-  (filter by database name), `format` (filter by format, e.g. `java`,
-  `parquet`, `sql`), `max_age_hours` (only files modified within the last N
-  hours), `outputDirPath` (override the storage directory). Returns a Markdown
-  table (file name, size, line count, modification time) and structured content
-  with the full file list, total count, and total size. Works in both stdio and
-  SSE transports — in stdio the client reads files from the local filesystem;
-  in SSE the client downloads them via the `/files` HTTP endpoint. No new
-  dependencies — uses `std::fs` and `chrono` (already in the workspace).
-- **MCP SSE transport** — the binary now supports the MCP HTTP+SSE transport
-  (spec `2024-11-05`) in addition to stdio. Enable with `--sse`:
+- **HTTP+SSE transport (Web UI)** — the binary now supports the MCP HTTP+SSE
+  transport (spec `2024-11-05`) in addition to stdio, for web UIs and
+  non-stdio clients (llama.cpp `--ui-mcp-proxy`, CODEX, ClaudeCode). Enable
+  with `--sse` (default port `9000`):
   ```bash
   firebird-5-mcp --sse --port 9000                          # no auth
   firebird-5-mcp --sse --port 9000 --token s3cret           # with auth
-  firebird-5-mcp --sse --host 0.0.0.0 --port 9000 --token-file /etc/mcp/token
+  firebird-5-mcp --sse --host 0.0.0.0 --token-file /etc/mcp/token
   ```
-  The SSE transport implements the legacy two-endpoint protocol:
-  - `GET /sse` — opens a Server-Sent Events stream. The first event is
-    `endpoint`, carrying the URL of the message endpoint for this session
-    (`/messages?sessionId=<uuid>`).
-  - `POST /messages?sessionId=<uuid>` — receives a JSON-RPC request, processes
-    it via `ProtocolCore` (in `spawn_blocking` to avoid stalling the async
-    runtime), and delivers the response to the session's SSE stream. Returns
-    `202 Accepted` (the response goes via the stream, not the body).
-
-  Each SSE connection is a **session**: a UUID mapped to a
-  `tokio::sync::broadcast` channel. Sessions inactive for >30 minutes
-  (configurable via `--session-timeout`) are reaped by a background task.
-
-  **Concurrency:** each tool call runs in `spawn_blocking` (tokio thread pool),
-  each opening its own Firebird connection. No global mutex — 20 simultaneous
-  users = 20 independent connections (Firebird MVCC handles this well).
-
-  **Authentication:** optional bearer-token auth (disabled by default). Enable
-  with `--token <token>` or `--token-file <path>` (file takes precedence).
-  Validation uses constant-time comparison to mitigate timing attacks. Token
-  expiration/rotation is delegated to an external auth interface (the
-  `AuthConfig` struct is designed for plugging in a more sophisticated
-  validator later).
-
-  **Protocol core extraction:** the JSON-RPC routing logic (the `match` on
-  `initialize`/`ping`/`tools/list`/`tools/call`) was extracted from
-  `mcp-stdio-bin/src/main.rs` into `mcp-tools/src/protocol.rs` as
-  `ProtocolCore`. This is transport-agnostic and shared between stdio and SSE.
-  The stdio `main.rs` is now a thin transport layer (~75 lines).
-
-  **New dependencies** (in `mcp-stdio-bin` only): `tokio` (async runtime),
-  `axum` (HTTP server), `uuid` (session IDs), `async-stream` (SSE stream
-  bridge). All were already declared in the workspace `Cargo.toml` (provisioned
-  for this feature) — no new workspace-level dependencies.
+  - **Endpoints:** `GET /sse` (opens a session; first event is `endpoint` with
+    the message URL), `POST /messages?sessionId=<uuid>` (JSON-RPC in, response
+    via the SSE stream, `202 Accepted`), `GET /files?path=<rel>` (download from
+    the storage directory), `POST /files` (multipart upload, 500 MB limit).
+  - **File download support:** in SSE mode, every tool that produces or
+    references a file includes a `download_url` (`{base}/files?path=<rel>`) in
+    its structured response and in the human-readable text — so web clients can
+    retrieve generated files over HTTP. The base URL comes from `--base-url`
+    (or is derived from `--host`/`--port`; pass `--base-url` explicitly when
+    binding to a wildcard host).
+  - **Sessions:** each `GET /sse` is a UUID-keyed session (broadcast channel),
+    reaped after 30 min of inactivity (`--session-timeout`). Each tool call runs
+    in `spawn_blocking` with its own Firebird connection — no global mutex.
+  - **Authentication:** optional bearer-token auth (disabled by default) via
+    `--token` / `--token-file` (file takes precedence), constant-time
+    comparison. CORS is enabled on all endpoints for browser clients.
+  - **Protocol core extraction:** the JSON-RPC routing logic was extracted into
+    `mcp-tools::ProtocolCore` (transport-agnostic, shared by stdio and SSE);
+    the stdio `main.rs` is now a thin transport layer.
+  - **New dependencies** (in `mcp-stdio-bin` only): `tokio`, `axum`, `uuid`,
+    `async-stream` (all already declared in the workspace `Cargo.toml`).
+- **New tools:**
+  - `firebird_er_diagram` — generates a Mermaid `erDiagram` of the schema
+    (tables + FK relationships) as a Markdown code block. Optional: `tables`
+    filter, `include_columns`, `outputDirPath` (save `.mmd`), `compression`.
+  - `firebird_data_quality` — rule-based data quality checks on a table:
+    `nulls` (NULLs in NOT NULL columns), `empty_strings`, `outliers` (IQR-based
+    on numeric columns), `date_range` (outside [1900-01-01, today+1]). Output
+    Markdown or JSON, with severity, counts, and sample values.
+  - `firebird_list_files` — lists generated files (codegen, export, metadata)
+    in the storage directory, with optional `database`/`format`/`max_age_hours`
+    filters. In SSE mode the returned relative paths can be used directly with
+    the `/files` download endpoint.
+- **Migrations — new target: JSON Lines (JSONL/NDJSON/LDJSON)** — new `jsonl`
+  format for `firebird_export`, `firebird_import`, and `firebird_describe_file`
+  (aliases: `ndjson`, `ldjson`). Each row is a single JSON object per line;
+  NULL → `null`, NUMERIC/DECIMAL → exact decimal string, TIMESTAMP → ISO 8601,
+  BLOB → base64. Compression via file extension (`.jsonl.zst`, `.jsonl.gz`,
+  `.jsonl.lz4`). Import infers column types from the first 100 rows. No new
+  dependencies — uses `serde_json`.
+- **Codegen — new targets:**
+  - `python` — SQLAlchemy 2.0 models + Pydantic v2 schemas (Base/Create/Update/
+    Read); `firebird_generate_dev` also emits `__init__.py` with cross-module
+    imports.
+  - `json_schema` — one `.json` file per table/view (draft 2020-12) with
+    Firebird extensions: `x-numeric` (precision/scale), `x-column-order`,
+    `x-foreign-key` (with `include_fks=true`). No new dependencies — JSON is
+    built manually via `push_str`.
+- **Firebird `POST_EVENT` support** — every tool call now accepts two optional
+  string parameters: `on_success_event` and `on_fail_event`. After the handler
+  completes, the event is (1) appended as a structured JSON line to
+  `~/.firebird-mcp/events.jsonl` (always), and (2) if a valid database is
+  resolved, `POST_EVENT '<name>'` is executed in a fresh transaction —
+  notifying clients registered via `SET EVENT` on commit. Event emission never
+  fails the tool call. Orchestration lives in `mcp-tools::events::emit_tool_event()`
+  (called from `dispatch()`); the SQL execution in `mcp-core::query::post_event()`.
+- **`firebird_describe_database` output modes** — the tool now accepts
+  `output_mode` (`inline` default / `download`), `output_format` (`markdown`
+  default / `json`), `compression` (`zstd`/`gzip`/`lz4`/`none`), and
+  `outputDirPath`. In SSE mode, saved files include a `download_url`. Inline
+  behavior is unchanged by default.
+- **Compression for generated files** — `firebird_metadata_extract`,
+  `firebird_generate_dev`, and `firebird_generate_view_dto` now accept an
+  optional `compression` parameter (`zstd`, `gzip`, `lz4`, or `none` — default
+  `none`); the extension is appended (e.g. `metadata.sql.zst`). Handled by the
+  new `mcp-core::compression` module (shared with `mcp-migration`, single
+  source of truth).
+- **`firebird_export` creates the output directory** — exporting to a path
+  whose parent directory does not exist no longer fails; the parent directory
+  is created automatically for all formats.
 
 ### Changed
 - **README cross-references** — `README.md` and `README-PTBR.md` now link to
@@ -180,11 +106,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rendering lives in one place).
 
 ### Fixed
-- **`describe_objects` trigger type** — was using a bitmask interpretation
-  (1,2,4,8,16,32) for `RDB$TRIGGER_TYPE`. Firebird uses an enum (1-6):
-  1=BEFORE INSERT, 2=AFTER INSERT, 3=BEFORE UPDATE, 4=AFTER UPDATE,
-  5=BEFORE DELETE, 6=AFTER DELETE. Now uses `trigger_type_label()` from
-  `mcp-types`.
 - **`describe_objects` domain defaults** — domain branch now calls
   `decode_blr_default()` (made `pub`) to render BLR-encoded defaults
   (CURRENT_TIMESTAMP, boolean, numeric) instead of showing raw BLR text.

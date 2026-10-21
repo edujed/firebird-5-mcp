@@ -37,8 +37,8 @@
 |---|---|---|
 | `Cargo.toml` | 23 | Package `firebird-5-mcp-migration`; deps: `firebird-5-mcp-core`, `firebird-5-mcp-types`, `arrow` (ipc_compression), `parquet` (snap+lz4+zstd), `csv`, `dbase` (yore+encoding_rs), `encoding_rs`, `yore`, `flate2`, `zstd`, `lz4_flex`, `serde_json`, `chrono` |
 | `src/lib.rs` | 95 | Module declarations + re-exports + `import()` format-dispatch wrapper |
-| `src/format.rs` | 235 | `Format` + `Compression` + `CodePage` enums, compression detection from extension |
-| `src/io.rs` | 172 | `TextReader`/`TextWriter` (compression-aware I/O for CSV/DBF/JSONL) |
+| `src/format.rs` | 197 | `Format` + `CodePage` enums, compression detection from extension (`Compression` re-exported from `mcp-core::compression`) |
+| `src/io.rs` | 189 | `TextReader`/`TextWriter` (compression-aware I/O for CSV/DBF/JSONL) |
 | `src/types.rs` | 167 | Firebird ↔ Arrow ↔ DBF type mapping |
 | `src/value.rs` | 56 | Firebird `Value` → primitive conversion helpers (text, int, float, bool) |
 | `src/arrow_json.rs` | 132 | Arrow array → `serde_json::Value` conversion (for import) |
@@ -56,9 +56,9 @@
 | Item | Summary |
 |---|---|
 | `Format` enum | `Parquet` / `Ipc` / `Csv` / `Dbase` / `Jsonl` + `parse()`, `as_str()`, `default_compression()`, `valid_compressions()`. `parse()` accepts aliases: `ndjson`/`ldjson` → `Jsonl`, `dbase` → `Dbase` |
-| `Compression` enum | `Snappy` / `Zstd` / `Lz4` / `Gzip` / `None` + `parse()`, `as_str()` |
+| `Compression` enum | **Re-exported from `mcp-core::compression`** (single source of truth): `Snappy` / `Zstd` / `Lz4` / `Gzip` / `None` + `parse()`, `as_str()`, `suffix()` |
 | `CodePage` enum | `Cp437` / `Cp850` / `Iso88591` / `Win1252` / `Utf8` + `parse()`, `as_str()`, `default_for()`, `is_text_based()`, `valid_for()`, `validate_for()`, `encode()`, `decode()` |
-| `file_compression_from_path()` | Detects codec from file extension (`.zst`, `.gz`, `.lz4`, plain). Shared by CSV, DBF, and JSONL |
+| `file_compression_from_path()` | Detects codec from file extension (`.zst`, `.gz`, `.lz4`, plain) — delegates to `mcp-core::compression::from_path`. Shared by CSV, DBF, and JSONL |
 
 **Codepage rules:**
 - DBF: only `Cp437` and `Cp850` (single-byte DOS codepages). Default: `Cp437`.

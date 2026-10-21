@@ -15,10 +15,10 @@
 | File | Lines | Role |
 |---|---|---|
 | `Cargo.toml` | — | Package `firebird-5-mcp-core`; deps: `rsfbclient`, `rsfbclient-core`, `serde`, `serde_json`, `chrono`, `dirs`, `flate2`, `zstd`, `lz4_flex` |
-| `src/lib.rs` | 35 | Module declarations + re-exports (`FirebirdClient`, `IsolationPreset`, `Config`, `DatabaseConfig`, `ServerConfig`) |
+| `src/lib.rs` | 36 | Module declarations + re-exports (`FirebirdClient`, `IsolationPreset`, `Config`, `DatabaseConfig`, `ServerConfig`) |
 | `src/client.rs` | 236 | `FirebirdClient` connection wrapper (pure-Rust `rsfbclient` driver) |
 | `src/config.rs` | 302 | `config.json` loading/validation/registration |
-| `src/query/mod.rs` | 183 | Query execution: `query`, `query_with_limit`, `query_with_param`, `exec`, `execute` (types re-exported from `mcp-types`) |
+| `src/query/mod.rs` | 234 | Query execution: `query`, `query_with_limit`, `query_with_param`, `exec`, `execute` (types re-exported from `mcp-types`) |
 | `src/query/batch.rs` | 164 | `run_script`, `insert_batch`, `count`, `sample` |
 | `src/query/row_limit.rs` | 193 | `FIRST`/`SKIP` clause injection |
 | `src/query/split.rs` | 562 | SQL statement splitting (`SET TERM`, `BEGIN`/`END`) |
@@ -28,24 +28,24 @@
 | `src/explain.rs` | 74 | Execution plan retrieval (execute + rollback) |
 | `src/metadata.rs` | 914 | Full DDL extraction (replaces `isql -x`) |
 | `src/stats.rs` | 354 | MON$ statistics + encryption state |
-| `src/storage.rs` | 450 | File storage for generated artifacts (with transparent compression) |
-| `src/compression.rs` | 180 | Shared compression utilities (`Compression` enum, `from_path`, `compress`, `decompress`) |
+| `src/storage.rs` | 477 | File storage for generated artifacts (with transparent compression) |
+| `src/compression.rs` | 218 | Shared compression utilities (`Compression` enum, `from_path`, `compress`, `decompress`) |
 | `src/types.rs` | 10 | Re-exports from `firebird-5-mcp-types` (backward compat) |
 | `src/paths.rs` | 104 | Centralized path resolution |
 | `src/log.rs` | 87 | File-based daily logging + `mlog!` macro |
-| `src/codegen/mod.rs` | 43 | Codegen re-exports |
+| `src/codegen/mod.rs` | 54 | Codegen re-exports |
 | `src/codegen/fbtype.rs` | 494 | `FbType` enum (typed Firebird column types) |
-| `src/codegen/generator.rs` | 129 | `Language`, `GenOptions`, `generate` dispatcher |
+| `src/codegen/generator.rs` | 135 | `Language`, `GenOptions`, `generate` dispatcher |
 | `src/codegen/naming.rs` | 78 | `to_pascal_case`, `to_snake_case`, `to_camel_case` |
-| `src/codegen/view_dto.rs` | 193 | View DTO generation |
-| `src/codegen/targets/mod.rs` | 88 | `Target` trait + `GeneratedFile` |
+| `src/codegen/view_dto.rs` | 201 | View DTO generation |
+| `src/codegen/targets/mod.rs` | 92 | `Target` trait + `GeneratedFile` |
 | `src/codegen/targets/java.rs` | 204 | Java (JPA + Lombok) target |
 | `src/codegen/targets/go.rs` | 158 | Go (sqlx) target |
 | `src/codegen/targets/rust.rs` | 152 | Rust (sqlx) target |
 | `src/codegen/targets/typescript.rs` | 104 | TypeScript target |
 | `src/codegen/targets/protobuf.rs` | 106 | Protobuf target |
 | `src/codegen/targets/openapi.rs` | 130 | OpenAPI 3.2.0 target |
-| `src/codegen/targets/graphql.rs` | 680 | GraphQL (schema + resolvers) target |
+| `src/codegen/targets/graphql.rs` | 677 | GraphQL (schema + resolvers) target |
 | `src/codegen/ui/mod.rs` | 9 | UI targets sub-module |
 | `src/codegen/ui/lazarus.rs` | 218 | Lazarus/Delphi `.lfm` form generation |
 | `src/codegen/ui/svelte.rs` | 394 | Svelte 5 page/form generation |
@@ -100,13 +100,13 @@ Re-exports `Value`, `ColumnMeta`, `QueryResult` from `firebird-5-mcp-types`.
 | `query()` | 28–30 | Executes a SELECT, returns `QueryResult` |
 | `query_with_limit()` | 33–49 | SELECT with `FIRST`/`SKIP` injection |
 | `query_with_param()` | 52–62 | SELECT with a bound parameter |
-| `query_unbounded()` | 65–78 | SELECT with **no** row-limit injection — for bulk data movement (file export); never for LLM-facing queries |
+| `query_unbounded()` | 68–78 | SELECT with **no** row-limit injection — for bulk data movement (file export); never for LLM-facing queries |
 | `rows_to_result()` | 78–107 | Converts raw rows to `QueryResult`. Detects NUMERIC/DECIMAL (raw_type 580 + decimal text) and sets `ColumnMeta.is_numeric = true` |
-| `sql_type_name()` | 111–135 | Raw ISC_* code → type name string |
-| `row_value()` | 138–150 | Raw cell → `Value` enum |
-| `exec()` | 160–179 | DML/DDL in RW transaction, commit/rollback |
-| `post_event()` | 190–214 | Executes `POST_EVENT '<name>'` in RW transaction, commit/rollback. Notifies the Firebird event manager; clients registered via `SET EVENT` receive the notification on commit. Event name limited to 127 bytes; single quotes escaped by doubling |
-| `execute()` | 217–234 | SELECT-first, DML/DDL fallback |
+| `sql_type_name()` | 120–144 | Raw ISC_* code → type name string |
+| `row_value()` | 147–159 | Raw cell → `Value` enum |
+| `exec()` | 169–188 | DML/DDL in RW transaction, commit/rollback |
+| `post_event()` | 199–223 | Executes `POST_EVENT '<name>'` in RW transaction, commit/rollback. Notifies the Firebird event manager; clients registered via `SET EVENT` receive the notification on commit. Event name limited to 127 bytes; single quotes escaped by doubling |
+| `execute()` | 218–234 | SELECT-first, DML/DDL fallback |
 
 ## `src/query/batch.rs`
 
@@ -238,20 +238,20 @@ Re-exports `Value`, `ColumnMeta`, `QueryResult` from `firebird-5-mcp-types`.
 
 | Item | Lines | Summary |
 |---|---|---|
-| `struct StorageConfig` | 13–16 | `{ dir: String }` (empty = use default) |
-| `StorageConfig::effective_dir` | 23–29 | Resolves the effective storage directory |
-| `default_storage_dir()` | 35–37 | Returns `~/.firebird-mcp/output/` |
-| `struct StorageResult` | 41–46 | `{ output_dir: String, files: Vec<WrittenFile> }` |
-| `struct WrittenFile` | 50–61 | `{ name, path, size, lines, format }` |
-| `resolve_output_dir()` | 68–81 | Resolves output dir, rejects path traversal |
-| `write_files()` | 87–124 | Writes generated files to disk (transparent compression by extension: `.zst`→ZSTD, `.gz`→GZIP, `.lz4`→LZ4) |
-| `preview()` | 131–148 | Builds a preview (first 10 + last 5 lines) |
-| `summary()` | 163–196 | Builds a summary of written files |
-| `format_size()` | 199–209 | Bytes → human-readable size |
-| `truncate_lines()` | 211–213 | Truncates a list of lines |
-| `truncate_line()` | 215–226 | Truncates a single line |
-| `to_snake_case()` | 232–269 | Converts a string to snake_case |
-| tests | 271–450 | Unit tests for storage (including compression roundtrip) |
+| `struct StorageConfig` | 14–17 | `{ dir: String }` (empty = use default) |
+| `StorageConfig::effective_dir` | 24–30 | Resolves the effective storage directory |
+| `default_storage_dir()` | 36–38 | Returns `~/.firebird-mcp/output/` |
+| `struct StorageResult` | 42–47 | `{ output_dir: String, files: Vec<WrittenFile> }` |
+| `struct WrittenFile` | 51–62 | `{ name, path, size, lines, format }` |
+| `resolve_output_dir()` | 69–82 | Resolves output dir, rejects path traversal |
+| `write_files()` | 88–125 | Writes generated files to disk (transparent compression by extension: `.zst`→ZSTD, `.gz`→GZIP, `.lz4`→LZ4) |
+| `preview()` | 134–151 | Builds a preview (first 10 + last 5 lines) |
+| `summary()` | 166–199 | Builds a summary of written files |
+| `format_size()` | 202–212 | Bytes → human-readable size |
+| `truncate_lines()` | 214–216 | Truncates a list of lines |
+| `truncate_line()` | 218–229 | Truncates a single line |
+| `to_snake_case()` | 235–272 | Converts a string to snake_case |
+| tests | 275–477 | Unit tests for storage (including compression roundtrip) |
 
 ## `src/compression.rs`
 
@@ -296,7 +296,7 @@ Re-exports from `firebird-5-mcp-types` for backward compatibility:
 
 ## `src/codegen/mod.rs`
 
-Re-exports (L30–43): `FbType`, `GenOptions`, `Language`, `generate`, `to_camel_case`, `to_pascal_case`, `to_snake_case`, `Target`, plus UI re-exports (`LazarusField`, `lazarus_from_column_info`, `lazarus_from_view_field`, `generate_lfm`, `SvelteField`, `svelte_from_column_info`, `svelte_from_view_field`, `generate_form`, `generate_page`, `generate_page_for_view`) and view_dto re-exports (`ViewField`, `generate_view_dto`, `get_view_metadata`). `GeneratedFile` is NOT re-exported (it lives in `codegen::targets`).
+Re-exports (L30–54): `FbType`, `GenOptions`, `Language`, `generate`, `to_camel_case`, `to_pascal_case`, `to_snake_case`, `Target`, `is_nullable`, plus UI re-exports (`LazarusField`, `lazarus_from_column_info`, `lazarus_from_view_field`, `generate_lfm`, `SvelteField`, `svelte_from_column_info`, `svelte_from_view_field`, `generate_form`, `generate_page`, `generate_page_for_view`) and view_dto re-exports (`ViewField`, `generate_view_dto`, `get_view_metadata`). `GeneratedFile` is NOT re-exported (it lives in `codegen::targets`).
 
 ## `src/codegen/fbtype.rs`
 
@@ -316,11 +316,11 @@ Re-exports (L30–43): `FbType`, `GenOptions`, `Language`, `generate`, `to_camel
 
 | Item | Lines | Summary |
 |---|---|---|
-| `enum Language` | 17–28 | `Java`, `Go`, `Rust`, `TypeScript`, `Protobuf`, `OpenApi`, `Graphql`, `Python`, `Lazarus`, `Svelte` |
-| `Language::parse` | 30–43 | String → `Language` |
+| `enum Language` | 17–28 | `Java`, `Go`, `Rust`, `TypeScript`, `Protobuf`, `OpenApi`, `Graphql`, `Python`, `Lazarus`, `Svelte`, `JsonSchema` |
+| `Language::parse` | 32–45 | String → `Language` |
 | `struct GenOptions` | 48–63 | `{ language, include_fks, include_comments, include_examples, package, is_view }` |
-| `GenOptions::new` | 67–76 | Constructor |
-| `generate()` | 84–129 | Dispatcher: language → target, calls `Target::generate`; `Lazarus`/`Svelte` handled inline (placeholder files) |
+| `GenOptions::new` | 71–80 | Constructor |
+| `generate()` | 88–135 | Dispatcher: language → target, calls `Target::generate`; `Lazarus`/`Svelte` handled inline (placeholder files) |
 
 ## `src/codegen/naming.rs`
 
@@ -339,16 +339,16 @@ Re-exports (L30–43): `FbType`, `GenOptions`, `Language`, `generate`, `to_camel
 | `get_view_metadata()` | 41–65 | `SELECT FIRST 1 * FROM view` to resolve columns |
 | `infer_type_from_value()` | 69–81 | Infers type string (`String`) from a sample value |
 | `generate_view_dto()` | 84–101 | Generates DTOs for multiple views |
-| `generate_single_view_dto()` | 105–159 | Generates a single view DTO |
-| `view_to_schema()` | 164–193 | Converts view fields to a synthetic `TableSchema` |
+| `generate_single_view_dto()` | 105–160 | Generates a single view DTO |
+| `view_to_schema()` | 172–201 | Converts view fields to a synthetic `TableSchema` |
 
 ## `src/codegen/targets/mod.rs`
 
 | Item | Lines | Summary |
 |---|---|---|
 | `struct GeneratedFile` | 37–41 | `{ name, content, format }` |
-| `GeneratedFile::new` | 45–55 | Constructor |
-| `trait Target` | 62–88 | `type_for`, `generate` (returns `Vec<GeneratedFile>`), `dto_type_for` — implemented per language |
+| `GeneratedFile::new` | 49–59 | Constructor |
+| `trait Target` | 62–92 | `type_for`, `generate` (returns `Vec<GeneratedFile>`), `dto_type_for` — implemented per language |
 
 ## `src/codegen/targets/java.rs`
 
@@ -405,9 +405,9 @@ Re-exports (L30–43): `FbType`, `GenOptions`, `Language`, `generate`, `to_camel
 | Item | Lines | Summary |
 |---|---|---|
 | `struct JsonSchemaTarget` | 24 | JSON Schema (draft 2020-12) target |
-| `type_for` | 33–36 | `FbType` → JSON Schema type |
-| `generate` | 38+ | Generates `.json` file with Firebird extensions (`x-numeric`, `x-column-order`, `x-foreign-key`) |
-| `json_schema_type` | 155+ | `FbType` → `(type, format)` mapping |
+| `type_for` | 49–52 | `FbType` → JSON Schema type |
+| `generate` | 53+ | Generates `.json` file with Firebird extensions (`x-numeric`, `x-column-order`, `x-foreign-key`) |
+| `json_schema_type` | 186+ | `FbType` → `(type, format)` mapping |
 | `json_escape` | 29–45 | Escapes strings for JSON literals |
 
 ## `src/codegen/targets/graphql.rs`
@@ -423,14 +423,14 @@ Re-exports (L30–43): `FbType`, `GenOptions`, `Language`, `generate`, `to_camel
 | Item | Lines | Summary |
 |---|---|---|
 | `struct PythonTarget` | 28 | SQLAlchemy 2.0 + Pydantic v2 target |
-| `sa_type()` | 59–90 | `FbType` → SQLAlchemy type expression (`Numeric(10, 2)`, `String(100)`, …) |
-| `pydantic_type()` | 93–113 | `FbType` → Pydantic/Python annotation (`Decimal`, `datetime`, …) |
-| `pk_columns()` | 36–55 | PK columns (constraint → unique-index fallback) |
-| `sa_imports()` | 118–148 | Deduped SQLAlchemy import list |
-| `pydantic_imports()` | 151–156 | Returns `[BaseModel, ConfigDict, Field]` (stdlib types imported separately) |
-| `type_for` | 176–178 | `FbType` → SQLAlchemy type (delegates to `sa_type`) |
-| `generate` | 180–340 | Produces 2 files: `<table>.py` (SQLAlchemy model) + `<table>_schemas.py` (Pydantic Base/Create/Update/Read). FK columns use scalar Python type + `ForeignKey(...)` (not `Mapped[RefClass]`) to avoid cross-module import issues. `__init__.py` is emitted by the tool handler, not here. |
-| tests | 338–640 | 14 unit tests: type mapping, generation, FK emission, BLR default suppression, view mode |
+| `sa_type()` | 56–87 | `FbType` → SQLAlchemy type expression (`Numeric(10, 2)`, `String(100)`, …) |
+| `pydantic_type()` | 90–110 | `FbType` → Pydantic/Python annotation (`Decimal`, `datetime`, …) |
+| `pk_columns()` | 33–52 | PK columns (constraint → unique-index fallback) |
+| `sa_imports()` | 115–145 | Deduped SQLAlchemy import list |
+| `pydantic_imports()` | 148–153 | Returns `[BaseModel, ConfigDict, Field]` (stdlib types imported separately) |
+| `type_for` | 173–175 | `FbType` → SQLAlchemy type (delegates to `sa_type`) |
+| `generate` | 177–335 | Produces 2 files: `<table>.py` (SQLAlchemy model) + `<table>_schemas.py` (Pydantic Base/Create/Update/Read). FK columns use scalar Python type + `ForeignKey(...)` (not `Mapped[RefClass]`) to avoid cross-module import issues. `__init__.py` is emitted by the tool handler, not here. |
+| tests | 336–612 | 14 unit tests: type mapping, generation, FK emission, BLR default suppression, view mode |
 
 ## `src/codegen/ui/lazarus.rs`
 
