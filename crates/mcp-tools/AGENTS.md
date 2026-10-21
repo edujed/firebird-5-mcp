@@ -97,9 +97,10 @@
 | `format_schema` | 14–20 | Thin wrapper over `schema::format_schema_markdown` (mcp-core) — adds the `### Table: <name>` header |
 | `handle_describe_table` | 22–32 | Full schema of one table/view |
 | `handle_get_databases` | 36–46 | Reloads config from disk, lists configured databases + build time |
-| `handle_describe_database` | 68–78 | Full DB overview: MON$DATABASE health, per-table columns (PK/NOT NULL/comments), optional row counts, Mermaid ER diagram of FKs |
+| `handle_describe_database` | 325–483 | Full DB overview: MON$DATABASE health, per-table columns (PK/NOT NULL/comments), optional row counts, Mermaid ER diagram of FKs (shared `build_er_diagram`). Args: `database`, `include_counts`, `include_describes`, `output_mode` (`inline` default / `download`), `output_format` (`markdown` default / `json`), `compression` (zstd/gzip/lz4/none, when saving), `outputDirPath` (optional; `download` without it uses the default storage dir). JSON shape: `{database, health, tables[], er_diagram}`. File naming: `<db>_describe.md` / `<db>_describe.json` (+compression suffix). Returns `ToolResult` (not `wrap_text`) so `files[]`/`download_url` are emitted in SSE mode |
 | `handle_list` | 248–258 | Lists objects by type: TABLES, PROCEDURES, FUNCTIONS, DOMAINS, TRIGGERS, INDEXES, SEQUENCES (one branch each) |
 | `handle_metadata_extract` | 482–519 | DDL extraction (isql `-x` replacement); optional `objects` filter; `outputDirPath` saves to file; `compression` param (zstd/gzip/lz4/none) |
+| `handle_er_diagram` | 554–650 | Generates a Mermaid `erDiagram` (tables + FK relationships). Args: `database`, optional `tables` (filter), `include_columns` (bool, default false), `outputDirPath` (save to `.mmd`), `compression` (zstd/gzip/lz4/none). Returns the diagram as a Markdown code block; when `outputDirPath` is set, saves via `save_or_inline` (with `download_url` in SSE mode) |
 | `handle_describe` | 517–527 | Describes multiple objects by name (tables, views, procs, functions, triggers, sequences, domains) |
 | `handle_check_duplicates` | 537–547 | Finds duplicate values in 1+ columns (GROUP BY/HAVING), then shows full rows of the first duplicate combo |
 | `handle_domains` | 666–676 | Domain analysis: usage counts, most common type signatures, suggestions for missing domains |
@@ -200,7 +201,9 @@
   `{base}/files?path=<url-encoded relative path>` (matching the `GET /files`
   endpoint in `mcp-stdio-bin`). In stdio mode the absolute `path` is the
   retrieval location and no `download_url` is emitted. Built by
-  `common::file_download_url`.
+  `common::file_download_url`. The URL is also appended to the human-readable
+  `text` response (`Download:` for single-file tools, `Download URLs:` for
+  multi-file tools) so agents that only read the text can retrieve the file.
 - Logging goes through `mlog!` (core) to `{base}/logs/`.
 - **Universal POST_EVENT:** every tool call accepts optional `on_success_event`
   / `on_fail_event` string params. After the handler completes, `dispatch()`

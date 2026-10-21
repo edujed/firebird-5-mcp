@@ -65,22 +65,9 @@ pub fn handle_get_databases(_cfg: &Config) -> Result<String, String> {
     Ok(b)
 }
 
-pub fn handle_describe_database(cfg: &Config, args: &Value) -> Result<String, String> {
-    let db_name = arg_str(args, "database").unwrap_or_else(|| cfg.default_database().to_string());
-    let include_counts = arg_bool(args, "include_counts").unwrap_or(false);
-    let include_describes = arg_bool(args, "include_describes").unwrap_or(true);
-
-    let db = cfg
-        .server
-        .find_database(&db_name)
-        .map_err(|e| e.to_string())?;
-    let mut client = FirebirdClient::new(&cfg.server, &db.path).map_err(|e| e.to_string())?;
-
-    // Database health (gstat-like info from MON$DATABASE + MON$ATTACHMENTS)
-    let mut b = String::new();
-    b.push_str(&format!("### Database: {db_name}\n\n"));
-
-    // MON$DATABASE health
+/// Collects the database health info from MON$DATABASE + MON$ATTACHMENTS.
+/// Returns `None` if the query fails (e.g. no permission).
+fn collect_db_health(client: &mut FirebirdClient) -> Option<serde_json::Value> {
     let health_sql = r#"
         SELECT
             MON$DATABASE_NAME,
@@ -98,151 +85,401 @@ pub fn handle_describe_database(cfg: &Config, args: &Value) -> Result<String, St
             MON$BACKUP_STATE
         FROM MON$DATABASE
     "#;
-    if let Ok(health) = query::query(&mut client, health_sql) {
-        if let Some(row) = health.rows.first() {
-            let path = cell_text(row, 0);
-            let ods = cell_text(row, 1);
-            let page_size = cell_int(row, 2);
-            let oldest_txn = cell_int(row, 3);
-            let oldest_active = cell_int(row, 4);
-            let next_txn = cell_int(row, 5);
-            let page_buffers = cell_int(row, 6);
-            let dialect = cell_int(row, 7);
-            let shutdown_mode = cell_int(row, 8);
-            let read_only = cell_int(row, 9);
-            let forced_writes = cell_int(row, 10);
-            let pages = cell_int(row, 11);
-            let backup_state = cell_int(row, 12);
+    let health_result = query::query(client, health_sql).ok()?;
+    let health = health_result.rows.first()?;
+    let path = cell_text(health, 0);
+    let ods = cell_text(health, 1);
+    let page_size = cell_int(health, 2);
+    let oldest_txn = cell_int(health, 3);
+    let oldest_active = cell_int(health, 4);
+    let next_txn = cell_int(health, 5);
+    let page_buffers = cell_int(health, 6);
+    let dialect = cell_int(health, 7);
+    let shutdown_mode = cell_int(health, 8);
+    let read_only = cell_int(health, 9);
+    let forced_writes = cell_int(health, 10);
+    let pages = cell_int(health, 11);
+    let backup_state = cell_int(health, 12);
 
-            let shutdown_str = match shutdown_mode {
-                0 => "Online (Normal)",
-                1 => "Multi-user Shutdown (SYSDBA/Owner only, unlimited connections)",
-                2 => "Single-user Shutdown (SYSDBA/Owner only, 1 connection)",
-                3 => "Full Shutdown (no connections accepted)",
-                _ => "Unknown",
-            };
-            let size_mb = (pages as f64 * page_size as f64) / (1024.0 * 1024.0);
+    let shutdown_str = match shutdown_mode {
+        0 => "Online (Normal)",
+        1 => "Multi-user Shutdown (SYSDBA/Owner only, unlimited connections)",
+        2 => "Single-user Shutdown (SYSDBA/Owner only, 1 connection)",
+        3 => "Full Shutdown (no connections accepted)",
+        _ => "Unknown",
+    };
+    let size_mb = (pages as f64 * page_size as f64) / (1024.0 * 1024.0);
 
-            // Count active user connections
-            let conn_sql = r#"
-                SELECT COUNT(*) FROM MON$ATTACHMENTS
-                WHERE MON$STATE = 1 AND MON$SYSTEM_FLAG = 0
-            "#;
-            let active_conns = query::query(&mut client, conn_sql)
-                .ok()
-                .and_then(|r| r.rows.first().map(|r| cell_int(r, 0)))
-                .unwrap_or(0);
+    let conn_sql = r#"
+        SELECT COUNT(*) FROM MON$ATTACHMENTS
+        WHERE MON$STATE = 1 AND MON$SYSTEM_FLAG = 0
+    "#;
+    let active_conns = query::query(client, conn_sql)
+        .ok()
+        .and_then(|r| r.rows.first().map(|r| cell_int(r, 0)))
+        .unwrap_or(0);
 
-            b.push_str("#### Health\n\n");
-            b.push_str(&format!("- **Path:** {path}\n"));
-            b.push_str(&format!("- **ODS Version:** {ods}\n"));
-            b.push_str(&format!("- **Page Size:** {page_size} bytes\n"));
-            b.push_str(&format!(
-                "- **File Size:** {pages} pages (~{size_mb:.1} MB)\n"
-            ));
-            b.push_str(&format!("- **Dialect:** {dialect}\n"));
-            b.push_str(&format!("- **Mode:** {shutdown_str}\n"));
-            b.push_str(&format!(
-                "- **Read-Only:** {}\n",
-                if read_only == 1 { "YES" } else { "NO" }
-            ));
-            b.push_str(&format!(
-                "- **Forced Writes:** {}\n",
-                if forced_writes == 1 { "YES" } else { "NO" }
-            ));
-            b.push_str(&format!("- **Active Connections:** {active_conns}\n"));
-            b.push_str(&format!("- **Oldest Transaction:** {oldest_txn} (active: {oldest_active}, next: {next_txn})\n"));
-            b.push_str(&format!("- **Buffer Pool:** {page_buffers} pages\n"));
-            if backup_state != 0 {
-                b.push_str(&format!(
-                    "- **Backup:** IN PROGRESS (state {backup_state})\n"
-                ));
+    Some(serde_json::json!({
+        "path": path,
+        "ods": ods,
+        "page_size": page_size,
+        "pages": pages,
+        "size_mb": size_mb,
+        "dialect": dialect,
+        "mode": shutdown_str,
+        "read_only": read_only == 1,
+        "forced_writes": forced_writes == 1,
+        "active_connections": active_conns,
+        "oldest_transaction": oldest_txn,
+        "oldest_active": oldest_active,
+        "next_transaction": next_txn,
+        "buffer_pool": page_buffers,
+        "backup_state": backup_state,
+    }))
+}
+
+/// Collects the full schema of a single table (columns, PKs, comments, indexes).
+fn collect_table_schema(
+    client: &mut FirebirdClient,
+    table_name: &str,
+    include_counts: bool,
+) -> Option<serde_json::Value> {
+    let ts = schema::describe_table(client, table_name).ok()?;
+
+    // PK columns from indexes named RDB$PRIMARY*
+    let mut pk_columns: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for idx in &ts.indexes {
+        if idx.name.starts_with("RDB$PRIMARY") {
+            for col in idx.columns.split(", ") {
+                pk_columns.insert(col.trim().to_string());
             }
-            b.push('\n');
         }
     }
 
-    let tables = schema::list_tables(&mut client).map_err(|e| e.to_string())?;
-    let fks = schema::get_foreign_keys(&mut client).map_err(|e| e.to_string())?;
-
-    b.push_str(&format!("#### Tables ({})\n\n", tables.len()));
-
-    for table in &tables {
-        if table.r#type != "TABLE" {
-            continue;
-        }
-        b.push_str(&format!("**{}**", table.name));
-        if include_counts {
-            if let Ok(count) = query::count(&mut client, &table.name, "") {
-                b.push_str(&format!(" ({count} rows)"));
+    let columns: Vec<serde_json::Value> = ts
+        .columns
+        .iter()
+        .map(|col| {
+            let type_str = format_column_type(
+                col.type_num,
+                col.sub_type,
+                col.size,
+                col.precision,
+                col.scale,
+            );
+            let mut obj = serde_json::json!({
+                "name": col.name,
+                "type": type_str,
+                "nullable": col.nullable.map(|n| n == 1).unwrap_or(true),
+            });
+            if pk_columns.contains(&col.name) {
+                obj["pk"] = serde_json::json!(true);
             }
+            if let Some(comment) = ts.comments.get(&col.name) {
+                if !comment.is_empty() {
+                    obj["comment"] = serde_json::json!(comment);
+                }
+            }
+            obj
+        })
+        .collect();
+
+    let mut obj = serde_json::json!({
+        "name": table_name,
+        "columns": columns,
+    });
+    if let Some(comment) = ts.comments.get("table") {
+        if !comment.is_empty() {
+            obj["comment"] = serde_json::json!(comment);
+        }
+    }
+    if include_counts {
+        if let Ok(count) = query::count(client, table_name, "") {
+            obj["row_count"] = serde_json::json!(count);
+        }
+    }
+    Some(obj)
+}
+
+/// Renders the Markdown output for `firebird_describe_database`.
+fn render_describe_database_markdown(
+    db_name: &str,
+    health: &Option<serde_json::Value>,
+    tables: &[serde_json::Value],
+    mmd: &str,
+) -> String {
+    let mut b = String::new();
+    b.push_str(&format!("### Database: {db_name}\n\n"));
+
+    if let Some(h) = health {
+        b.push_str("#### Health\n\n");
+        b.push_str(&format!(
+            "- **Path:** {}\n",
+            h["path"].as_str().unwrap_or("?")
+        ));
+        b.push_str(&format!(
+            "- **ODS Version:** {}\n",
+            h["ods"].as_str().unwrap_or("?")
+        ));
+        b.push_str(&format!(
+            "- **Page Size:** {} bytes\n",
+            h["page_size"].as_i64().unwrap_or(0)
+        ));
+        b.push_str(&format!(
+            "- **File Size:** {} pages (~{:.1} MB)\n",
+            h["pages"].as_i64().unwrap_or(0),
+            h["size_mb"].as_f64().unwrap_or(0.0)
+        ));
+        b.push_str(&format!(
+            "- **Dialect:** {}\n",
+            h["dialect"].as_i64().unwrap_or(0)
+        ));
+        b.push_str(&format!(
+            "- **Mode:** {}\n",
+            h["mode"].as_str().unwrap_or("?")
+        ));
+        b.push_str(&format!(
+            "- **Read-Only:** {}\n",
+            if h["read_only"].as_bool().unwrap_or(false) {
+                "YES"
+            } else {
+                "NO"
+            }
+        ));
+        b.push_str(&format!(
+            "- **Forced Writes:** {}\n",
+            if h["forced_writes"].as_bool().unwrap_or(false) {
+                "YES"
+            } else {
+                "NO"
+            }
+        ));
+        b.push_str(&format!(
+            "- **Active Connections:** {}\n",
+            h["active_connections"].as_i64().unwrap_or(0)
+        ));
+        b.push_str(&format!(
+            "- **Oldest Transaction:** {} (active: {}, next: {})\n",
+            h["oldest_transaction"].as_i64().unwrap_or(0),
+            h["oldest_active"].as_i64().unwrap_or(0),
+            h["next_transaction"].as_i64().unwrap_or(0)
+        ));
+        b.push_str(&format!(
+            "- **Buffer Pool:** {} pages\n",
+            h["buffer_pool"].as_i64().unwrap_or(0)
+        ));
+        if h["backup_state"].as_i64().unwrap_or(0) != 0 {
+            b.push_str(&format!(
+                "- **Backup:** IN PROGRESS (state {})\n",
+                h["backup_state"].as_i64().unwrap_or(0)
+            ));
         }
         b.push('\n');
+    }
 
-        if include_describes {
-            match schema::describe_table(&mut client, &table.name) {
-                Ok(schema) => {
-                    if let Some(comment) = schema.comments.get("table") {
-                        if !comment.is_empty() {
-                            b.push_str(&format!("  // {comment}\n"));
-                        }
-                    }
-
-                    // PK columns from indexes named RDB$PRIMARY*
-                    let mut pk_columns: std::collections::HashSet<String> =
-                        std::collections::HashSet::new();
-                    for idx in &schema.indexes {
-                        if idx.name.starts_with("RDB$PRIMARY") {
-                            for col in idx.columns.split(", ") {
-                                pk_columns.insert(col.trim().to_string());
-                            }
-                        }
-                    }
-
-                    for col in &schema.columns {
-                        let type_str = format_column_type(
-                            col.type_num,
-                            col.sub_type,
-                            col.size,
-                            col.precision,
-                            col.scale,
-                        );
-                        let mut line = format!("  - {} ({type_str}", col.name);
-                        if pk_columns.contains(&col.name) {
-                            line.push_str(", PK");
-                        }
-                        if col.nullable.map(|n| n != 1).unwrap_or(true) {
-                            line.push_str(", NOT NULL");
-                        }
-                        line.push(')');
-                        if let Some(comment) = schema.comments.get(&col.name) {
-                            if !comment.is_empty() {
-                                line.push_str(&format!(" // {comment}"));
-                            }
-                        }
-                        b.push_str(&line);
-                        b.push('\n');
-                    }
+    b.push_str(&format!("#### Tables ({})\n\n", tables.len()));
+    for t in tables {
+        b.push_str(&format!("**{}**", t["name"].as_str().unwrap_or("?")));
+        if let Some(count) = t.get("row_count").and_then(|v| v.as_i64()) {
+            b.push_str(&format!(" ({count} rows)"));
+        }
+        b.push('\n');
+        if let Some(comment) = t.get("comment").and_then(|v| v.as_str()) {
+            b.push_str(&format!("  // {comment}\n"));
+        }
+        if let Some(cols) = t.get("columns").and_then(|v| v.as_array()) {
+            for col in cols {
+                let mut line = format!(
+                    "  - {} ({})",
+                    col["name"].as_str().unwrap_or("?"),
+                    col["type"].as_str().unwrap_or("?")
+                );
+                if col.get("pk").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    line.push_str(", PK");
                 }
-                Err(_) => {
-                    b.push_str("  - (failed to get schema)\n");
+                if !col
+                    .get("nullable")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true)
+                {
+                    line.push_str(", NOT NULL");
                 }
+                if let Some(c) = col.get("comment").and_then(|v| v.as_str()) {
+                    line.push_str(&format!(" // {c}"));
+                }
+                b.push_str(&line);
+                b.push('\n');
             }
         }
         b.push('\n');
     }
 
     b.push_str("#### Relationships (Mermaid)\n");
-    b.push_str("```mermaid\nerDiagram\n");
-    for fk in &fks {
-        b.push_str(&format!(
-            "    {} ||--o{} {} : \"{}\"\n",
-            fk.ref_table, "{", fk.table, fk.constraint_name
-        ));
-    }
+    b.push_str("```mermaid\n");
+    b.push_str(mmd);
     b.push_str("```");
     b.push('\n');
-    Ok(b)
+    b
+}
+
+pub fn handle_describe_database(
+    cfg: &Config,
+    args: &Value,
+    files_base_url: Option<&str>,
+) -> Result<ToolResult, String> {
+    let db_name = arg_str(args, "database").unwrap_or_else(|| cfg.default_database().to_string());
+    let include_counts = arg_bool(args, "include_counts").unwrap_or(false);
+    let include_describes = arg_bool(args, "include_describes").unwrap_or(true);
+    let output_mode = arg_str(args, "output_mode").unwrap_or_else(|| "inline".to_string());
+    let output_format = arg_str(args, "output_format").unwrap_or_else(|| "markdown".to_string());
+    let compression = arg_str(args, "compression").unwrap_or_default();
+    let has_output_dir = arg_str(args, "outputDirPath")
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+
+    // Validate output_mode
+    let output_mode = output_mode.to_lowercase();
+    if !matches!(output_mode.as_str(), "inline" | "download") {
+        return Err(format!(
+            "invalid output_mode '{output_mode}' — valid: 'inline', 'download'"
+        ));
+    }
+
+    // Validate output_format
+    let output_format = output_format.to_lowercase();
+    if !matches!(output_format.as_str(), "markdown" | "json") {
+        return Err(format!(
+            "invalid output_format '{output_format}' — valid: 'markdown', 'json'"
+        ));
+    }
+
+    // Validate compression
+    if !compression.is_empty() && compression != "none" {
+        match compression.to_lowercase().as_str() {
+            "zstd" | "gzip" | "lz4" => {}
+            other => {
+                return Err(format!(
+                    "unsupported compression '{other}' — valid: zstd, gzip, lz4, none"
+                ));
+            }
+        }
+    }
+
+    // If output_mode is "download" but no outputDirPath, use the default storage dir
+    let effective_output_dir = if has_output_dir {
+        Some(arg_str(args, "outputDirPath").unwrap())
+    } else if output_mode == "download" {
+        // Use the default storage dir (resolved by save_or_inline)
+        None // save_or_inline will resolve it
+    } else {
+        None
+    };
+
+    let db = cfg
+        .server
+        .find_database(&db_name)
+        .map_err(|e| e.to_string())?;
+    let mut client = FirebirdClient::new(&cfg.server, &db.path).map_err(|e| e.to_string())?;
+
+    // Collect health
+    let health = collect_db_health(&mut client);
+
+    // Collect tables
+    let tables_list = schema::list_tables(&mut client).map_err(|e| e.to_string())?;
+    let fks = schema::get_foreign_keys(&mut client).map_err(|e| e.to_string())?;
+
+    let mut table_values: Vec<serde_json::Value> = Vec::new();
+    for table in &tables_list {
+        if table.r#type != "TABLE" {
+            continue;
+        }
+        if include_describes {
+            if let Some(tv) = collect_table_schema(&mut client, &table.name, include_counts) {
+                table_values.push(tv);
+            }
+        } else {
+            table_values.push(serde_json::json!({
+                "name": table.name,
+                "columns": [],
+            }));
+        }
+    }
+
+    // Build the Mermaid erDiagram (shared with handle_er_diagram)
+    let table_infos: Vec<schema::TableInfo> = tables_list
+        .iter()
+        .filter(|t| t.r#type == "TABLE")
+        .cloned()
+        .collect();
+    let mmd = build_er_diagram(&mut client, &table_infos, &fks, false);
+
+    // Determine output
+    let should_save = output_mode == "download" || has_output_dir;
+
+    if should_save {
+        // Build the content (Markdown or JSON)
+        let content = if output_format == "json" {
+            let json_obj = serde_json::json!({
+                "database": db_name,
+                "health": health,
+                "tables": table_values,
+                "er_diagram": mmd,
+            });
+            serde_json::to_string_pretty(&json_obj).map_err(|e| e.to_string())?
+        } else {
+            render_describe_database_markdown(&db_name, &health, &table_values, &mmd)
+        };
+
+        // Determine file name and extension
+        let mut name = format!("{}_describe", db_name);
+        let ext = if output_format == "json" {
+            "json"
+        } else {
+            "md"
+        };
+        name.push_str(&format!(".{ext}"));
+        if !compression.is_empty() && compression != "none" {
+            let suffix = match compression.to_lowercase().as_str() {
+                "zstd" => ".zst",
+                "gzip" => ".gz",
+                "lz4" => ".lz4",
+                _ => unreachable!(),
+            };
+            name.push_str(suffix);
+        }
+
+        let files = vec![firebird_5_mcp_core::codegen::targets::GeneratedFile {
+            name,
+            content,
+            format: ext.to_string(),
+        }];
+
+        // If outputDirPath was explicitly provided, use it; otherwise let save_or_inline resolve the default
+        let args_for_save = if effective_output_dir.is_some() {
+            args.clone()
+        } else {
+            // Remove outputDirPath from args so save_or_inline uses the default
+            let mut new_args = args.clone();
+            new_args.as_object_mut().map(|o| o.remove("outputDirPath"));
+            new_args
+        };
+
+        save_or_inline(cfg, &args_for_save, &db_name, ext, &files, files_base_url)
+    } else {
+        // Inline output
+        let text = if output_format == "json" {
+            let json_obj = serde_json::json!({
+                "database": db_name,
+                "health": health,
+                "tables": table_values,
+                "er_diagram": mmd,
+            });
+            serde_json::to_string_pretty(&json_obj).map_err(|e| e.to_string())?
+        } else {
+            render_describe_database_markdown(&db_name, &health, &table_values, &mmd)
+        };
+        Ok(ToolResult::text(text))
+    }
 }
 
 pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
@@ -549,6 +786,135 @@ pub fn handle_describe(cfg: &Config, args: &Value) -> Result<String, String> {
 
     let mut client = open_client(cfg, args)?;
     metadata::describe_objects(&mut client, &names).map_err(|e| e.to_string())
+}
+
+/// Builds the raw Mermaid `erDiagram` body (without the `erDiagram` header or
+/// Markdown code fences) for the given tables and foreign keys.
+///
+/// Shared by `handle_er_diagram` (standalone tool) and
+/// `handle_describe_database` (embedded in the full DB overview).
+pub fn build_er_diagram(
+    client: &mut FirebirdClient,
+    tables: &[schema::TableInfo],
+    fks: &[schema::ForeignKeyInfo],
+    include_columns: bool,
+) -> String {
+    let mut mmd = String::from("erDiagram\n");
+    for table in tables {
+        mmd.push_str(&format!("    {} {{\n", table.name));
+        if include_columns {
+            if let Ok(ts) = schema::describe_table(client, &table.name) {
+                for col in &ts.columns {
+                    let type_str = format_column_type(
+                        col.type_num,
+                        col.sub_type,
+                        col.size,
+                        col.precision,
+                        col.scale,
+                    );
+                    mmd.push_str(&format!("        {} {}\n", type_str, col.name));
+                }
+            }
+        }
+        mmd.push_str("    }\n");
+    }
+
+    // Relationships — only include FKs where both tables are in the diagram
+    let table_names: std::collections::HashSet<&str> =
+        tables.iter().map(|t| t.name.as_str()).collect();
+    for fk in fks {
+        if table_names.contains(fk.table.as_str()) && table_names.contains(fk.ref_table.as_str()) {
+            mmd.push_str(&format!(
+                "    {} ||--o{{ {} : \"{}\"\n",
+                fk.ref_table, fk.table, fk.constraint_name
+            ));
+        }
+    }
+    mmd
+}
+
+/// Generates a Mermaid erDiagram for the database (or a subset of tables).
+///
+/// Returns the diagram as a Markdown code block (```` ```mermaid ````) so it
+/// renders in any Markdown viewer. When `outputDirPath` is provided, the
+/// diagram is also saved to a `.mmd` file (with optional compression) and a
+/// `download_url` is included in SSE mode.
+pub fn handle_er_diagram(
+    cfg: &Config,
+    args: &Value,
+    files_base_url: Option<&str>,
+) -> Result<ToolResult, String> {
+    let db_name = arg_str(args, "database").unwrap_or_else(|| cfg.default_database().to_string());
+    let include_columns = arg_bool(args, "include_columns").unwrap_or(false);
+    let compression = arg_str(args, "compression").unwrap_or_default();
+    let has_output_dir = arg_str(args, "outputDirPath")
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+
+    // Optional table filter
+    let tables_filter: Option<Vec<String>> =
+        args.get("tables").and_then(|v| v.as_array()).map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.trim().to_uppercase()))
+                .filter(|s| !s.is_empty())
+                .collect()
+        });
+
+    let mut client = open_client(cfg, args)?;
+    let all_tables = schema::list_tables(&mut client).map_err(|e| e.to_string())?;
+    let fks = schema::get_foreign_keys(&mut client).map_err(|e| e.to_string())?;
+
+    // Determine which tables to include
+    let tables: Vec<schema::TableInfo> = match &tables_filter {
+        Some(filter) if !filter.is_empty() => {
+            let filter_set: std::collections::HashSet<&str> =
+                filter.iter().map(|s| s.as_str()).collect();
+            all_tables
+                .into_iter()
+                .filter(|t| t.r#type == "TABLE" && filter_set.contains(t.name.as_str()))
+                .collect()
+        }
+        _ => all_tables
+            .into_iter()
+            .filter(|t| t.r#type == "TABLE")
+            .collect(),
+    };
+
+    if tables.is_empty() {
+        return Err("No tables found (check the 'tables' filter if provided)".to_string());
+    }
+
+    // Build the Mermaid erDiagram (shared with handle_describe_database)
+    let mmd = build_er_diagram(&mut client, &tables, &fks, include_columns);
+
+    // Wrap in a Markdown code block for rendering
+    let text = format!("```mermaid\n{mmd}```");
+
+    // Optionally save to file
+    if has_output_dir {
+        let mut name = format!("{}_er_diagram.mmd", db_name);
+        if !compression.is_empty() && compression != "none" {
+            let suffix = match compression.to_lowercase().as_str() {
+                "zstd" => ".zst",
+                "gzip" => ".gz",
+                "lz4" => ".lz4",
+                other => {
+                    return Err(format!(
+                        "unsupported compression '{other}' — valid: zstd, gzip, lz4, none"
+                    ));
+                }
+            };
+            name.push_str(suffix);
+        }
+        let files = vec![firebird_5_mcp_core::codegen::targets::GeneratedFile {
+            name,
+            content: mmd,
+            format: "mermaid".to_string(),
+        }];
+        save_or_inline(cfg, args, &db_name, "mermaid", &files, files_base_url)
+    } else {
+        Ok(ToolResult::text(text))
+    }
 }
 
 /// Checks for duplicate values in one or more columns (validates uniqueness before creating index/constraint).

@@ -324,6 +324,7 @@ fn write_parquet(
     use std::fs::File;
     use std::io::BufWriter;
 
+    crate::io::create_parent_dir(path)?;
     let file = File::create(path).map_err(|e| format!("cannot create {path}: {e}"))?;
     let writer = BufWriter::new(file);
 
@@ -364,6 +365,7 @@ fn write_ipc(
     use std::fs::File;
     use std::io::BufWriter;
 
+    crate::io::create_parent_dir(path)?;
     let file = File::create(path).map_err(|e| format!("cannot create {path}: {e}"))?;
     let writer = BufWriter::new(file);
 

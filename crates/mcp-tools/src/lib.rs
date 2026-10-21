@@ -151,7 +151,7 @@ fn dispatch_inner(
 
         // Schema tools
         "firebird_describe_table" => wrap_text(handle_describe_table(cfg, args)),
-        "firebird_describe_database" => wrap_text(handle_describe_database(cfg, args)),
+        "firebird_describe_database" => handle_describe_database(cfg, args, files_base_url),
         "firebird_describe" => wrap_text(handle_describe(cfg, args)),
         "firebird_list" => wrap_text(handle_list(cfg, args)),
         "firebird_find_column" => wrap_text(handle_find_column(cfg, args)),
@@ -159,6 +159,7 @@ fn dispatch_inner(
         "firebird_domains" => wrap_text(handle_domains(cfg, args)),
         "firebird_get_databases" => wrap_text(handle_get_databases(cfg)),
         "firebird_metadata_extract" => handle_metadata_extract(cfg, args, files_base_url),
+        "firebird_er_diagram" => handle_er_diagram(cfg, args, files_base_url),
 
         // Stats tools
         "firebird_crypt_state" => wrap_text(handle_crypt_state(cfg, args)),

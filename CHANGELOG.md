@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.0] — WIP
 
 ### Added
+- **`firebird_describe_database` output modes** — the tool now accepts `output_mode`
+  (`inline` default / `download`), `output_format` (`markdown` default / `json`,
+  machine-readable `{database, health, tables[], er_diagram}`), `compression`
+  (`zstd`/`gzip`/`lz4`/`none`, applied when saving), and `outputDirPath`
+  (optional; `download` without it saves to the default storage dir). File naming:
+  `<db>_describe.md` / `<db>_describe.json` (+compression suffix). In SSE mode,
+  saved files include a `download_url` (in `structuredContent.files[]` and in the
+  human-readable text). Inline behavior is unchanged by default.
+- **`firebird_er_diagram`** — new tool that generates a Mermaid `erDiagram` of the
+  database schema (tables + foreign-key relationships). Returns the diagram as a
+  Markdown code block (renders in any Markdown viewer). Optional args: `tables`
+  (filter to specific tables), `include_columns` (add column definitions inside
+  each entity), `outputDirPath` (save to a `.mmd` file), `compression`
+  (`zstd`/`gzip`/`lz4`/`none`). In SSE mode, saved files include a
+  `download_url`.
 - **Compression for generated files** — `firebird_metadata_extract`, `firebird_generate_dev`,
   and `firebird_generate_view_dto` now accept an optional `compression` parameter
   (`zstd`, `gzip`, `lz4`, or `none` — default `none`). When set, the output file is
@@ -30,7 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the new `--base-url` flag, or is derived from `--host`/`--port` (skipped
   for wildcard bind hosts like `0.0.0.0` — pass `--base-url http://<lan-ip>:<port>`
   to advertise a LAN-reachable host). Built by `mcp-tools::common::file_download_url`
-  (dependency-free percent-encoding).
+  (dependency-free percent-encoding). The URL is also included in the human-readable
+  `text` response (`Download:` / `Download URLs:` lines), so agents that only read
+  the text content can retrieve the file without inspecting `structuredContent`.
+- **`firebird_export` creates the output directory** — exporting to a path whose
+  parent directory does not exist (e.g. a fresh `<storage>/<db>_<format>/file.parquet`)
+  no longer fails with `No such file or directory`. The parent directory is created
+  automatically for all formats (Parquet, IPC, CSV, DBF, JSONL).
 - **JSON Schema codegen** — `firebird_generate_dev` and `firebird_generate_view_dto`
   now accept `language: "json_schema"` (aliases: `jsonschema`, `json-schema`).
   Each table/view produces one `.json` file (draft 2020-12) with Firebird-specific

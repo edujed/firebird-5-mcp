@@ -215,26 +215,31 @@ pub fn save_or_inline(
         );
     }
 
-    let text = storage::summary(&result, &previews);
-
     // Build structured content
-    let file_entries: Vec<Value> = result
-        .files
-        .iter()
-        .map(|f| {
-            let mut entry = json!({
-                "name": f.name,
-                "path": f.path,
-                "size": f.size,
-                "lines": f.lines,
-                "format": f.format,
-            });
-            if let Some(url) = file_download_url(files_base_url, &f.path, &base_dir) {
-                entry["download_url"] = json!(url);
-            }
-            entry
-        })
-        .collect();
+    let mut file_entries: Vec<Value> = Vec::with_capacity(result.files.len());
+    let mut download_urls: Vec<String> = Vec::new();
+    for f in &result.files {
+        let mut entry = json!({
+            "name": f.name,
+            "path": f.path,
+            "size": f.size,
+            "lines": f.lines,
+            "format": f.format,
+        });
+        if let Some(url) = file_download_url(files_base_url, &f.path, &base_dir) {
+            entry["download_url"] = json!(url);
+            download_urls.push(url);
+        }
+        file_entries.push(entry);
+    }
+
+    let mut text = storage::summary(&result, &previews);
+    if !download_urls.is_empty() {
+        text.push_str("\n\nDownload URLs:\n");
+        for url in &download_urls {
+            text.push_str(&format!("- {url}\n"));
+        }
+    }
 
     let preview_entries: Vec<Value> = previews
         .iter()

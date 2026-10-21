@@ -10,6 +10,22 @@ use std::io::{BufReader, Read, Write};
 
 use crate::format::{Compression, file_compression_from_path};
 
+/// Creates the parent directory of `path` if it does not exist.
+///
+/// Export targets are often caller-supplied paths (e.g. a fresh
+/// `<storage>/<db>_<format>/file.parquet`), so the directory may not exist
+/// yet. No-op when the path has no parent component.
+pub fn create_parent_dir(path: &str) -> Result<(), String> {
+    let parent = std::path::Path::new(path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty());
+    if let Some(dir) = parent {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("cannot create directory {}: {e}", dir.display()))?;
+    }
+    Ok(())
+}
+
 /// A `Read` source that transparently decompresses based on the file
 /// extension. Wraps one of: plain `File`, ZSTD decoder, GZIP decoder,
 /// or LZ4 frame decoder.
@@ -117,6 +133,7 @@ impl<'a> TextWriter<'a> {
     /// Creates a file, wrapping it in the appropriate encoder based on
     /// the file extension.
     pub fn create(path: &str) -> Result<Self, String> {
+        create_parent_dir(path)?;
         let file = File::create(path).map_err(|e| format!("cannot create {path}: {e}"))?;
         let inner = match file_compression_from_path(path) {
             Compression::Zstd => TextEncoder::Zstd(

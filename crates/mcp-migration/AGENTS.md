@@ -74,7 +74,8 @@
 | Item | Summary |
 |---|---|
 | `TextReader` | Opens a file with transparent decompression based on extension. `into_csv_reader()` → `csv::Reader`, `into_bytes()` → `Vec<u8>` (for DBF) |
-| `TextWriter` | Creates a file with transparent compression based on extension. `into_csv_writer()` → `csv::Writer`, `write_bytes()` → raw bytes (for DBF), `finish()` → flushes encoder trailer |
+| `TextWriter` | Creates a file with transparent compression based on extension (creates the parent directory first). `into_csv_writer()` → `csv::Writer`, `write_bytes()` → raw bytes (for DBF), `finish()` → flushes encoder trailer |
+| `create_parent_dir()` | Creates the parent directory of a path if missing (no-op when there is no parent). Used by all export write paths so caller-supplied `output_path` values don't fail when the directory doesn't exist yet |
 | `TextDecoder` / `TextEncoder` | `pub` enums (Plain/Zstd/Gzip/Lz4) — must be public because they appear in return types |
 
 ## `src/types.rs`
@@ -218,7 +219,10 @@
   → `build_record_batch()` → `write_parquet()` / `write_ipc()` / `write_csv()` /
   `write_dbase()`. No RDB$ introspection. Export uses `query_unbounded()` (no
   `FIRST` injection) so the file always contains the complete result set — the
-  100/1000-row caps only apply to LLM-facing `firebird_query` calls.
+  100/1000-row caps only apply to LLM-facing `firebird_query` calls. All export
+  write paths create the parent directory of `output_path` first
+  (`io::create_parent_dir`), so caller-supplied paths in fresh directories work
+  without pre-creating them.
 - **Format/compression/codepage centralised in `format.rs`:** `Format`,
   `Compression`, and `CodePage` enums are the single source of truth. CSV/DBF
   compression is determined by file extension (`.csv`, `.csv.zst`, `.csv.gz`,

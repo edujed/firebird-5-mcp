@@ -182,13 +182,17 @@ pub fn tool_definitions() -> Vec<Value> {
         ),
         tool(
             "firebird_describe_database",
-            "Provides a complete overview of the database structure. Lists all tables with their columns, types, and constraints, and generates a Mermaid ER diagram showing all relationships.",
+            "Provides a complete overview of the database structure. Lists all tables with their columns, types, and constraints, and generates a Mermaid ER diagram showing all relationships. Can output as Markdown or JSON, and can be saved to a file (with optional compression) via outputDirPath or output_mode='download'.",
             json!({
                 "type": "object",
                 "properties": {
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
                     "include_counts": { "type": "boolean", "description": "If true, includes row counts for each table. May be slow for large tables. Defaults to false." },
-                    "include_describes": { "type": "boolean", "description": "If true, includes column details for each table. Defaults to true." }
+                    "include_describes": { "type": "boolean", "description": "If true, includes column details for each table. Defaults to true." },
+                    "output_mode": { "type": "string", "enum": ["inline", "download"], "description": "'inline' returns the content in the response (default). 'download' saves to a file and returns a download_url (SSE mode)." },
+                    "output_format": { "type": "string", "enum": ["markdown", "json"], "description": "Output format. 'markdown' (default) is human-readable. 'json' is machine-readable (unformatted JSON)." },
+                    "outputDirPath": { "type": "string", "description": "Directory path where the file will be saved. If omitted with output_mode='download', uses the default storage dir." },
+                    "compression": { "type": "string", "enum": ["none", "zstd", "gzip", "lz4"], "description": "Compress the output file. 'zstd' → .zst, 'gzip' → .gz, 'lz4' → .lz4. Default: none." }
                 }
             }),
         ),
@@ -214,6 +218,20 @@ pub fn tool_definitions() -> Vec<Value> {
                     "objects": { "type": "array", "items": { "type": "string" }, "description": "Optional list of object names to extract. If omitted, extracts everything." },
                     "outputDirPath": { "type": "string", "description": "Directory path where the DDL file will be saved. If omitted, returns the DDL inline." },
                     "compression": { "type": "string", "enum": ["none", "zstd", "gzip", "lz4"], "description": "Compress the output file. 'zstd' → .zst, 'gzip' → .gz, 'lz4' → .lz4. Default: none (plain .sql)." }
+                }
+            }),
+        ),
+        tool(
+            "firebird_er_diagram",
+            "Generates a Mermaid erDiagram of the database schema (tables + foreign-key relationships). Returns the diagram as a Markdown code block. Optionally filter to specific tables, include column definitions, and/or save to a .mmd file (with optional compression) via outputDirPath.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
+                    "tables": { "type": "array", "items": { "type": "string" }, "description": "Optional list of table names to include. If omitted, includes all tables." },
+                    "include_columns": { "type": "boolean", "description": "If true, includes column definitions (type + name) inside each entity. Defaults to false (relationships only)." },
+                    "outputDirPath": { "type": "string", "description": "Directory path where the .mmd file will be saved. If omitted, returns the diagram inline only." },
+                    "compression": { "type": "string", "enum": ["none", "zstd", "gzip", "lz4"], "description": "Compress the output file. 'zstd' → .zst, 'gzip' → .gz, 'lz4' → .lz4. Default: none (plain .mmd)." }
                 }
             }),
         ),
