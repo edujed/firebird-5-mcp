@@ -22,14 +22,11 @@
 use super::{GeneratedFile, Target};
 use crate::codegen::fbtype::FbType;
 use crate::codegen::generator::GenOptions;
+use crate::codegen::is_nullable;
 use crate::codegen::naming::{to_pascal_case, to_snake_case};
-use crate::schema::{ColumnInfo, ForeignKeyInfo, TableSchema};
+use crate::schema::{ForeignKeyInfo, TableSchema};
 
 pub struct PythonTarget;
-
-fn is_nullable(col: &ColumnInfo) -> bool {
-    col.nullable.map(|n| n == 1).unwrap_or(false)
-}
 
 /// PK columns: prefer the PRIMARY KEY constraint, fall back to the first
 /// unique index (same convention as the Java target).
@@ -349,7 +346,7 @@ mod tests {
             size,
             precision: 0,
             scale: 0,
-            nullable: Some(if nullable { 1 } else { 0 }),
+            nullable: if nullable { None } else { Some(1) },
             default: None,
             position: None,
             domain: String::new(),
@@ -371,7 +368,7 @@ mod tests {
             size: 0,
             precision,
             scale,
-            nullable: Some(if nullable { 1 } else { 0 }),
+            nullable: if nullable { None } else { Some(1) },
             default: None,
             position: None,
             domain: String::new(),

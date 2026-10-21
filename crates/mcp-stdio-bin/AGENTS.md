@@ -29,10 +29,10 @@
 
 | Function | Lines | Summary |
 |---|---|---|
-| `struct Args` | ~25–35 | CLI args: `sse`, `host`, `port`, `token`, `token_file`, `session_timeout_min` |
-| `parse_args()` | ~40–110 | Parses `--sse`, `--host`, `--port`, `--token`, `--token-file`, `--session-timeout`, `--help`. Returns `Result<Args, String>` |
+| `struct Args` | ~25–40 | CLI args: `sse`, `host`, `port`, `token`, `token_file`, `session_timeout_min`, `base_url` |
+| `parse_args()` | ~40–125 | Parses `--sse`, `--host`, `--port`, `--token`, `--token-file`, `--session-timeout`, `--base-url`, `--help`. Returns `Result<Args, String>` |
 | `print_usage()` | ~115–140 | Usage message with examples |
-| `main()` | ~145–210 | Loads `Config`, inits logging, creates `ProtocolCore`, dispatches to `run_sse()` (if `--sse`) or `run_stdio()` |
+| `main()` | ~145–225 | Loads `Config`, inits logging, computes `files_base_url` (SSE only: `--base-url` or derived from `--host`/`--port`, `None` for wildcard hosts), creates `ProtocolCore::new(cfg, files_base_url)`, dispatches to `run_sse()` (if `--sse`) or `run_stdio()` |
 | `resolve_auth()` | ~215–240 | Resolves `AuthConfig` from args: `--token-file` > `--token` > disabled |
 | `run_stdio()` | ~245–275 | Stdio transport: reads JSON-RPC lines from stdin, calls `core.handle_request()`, writes to stdout |
 
@@ -103,6 +103,15 @@ the full handler map.
   is blocked (rejects `..`, absolute paths, and symlink escapes). Upload limit:
   500 MB. The `firebird_list_files` tool returns relative paths that can be used
   directly as the `path` query parameter for downloads.
+- **`download_url` in tool responses (SSE only):** in SSE mode, `main()` computes
+  a `files_base_url` (`--base-url` if given, else `http://<host>:<port>` derived
+  from `--host`/`--port`; `None` when the bind host is a wildcard like `0.0.0.0`
+  or `::`, since that is not a usable URL host) and passes it to
+  `ProtocolCore::new`. File-generating tools then include a `download_url`
+  (`{base}/files?path=<rel>`) in their structured response so clients can
+  retrieve the file. In stdio mode the base URL is `None` and only the absolute
+  `path` is returned. Use `--base-url http://<lan-ip>:<port>` to advertise a
+  LAN-reachable host when binding to `0.0.0.0`.
 - **CORS:** all SSE endpoints (`/sse`, `/messages`, `/files`) support CORS for
   browser clients. Preflight `OPTIONS` requests return 204 with
   `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, POST,

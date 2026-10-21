@@ -9,7 +9,11 @@ use super::ToolResult;
 use super::common::{arg_bool, arg_str, open_client, save_or_inline};
 
 /// Handles the `firebird_generate_view_dto` tool call.
-pub fn handle_generate_view_dto(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
+pub fn handle_generate_view_dto(
+    cfg: &Config,
+    args: &Value,
+    files_base_url: Option<&str>,
+) -> Result<ToolResult, String> {
     let views_raw = args
         .get("views")
         .and_then(|v| v.as_array())
@@ -60,10 +64,16 @@ pub fn handle_generate_view_dto(cfg: &Config, args: &Value) -> Result<ToolResult
         is_view: true,
     };
 
-    let files = view_dto::generate_view_dto(&mut client, &views, &opts)
+    let mut files = view_dto::generate_view_dto(&mut client, &views, &opts)
         .map_err(|e| format!("Failed to generate view DTOs: {e}"))?;
 
     let db_name = arg_str(args, "database").unwrap_or_else(|| cfg.default_database().to_string());
+    let comp_suffix = super::generator_tools::compression_suffix(args)?;
+    if !comp_suffix.is_empty() {
+        for f in &mut files {
+            f.name.push_str(&comp_suffix);
+        }
+    }
     let format = match language {
         Language::Java => "java",
         Language::Go => "go",
@@ -76,5 +86,5 @@ pub fn handle_generate_view_dto(cfg: &Config, args: &Value) -> Result<ToolResult
         Language::JsonSchema => "json-schema",
         _ => "unknown",
     };
-    save_or_inline(cfg, args, &db_name, format, &files)
+    save_or_inline(cfg, args, &db_name, format, &files, files_base_url)
 }

@@ -20,13 +20,10 @@
 use super::{GeneratedFile, Target};
 use crate::codegen::fbtype::FbType;
 use crate::codegen::generator::GenOptions;
-use crate::schema::{ColumnInfo, ForeignKeyInfo, TableSchema};
+use crate::codegen::is_nullable;
+use crate::schema::{ForeignKeyInfo, TableSchema};
 
 pub struct JsonSchemaTarget;
-
-fn is_nullable(col: &ColumnInfo) -> bool {
-    col.nullable.map(|n| n == 1).unwrap_or(false)
-}
 
 /// Escapes a string for inclusion in a JSON string literal.
 fn json_escape(s: &str) -> String {
@@ -217,7 +214,7 @@ fn json_schema_type(t: &FbType) -> (String, Option<String>) {
 mod tests {
     use super::*;
     use crate::codegen::Language;
-    use crate::schema::{ConstraintInfo, IndexInfo};
+    use crate::schema::{ColumnInfo, ConstraintInfo, IndexInfo};
 
     fn col(name: &str, type_num: i64, sub_type: i64, size: i64, nullable: bool) -> ColumnInfo {
         ColumnInfo {
@@ -227,7 +224,7 @@ mod tests {
             size,
             precision: 0,
             scale: 0,
-            nullable: Some(if nullable { 1 } else { 0 }),
+            nullable: if nullable { None } else { Some(1) },
             default: None,
             position: None,
             domain: String::new(),
@@ -249,7 +246,7 @@ mod tests {
             size: 0,
             precision,
             scale,
-            nullable: Some(if nullable { 1 } else { 0 }),
+            nullable: if nullable { None } else { Some(1) },
             default: None,
             position: None,
             domain: String::new(),

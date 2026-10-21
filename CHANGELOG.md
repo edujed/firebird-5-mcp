@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.0] — WIP
 
 ### Added
+- **Compression for generated files** — `firebird_metadata_extract`, `firebird_generate_dev`,
+  and `firebird_generate_view_dto` now accept an optional `compression` parameter
+  (`zstd`, `gzip`, `lz4`, or `none` — default `none`). When set, the output file is
+  compressed and the extension is appended (e.g. `metadata.sql.zst`). The `size` and
+  `lines` in the response still reflect the uncompressed content. Compression is
+  handled by the new `mcp-core::compression` module (shared with `mcp-migration`),
+  which provides `Compression` enum, `from_path()`, `compress()`, and `decompress()`.
+  The `mcp-migration` crate's `Compression` enum and `file_compression_from_path()`
+  are now re-exported from `mcp-core::compression` (single source of truth).
+- **`download_url` in file-generating tool responses (SSE mode)** — when running
+  with `--sse`, every tool that produces or references a file now includes a
+  `download_url` in its structured response, pointing at the `GET /files`
+  endpoint: `{base}/files?path=<url-encoded relative path>`. Affected tools:
+  `firebird_export`, `firebird_import`, `firebird_describe_file`,
+  `firebird_generate_dev`, `firebird_generate_view_dto`, `firebird_metadata_extract`
+  (with `outputDirPath`), and `firebird_list_files`. The URL is only emitted when
+  the file is inside the storage directory (the `/files` endpoint only serves
+  that tree). In stdio mode the base URL is `None`, so only the absolute `path`
+  is returned (the retrieval location on the local machine). The base URL comes
+  from the new `--base-url` flag, or is derived from `--host`/`--port` (skipped
+  for wildcard bind hosts like `0.0.0.0` — pass `--base-url http://<lan-ip>:<port>`
+  to advertise a LAN-reachable host). Built by `mcp-tools::common::file_download_url`
+  (dependency-free percent-encoding).
 - **JSON Schema codegen** — `firebird_generate_dev` and `firebird_generate_view_dto`
   now accept `language: "json_schema"` (aliases: `jsonschema`, `json-schema`).
   Each table/view produces one `.json` file (draft 2020-12) with Firebird-specific
@@ -123,6 +146,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all root-level READMEs (including `README_FOR_HUMANS.md` / `LEIAME_PARA_HUMANOS.md`
   and the cross-language counterpart). `LEIAME_PARA_HUMANOS.md` fixed a swapped
   language description in its references table.
+- **DRY refactor: shared helpers in `mcp-types`** — two new pure functions in
+  `mcp-types::lib` eliminate duplicated logic across `mcp-core` and `mcp-tools`:
+  - `is_not_null(row, col_idx)` — single source of truth for NOT NULL detection
+    from RDB$ metadata (previously reimplemented in `metadata.rs`,
+    `schema/markdown.rs`, `schema_tools.rs`, and `quality_tools.rs`).
+  - `trigger_type_label(trigger_type)` — maps `RDB$TRIGGER_TYPE` enum (1-6) to
+    human-readable labels (BEFORE/AFTER INSERT/UPDATE/DELETE). Previously each
+    call site had its own `match` with inconsistent or incorrect mappings.
+  All call sites now use these helpers. `mcp-tools::format_schema` is now a
+  thin wrapper over `mcp-core::schema::format_schema_markdown` (the Markdown
+  rendering lives in one place).
+
+### Fixed
+- **`describe_objects` trigger type** — was using a bitmask interpretation
+  (1,2,4,8,16,32) for `RDB$TRIGGER_TYPE`. Firebird uses an enum (1-6):
+  1=BEFORE INSERT, 2=AFTER INSERT, 3=BEFORE UPDATE, 4=AFTER UPDATE,
+  5=BEFORE DELETE, 6=AFTER DELETE. Now uses `trigger_type_label()` from
+  `mcp-types`.
+- **`describe_objects` domain defaults** — domain branch now calls
+  `decode_blr_default()` (made `pub`) to render BLR-encoded defaults
+  (CURRENT_TIMESTAMP, boolean, numeric) instead of showing raw BLR text.
+- **`describe_objects` NULL_FLAG** — NOT NULL detection now uses
+  `is_not_null()` helper (consistent with `describe_table` and
+  `describe_database`).
+- **`describe_objects` FK reference columns** — foreign key constraints now
+  show the referenced table and columns (previously only the constraint name).
+- **`describe_objects` procedure/function AS clause** — source code now
+  includes the `AS` keyword before the body (consistent with DDL extraction).
+- **`extract_sequences` START WITH** — sequence DDL now includes
+  `START WITH <value>` from `RDB$GENERATOR_START` (previously omitted).
+- **`extract_tables` BLR defaults** — column defaults from BLR are now decoded
+  via `decode_blr_default()` (CURRENT_TIMESTAMP, boolean, numeric) instead of
+  being silently dropped.
 
 ## [1.3.0]
 

@@ -2,14 +2,18 @@
 //! and describe file schemas.
 
 use crate::ToolResult;
-use crate::common::{arg_str, open_client};
+use crate::common::{arg_str, file_download_url, open_client, storage_dir};
 use firebird_5_mcp_core::Config;
 use firebird_5_mcp_migration::{ImportMode, describe_file, export, import};
 
 const SUPPORTED_FORMATS: &str = "'parquet', 'ipc', 'csv', 'dbf' and 'jsonl'";
 
 /// `firebird_export` — export a table, view, or SQL query to a data file.
-pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolResult, String> {
+pub fn handle_export(
+    config: &Config,
+    args: &serde_json::Value,
+    files_base_url: Option<&str>,
+) -> Result<ToolResult, String> {
     let source =
         arg_str(args, "source").ok_or_else(|| "missing required argument: source".to_string())?;
     let output_path = arg_str(args, "output_path")
@@ -85,24 +89,41 @@ pub fn handle_export(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         codepage.as_deref(),
     )?;
 
-    let text = format!(
+    // Build the download URL when the file is inside the storage dir and the
+    // transport exposes a `/files` endpoint (SSE mode).
+    let storage_base = storage_dir(config, args);
+    let download_url = storage_base
+        .as_deref()
+        .and_then(|base| file_download_url(files_base_url, &result.path, base));
+
+    let mut text = format!(
         "Exported {} rows × {} columns to `{}` (format: {fmt})",
         result.rows, result.columns, result.path
     );
+    if let Some(ref url) = download_url {
+        text.push_str(&format!("\n\nDownload: {url}"));
+    }
 
-    let structured = serde_json::json!({
+    let mut structured = serde_json::json!({
         "path": result.path,
         "rows": result.rows,
         "columns": result.columns,
         "format": fmt,
         "compression": compression.unwrap_or_else(|| default_compression(&fmt).to_string()),
     });
+    if let Some(url) = download_url {
+        structured["download_url"] = serde_json::json!(url);
+    }
 
     Ok(ToolResult::with_structured(text, structured))
 }
 
 /// `firebird_import` — import a data file into a Firebird table.
-pub fn handle_import(config: &Config, args: &serde_json::Value) -> Result<ToolResult, String> {
+pub fn handle_import(
+    config: &Config,
+    args: &serde_json::Value,
+    files_base_url: Option<&str>,
+) -> Result<ToolResult, String> {
     let input_path = arg_str(args, "input_path")
         .ok_or_else(|| "missing required argument: input_path".to_string())?;
     let table =
@@ -161,7 +182,7 @@ pub fn handle_import(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         result.rows, result.columns, result.table, mode_label
     );
 
-    let structured = serde_json::json!({
+    let mut structured = serde_json::json!({
         "table": result.table,
         "rows": result.rows,
         "columns": result.columns,
@@ -169,14 +190,23 @@ pub fn handle_import(config: &Config, args: &serde_json::Value) -> Result<ToolRe
         "format": fmt,
         "ignored_columns": ignore_columns,
     });
+    // Expose the input file's location (and download URL, when available) so
+    // the client knows where the source file lives.
+    structured["input_path"] = serde_json::json!(input_path);
+    if let Some(base) = storage_dir(config, args) {
+        if let Some(url) = file_download_url(files_base_url, &input_path, &base) {
+            structured["download_url"] = serde_json::json!(url);
+        }
+    }
 
     Ok(ToolResult::with_structured(text, structured))
 }
 
 /// `firebird_describe_file` — describe a data file's schema without loading data.
 pub fn handle_describe_file(
-    _config: &Config,
+    config: &Config,
     args: &serde_json::Value,
+    files_base_url: Option<&str>,
 ) -> Result<ToolResult, String> {
     let path =
         arg_str(args, "path").ok_or_else(|| "missing required argument: path".to_string())?;
@@ -274,7 +304,7 @@ pub fn handle_describe_file(
         }
     }
 
-    let structured = serde_json::json!({
+    let mut structured = serde_json::json!({
         "path": desc.path,
         "format": desc.format,
         "rows": desc.rows,
@@ -283,6 +313,11 @@ pub fn handle_describe_file(
         "firebird_types": desc.firebird_types,
         "sample_rows": desc.sample_rows,
     });
+    if let Some(base) = storage_dir(config, args) {
+        if let Some(url) = file_download_url(files_base_url, &desc.path, &base) {
+            structured["download_url"] = serde_json::json!(url);
+        }
+    }
 
     Ok(ToolResult::with_structured(text, structured))
 }

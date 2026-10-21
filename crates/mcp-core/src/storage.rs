@@ -6,6 +6,7 @@
 //! overwriting (cache-like behavior) without timestamp suffixes.
 
 use crate::codegen::targets::GeneratedFile;
+use crate::compression;
 use std::path::PathBuf;
 
 /// Storage configuration from `config.json`.
@@ -97,8 +98,10 @@ pub fn write_files(
     let mut written = Vec::new();
     for file in files {
         let path = dir.join(&file.name);
-        std::fs::write(&path, &file.content)
-            .map_err(|e| format!("failed to write {:?}: {e}", path))?;
+        let codec = compression::from_path(&file.name);
+        let bytes = compression::compress(file.content.as_bytes(), codec)
+            .map_err(|e| format!("failed to compress {:?}: {e}", path))?;
+        std::fs::write(&path, &bytes).map_err(|e| format!("failed to write {:?}: {e}", path))?;
 
         let size = file.content.len();
         let lines = file.content.lines().count();
@@ -392,5 +395,83 @@ mod tests {
         assert!(s.contains("User.java (2.3 KB, 58 lines)"));
         assert!(s.contains("Order.java (1.8 KB, 45 lines)"));
         assert!(s.contains("Preview of User.java:"));
+    }
+
+    #[test]
+    fn test_write_files_compressed_zst() {
+        let dir = std::env::temp_dir().join("mcp_storage_test_zst");
+        let _ = std::fs::remove_dir_all(&dir);
+        let files = vec![GeneratedFile {
+            name: "test_metadata.sql.zst".to_string(),
+            content: "CREATE TABLE T1 (ID INTEGER);\n".repeat(100),
+            format: "sql".to_string(),
+        }];
+        let result = write_files(dir.to_str().unwrap(), "test", "sql", &files).unwrap();
+        let path = result.files[0].path.clone();
+        let on_disk = std::fs::read(&path).unwrap();
+        // The file on disk should be compressed (smaller than content)
+        assert!(on_disk.len() < files[0].content.len());
+        // But size/lines should reflect uncompressed content
+        assert_eq!(result.files[0].size, files[0].content.len());
+        assert_eq!(result.files[0].lines, files[0].content.lines().count());
+        // Decompress and verify
+        let decompressed =
+            compression::decompress(&on_disk, compression::Compression::Zstd).unwrap();
+        assert_eq!(String::from_utf8(decompressed).unwrap(), files[0].content);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_write_files_compressed_gz() {
+        let dir = std::env::temp_dir().join("mcp_storage_test_gz");
+        let _ = std::fs::remove_dir_all(&dir);
+        let files = vec![GeneratedFile {
+            name: "test_metadata.sql.gz".to_string(),
+            content: "CREATE TABLE T1 (ID INTEGER);\n".repeat(100),
+            format: "sql".to_string(),
+        }];
+        let result = write_files(dir.to_str().unwrap(), "test", "sql", &files).unwrap();
+        let path = result.files[0].path.clone();
+        let on_disk = std::fs::read(&path).unwrap();
+        assert!(on_disk.len() < files[0].content.len());
+        let decompressed =
+            compression::decompress(&on_disk, compression::Compression::Gzip).unwrap();
+        assert_eq!(String::from_utf8(decompressed).unwrap(), files[0].content);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_write_files_compressed_lz4() {
+        let dir = std::env::temp_dir().join("mcp_storage_test_lz4");
+        let _ = std::fs::remove_dir_all(&dir);
+        let files = vec![GeneratedFile {
+            name: "test_metadata.sql.lz4".to_string(),
+            content: "CREATE TABLE T1 (ID INTEGER);\n".repeat(100),
+            format: "sql".to_string(),
+        }];
+        let result = write_files(dir.to_str().unwrap(), "test", "sql", &files).unwrap();
+        let path = result.files[0].path.clone();
+        let on_disk = std::fs::read(&path).unwrap();
+        let decompressed =
+            compression::decompress(&on_disk, compression::Compression::Lz4).unwrap();
+        assert_eq!(String::from_utf8(decompressed).unwrap(), files[0].content);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_write_files_plain() {
+        let dir = std::env::temp_dir().join("mcp_storage_test_plain");
+        let _ = std::fs::remove_dir_all(&dir);
+        let files = vec![GeneratedFile {
+            name: "test_metadata.sql".to_string(),
+            content: "CREATE TABLE T1 (ID INTEGER);\n".to_string(),
+            format: "sql".to_string(),
+        }];
+        let result = write_files(dir.to_str().unwrap(), "test", "sql", &files).unwrap();
+        let path = result.files[0].path.clone();
+        let on_disk = std::fs::read(&path).unwrap();
+        // Plain file: content is written as-is
+        assert_eq!(on_disk, files[0].content.as_bytes());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

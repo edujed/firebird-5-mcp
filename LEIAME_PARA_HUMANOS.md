@@ -350,6 +350,8 @@ fi
 | `firebird_domains` | Analisar domains definidos pelo usuário e uso |
 | `firebird_get_databases` | Listar bancos configurados |
 | `firebird_crypt_state` | Verificar estado de criptografia em repouso |
+| `firebird_data_quality` | Verificações de qualidade de dados baseadas em regras (nulos, strings vazias, outliers, intervalo de datas) |
+| `firebird_list_files` | Listar arquivos gerados no diretório de armazenamento |
 
 ---
 

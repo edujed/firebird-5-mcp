@@ -7,14 +7,11 @@
 use super::{GeneratedFile, Target};
 use crate::codegen::fbtype::FbType;
 use crate::codegen::generator::GenOptions;
+use crate::codegen::is_nullable;
 use crate::codegen::naming::{to_camel_case, to_pascal_case};
 use crate::schema::{ColumnInfo, ForeignKeyInfo, TableSchema};
 
 pub struct GraphqlTarget;
-
-fn is_nullable(col: &ColumnInfo) -> bool {
-    col.nullable.map(|n| n == 1).unwrap_or(false)
-}
 
 impl Target for GraphqlTarget {
     /// Maps a Firebird type to a GraphQL scalar type.
@@ -392,7 +389,7 @@ mod tests {
             size,
             precision: 0,
             scale: 0,
-            nullable: Some(if nullable { 1 } else { 0 }),
+            nullable: if nullable { None } else { Some(1) },
             default: None,
             position: None,
             domain: String::new(),

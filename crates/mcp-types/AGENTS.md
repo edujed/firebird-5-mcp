@@ -13,7 +13,7 @@
 | File | Lines | Role |
 |---|---|---|
 | `Cargo.toml` | 11 | Package `firebird-5-mcp-types`; deps: `chrono` |
-| `src/lib.rs` | 262 | Everything: `Value`, `ColumnMeta`, `QueryResult`, type formatting, identifier validation, Markdown cell rendering |
+| `src/lib.rs` | 306 | Everything: `Value`, `ColumnMeta`, `QueryResult`, type formatting, identifier validation, Markdown cell rendering, DRY helpers (`is_not_null`, `trigger_type_label`) |
 
 ## `src/lib.rs`
 
@@ -31,7 +31,9 @@
 | `format_column_type` | 140–198 | Human-readable type: NUMERIC/DECIMAL(p,s), CHAR/VARCHAR/NVARCHAR(n) bytes→chars, BLOB sub-type |
 | `char_size_for` | 205–213 | NVARCHAR = /2 (2-byte units); CHAR/VARCHAR = as-is (already in characters) |
 | `is_valid_identifier` | 217–224 | Letters/digits/underscore, must start with a letter |
-| `format_cell` | 232–250 | Markdown cell: NULL, flatten newlines, escape pipes, `<BLOB>` for binary |
+| `is_not_null` | 231–239 | Checks if a column is NOT NULL from RDB$ metadata (single source of truth) |
+| `trigger_type_label` | 243–250 | Maps `RDB$TRIGGER_TYPE` enum (1-6) to human-readable label (BEFORE/AFTER INSERT/UPDATE/DELETE) |
+| `format_cell` | 252–270 | Markdown cell: NULL, flatten newlines, escape pipes, `<BLOB>` for binary |
 | `format_float` | 252–258 | Whole floats render as integers |
 | `flatten` | 260–262 | Newlines → space, pipes → `\|` |
 

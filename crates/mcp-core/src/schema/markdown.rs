@@ -1,10 +1,11 @@
 //! Markdown formatting for table schemas.
 
 use super::TableSchema;
+use crate::types::format_column_type;
+use firebird_5_mcp_types::is_not_null;
 
 /// Formats a table schema as Markdown (for use in describe_objects).
 pub fn format_schema_markdown(schema: &TableSchema) -> String {
-    use crate::types::format_column_type;
     let mut b = String::new();
 
     b.push_str("#### Columns\n\n");
@@ -18,12 +19,11 @@ pub fn format_schema_markdown(schema: &TableSchema) -> String {
             col.precision,
             col.scale,
         );
-        // In Firebird, RDB$NULL_FLAG = 0 means the column CAN be NULL,
-        // and RDB$NULL_FLAG = 1 means the column CANNOT be NULL.
-        let null_str = if col.nullable.map(|n| n == 0).unwrap_or(true) {
-            "YES"
-        } else {
+        // RDB$NULL_FLAG: 1 = NOT NULL, NULL/0 = nullable
+        let null_str = if is_not_null(col.nullable) {
             "NO"
+        } else {
+            "YES"
         };
         let default = col.default.as_deref().unwrap_or("-");
         let position = col

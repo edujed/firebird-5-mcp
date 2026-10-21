@@ -14,7 +14,7 @@
 
 | File | Lines | Role |
 |---|---|---|
-| `Cargo.toml` | — | Package `firebird-5-mcp-core`; deps: `rsfbclient`, `rsfbclient-core`, `serde`, `serde_json`, `chrono`, `dirs` |
+| `Cargo.toml` | — | Package `firebird-5-mcp-core`; deps: `rsfbclient`, `rsfbclient-core`, `serde`, `serde_json`, `chrono`, `dirs`, `flate2`, `zstd`, `lz4_flex` |
 | `src/lib.rs` | 35 | Module declarations + re-exports (`FirebirdClient`, `IsolationPreset`, `Config`, `DatabaseConfig`, `ServerConfig`) |
 | `src/client.rs` | 236 | `FirebirdClient` connection wrapper (pure-Rust `rsfbclient` driver) |
 | `src/config.rs` | 302 | `config.json` loading/validation/registration |
@@ -23,12 +23,13 @@
 | `src/query/row_limit.rs` | 193 | `FIRST`/`SKIP` clause injection |
 | `src/query/split.rs` | 562 | SQL statement splitting (`SET TERM`, `BEGIN`/`END`) |
 | `src/schema/mod.rs` | 363 | Schema introspection (RDB$ tables) |
-| `src/schema/markdown.rs` | 92 | Markdown rendering of `TableSchema` |
+| `src/schema/markdown.rs` | 94 | Markdown rendering of `TableSchema` |
 | `src/ddl.rs` | 144 | DDL: triggers, procedures, functions, sequences, drops |
 | `src/explain.rs` | 74 | Execution plan retrieval (execute + rollback) |
-| `src/metadata.rs` | 891 | Full DDL extraction (replaces `isql -x`) |
+| `src/metadata.rs` | 914 | Full DDL extraction (replaces `isql -x`) |
 | `src/stats.rs` | 354 | MON$ statistics + encryption state |
-| `src/storage.rs` | 396 | File storage for generated artifacts |
+| `src/storage.rs` | 450 | File storage for generated artifacts (with transparent compression) |
+| `src/compression.rs` | 180 | Shared compression utilities (`Compression` enum, `from_path`, `compress`, `decompress`) |
 | `src/types.rs` | 10 | Re-exports from `firebird-5-mcp-types` (backward compat) |
 | `src/paths.rs` | 104 | Centralized path resolution |
 | `src/log.rs` | 87 | File-based daily logging + `mlog!` macro |
@@ -167,7 +168,7 @@ Re-exports `Value`, `ColumnMeta`, `QueryResult` from `firebird-5-mcp-types`.
 
 | Function | Lines | Summary |
 |---|---|---|
-| `format_schema_markdown()` | 6–94 | Renders `TableSchema` as Markdown |
+| `format_schema_markdown()` | 6–94 | Renders `TableSchema` as Markdown (single source of truth — `mcp-tools::format_schema` is a thin wrapper over this) |
 
 ## `src/ddl.rs`
 
@@ -191,23 +192,23 @@ Re-exports `Value`, `ColumnMeta`, `QueryResult` from `firebird-5-mcp-types`.
 
 | Function | Lines | Summary |
 |---|---|---|
-| `extract_ddl()` | 14–16 | Extracts all DDL |
-| `extract_ddl_filtered()` | 20–40 | Extracts DDL for specific objects |
-| `should_extract()` | 42–47 | Checks if an object should be extracted |
-| `extract_domains()` | 49–105 | Domain DDL |
-| `extract_tables()` | 107–282 | Table DDL (columns, constraints, indexes) |
-| `extract_views()` | 284–311 | View DDL |
-| `extract_sequences()` | 313–341 | Sequence DDL |
-| `extract_triggers()` | 343–387 | Trigger DDL |
-| `extract_procedures()` | 389–456 | Procedure DDL |
-| `resolve_domain_type()` | 459–485 | Resolves domain type to base type |
-| `decode_blr_default()` | 490–528 | Decodes BLR-encoded default values |
-| `extract_functions()` | 530–640 | Function DDL |
-| `describe_objects()` | 646–850 | Describes multiple objects by name |
-| `text_at()` | 854–864 | Safe text cell accessor |
-| `opt_text_at()` | 867–872 | Optional text cell accessor |
-| `opt_int_at()` | 875–881 | Optional int cell accessor |
-| `int_at()` | 883–891 | Safe int cell accessor |
+| `extract_ddl()` | 15–17 | Extracts all DDL |
+| `extract_ddl_filtered()` | 21–31 | Extracts DDL for specific objects |
+| `should_extract()` | 43–48 | Checks if an object should be extracted |
+| `extract_domains()` | 50–60 | Domain DDL |
+| `extract_tables()` | 109–119 | Table DDL (columns, constraints, indexes) |
+| `extract_views()` | 303–313 | View DDL |
+| `extract_sequences()` | 332–342 | Sequence DDL (includes `START WITH` from `RDB$GENERATOR_START`) |
+| `extract_triggers()` | 377–387 | Trigger DDL |
+| `extract_procedures()` | 415–425 | Procedure DDL |
+| `resolve_domain_type()` | 485–495 | Resolves domain type to base type |
+| `decode_blr_default()` | 516–526 | Decodes BLR-encoded default values (CURRENT_TIMESTAMP, boolean, numeric) — `pub`, shared with `describe_objects` |
+| `extract_functions()` | 556–566 | Function DDL |
+| `describe_objects()` | 672–682 | Describes multiple objects by name (tables, views, procs, functions, triggers, sequences, domains) |
+| `text_at()` | 877–887 | Safe text cell accessor |
+| `opt_text_at()` | 890–895 | Optional text cell accessor |
+| `opt_int_at()` | 898–904 | Optional int cell accessor |
+| `int_at()` | 906–914 | Safe int cell accessor |
 
 ## `src/stats.rs`
 
@@ -243,14 +244,25 @@ Re-exports `Value`, `ColumnMeta`, `QueryResult` from `firebird-5-mcp-types`.
 | `struct StorageResult` | 41–46 | `{ output_dir: String, files: Vec<WrittenFile> }` |
 | `struct WrittenFile` | 50–61 | `{ name, path, size, lines, format }` |
 | `resolve_output_dir()` | 68–81 | Resolves output dir, rejects path traversal |
-| `write_files()` | 87–124 | Writes generated files to disk |
+| `write_files()` | 87–124 | Writes generated files to disk (transparent compression by extension: `.zst`→ZSTD, `.gz`→GZIP, `.lz4`→LZ4) |
 | `preview()` | 131–148 | Builds a preview (first 10 + last 5 lines) |
 | `summary()` | 163–196 | Builds a summary of written files |
 | `format_size()` | 199–209 | Bytes → human-readable size |
 | `truncate_lines()` | 211–213 | Truncates a list of lines |
 | `truncate_line()` | 215–226 | Truncates a single line |
 | `to_snake_case()` | 232–269 | Converts a string to snake_case |
-| tests | 271–396 | Unit tests for storage |
+| tests | 271–450 | Unit tests for storage (including compression roundtrip) |
+
+## `src/compression.rs`
+
+Shared compression utilities used by both `mcp-core` (storage) and `mcp-migration` (CSV/DBF/JSONL I/O).
+
+| Item | Summary |
+|---|---|
+| `enum Compression` | `Snappy`, `Zstd`, `Lz4`, `Gzip`, `None`. `parse()`, `as_str()`, `suffix()` (e.g. `.zst`) |
+| `from_path()` | Detects codec from file extension: `.zst`→Zstd, `.gz`→Gzip, `.lz4`→Lz4, else None |
+| `compress()` | Compresses bytes with the given codec. `None`/`Snappy` pass through unchanged |
+| `decompress()` | Decompresses bytes with the given codec. `None`/`Snappy` pass through unchanged |
 
 ## `src/types.rs`
 

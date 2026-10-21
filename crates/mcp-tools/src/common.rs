@@ -136,6 +136,55 @@ pub fn storage_dir(cfg: &Config, args: &Value) -> Option<String> {
         .and_then(|p| p.to_str().map(|s| s.to_string()))
 }
 
+/// Percent-encodes a single path segment for use in a URL query string.
+///
+/// Only the characters that are safe in a URL path/query are kept as-is; every
+/// other byte is encoded as `%XX` (UTF-8). This is a minimal, dependency-free
+/// encoder — enough for file paths, which are typically simple.
+fn percent_encode_segment(segment: &str) -> String {
+    let mut out = String::with_capacity(segment.len());
+    for byte in segment.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
+/// Builds the HTTP download URL for a file that lives inside the storage
+/// directory, when the transport exposes a `/files` endpoint.
+///
+/// Returns `None` when:
+/// - `base_url` is `None` (stdio mode — no HTTP endpoint), or
+/// - `abs_path` is not inside `storage_base` (e.g. an export written to a
+///   caller-supplied path outside the storage dir, which `/files` cannot serve).
+///
+/// Otherwise returns `{base_url}/files/<url-encoded relative path>`.
+pub fn file_download_url(
+    base_url: Option<&str>,
+    abs_path: &str,
+    storage_base: &str,
+) -> Option<String> {
+    let base = base_url?;
+    let abs = std::path::Path::new(abs_path);
+    let rel = abs.strip_prefix(storage_base).ok()?;
+    let encoded = rel
+        .components()
+        .map(|c| percent_encode_segment(c.as_os_str().to_str().unwrap_or("")))
+        .collect::<Vec<_>>()
+        .join("/");
+    if encoded.is_empty() {
+        return None;
+    }
+    // The `/files` endpoint takes the relative path as a `path` query
+    // parameter (see mcp-stdio-bin/src/files.rs), so the URL is
+    // `{base}/files?path=<encoded>`.
+    Some(format!("{base}/files?path={encoded}"))
+}
+
 /// Writes generated files to disk and returns a `ToolResult` with a summary
 /// and structured content.
 ///
@@ -149,6 +198,7 @@ pub fn save_or_inline(
     db_name: &str,
     format: &str,
     files: &[GeneratedFile],
+    files_base_url: Option<&str>,
 ) -> Result<ToolResult, String> {
     let base_dir =
         storage_dir(cfg, args).ok_or_else(|| "Could not resolve storage directory".to_string())?;
@@ -172,13 +222,17 @@ pub fn save_or_inline(
         .files
         .iter()
         .map(|f| {
-            json!({
+            let mut entry = json!({
                 "name": f.name,
                 "path": f.path,
                 "size": f.size,
                 "lines": f.lines,
                 "format": f.format,
-            })
+            });
+            if let Some(url) = file_download_url(files_base_url, &f.path, &base_dir) {
+                entry["download_url"] = json!(url);
+            }
+            entry
         })
         .collect();
 
@@ -196,4 +250,68 @@ pub fn save_or_inline(
     });
 
     Ok(ToolResult::with_structured(text, structured))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_file_download_url_none_base() {
+        assert_eq!(
+            file_download_url(
+                None,
+                "/home/u/.firebird-mcp/output/db_pq/x.parquet",
+                "/home/u/.firebird-mcp/output"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_file_download_url_outside_storage() {
+        assert_eq!(
+            file_download_url(
+                Some("http://10.0.0.5:8080"),
+                "/elsewhere/x.parquet",
+                "/home/u/.firebird-mcp/output"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_file_download_url_inside_storage() {
+        let url = file_download_url(
+            Some("http://10.0.0.5:8080"),
+            "/home/u/.firebird-mcp/output/teste_parquet/20260101/data.parquet",
+            "/home/u/.firebird-mcp/output",
+        )
+        .unwrap();
+        assert_eq!(
+            url,
+            "http://10.0.0.5:8080/files?path=teste_parquet/20260101/data.parquet"
+        );
+    }
+
+    #[test]
+    fn test_file_download_url_encodes_spaces() {
+        let url = file_download_url(
+            Some("http://10.0.0.5:8080"),
+            "/base/out/my file.csv",
+            "/base",
+        )
+        .unwrap();
+        assert_eq!(url, "http://10.0.0.5:8080/files?path=out/my%20file.csv");
+    }
+
+    #[test]
+    fn test_file_download_url_base_with_trailing_slash() {
+        // The base URL is normalised (trailing slash stripped) by the caller
+        // (main.rs) before being stored, so a well-formed base has no trailing
+        // slash. This documents the expected input contract.
+        let url = file_download_url(Some("http://10.0.0.5:8080"), "/base/out/x.parquet", "/base")
+            .unwrap();
+        assert_eq!(url, "http://10.0.0.5:8080/files?path=out/x.parquet");
+    }
 }

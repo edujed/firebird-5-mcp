@@ -173,9 +173,8 @@ fn run_nulls(
     findings: &mut Vec<Finding>,
 ) {
     for col in cols {
-        // null_flag: 0 = NOT NULL, 1 = nullable, None = unknown
-        let is_not_null = col.nullable.map(|n| n == 0).unwrap_or(false);
-        if !is_not_null {
+        // RDB$NULL_FLAG: 1 = NOT NULL, NULL/0 = nullable
+        if !firebird_5_mcp_types::is_not_null(col.nullable) {
             continue;
         }
 

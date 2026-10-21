@@ -6,7 +6,7 @@
 //! via the `/files` HTTP endpoint.
 
 use crate::ToolResult;
-use crate::common::{arg_str, storage_dir};
+use crate::common::{arg_str, file_download_url, storage_dir};
 use firebird_5_mcp_core::Config;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -22,7 +22,11 @@ use std::path::Path;
 ///
 /// Returns a Markdown table (text) and structured content with the file
 /// list, total count, and total size.
-pub fn handle_list_files(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
+pub fn handle_list_files(
+    cfg: &Config,
+    args: &Value,
+    files_base_url: Option<&str>,
+) -> Result<ToolResult, String> {
     let base_dir =
         storage_dir(cfg, args).ok_or_else(|| "Could not resolve storage directory".to_string())?;
 
@@ -98,6 +102,7 @@ pub fn handle_list_files(cfg: &Config, args: &Value) -> Result<ToolResult, Strin
             &now,
             max_age_hours,
             &mut total_size,
+            files_base_url,
         );
     }
 
@@ -151,6 +156,7 @@ fn collect_files(
     now: &std::time::SystemTime,
     max_age_hours: Option<u64>,
     total_size: &mut u64,
+    files_base_url: Option<&str>,
 ) {
     let mut entries = Vec::new();
     if let Ok(rd) = std::fs::read_dir(dir) {
@@ -159,7 +165,15 @@ fn collect_files(
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
-            collect_files(&path, base, files, now, max_age_hours, total_size);
+            collect_files(
+                &path,
+                base,
+                files,
+                now,
+                max_age_hours,
+                total_size,
+                files_base_url,
+            );
         } else if path.is_file() {
             // Get file metadata.
             let metadata = match std::fs::metadata(&path) {
@@ -214,13 +228,20 @@ fn collect_files(
                 .unwrap_or_else(|| "-".to_string());
 
             *total_size += size;
-            files.push(json!({
+            let abs_path = path.to_string_lossy().to_string();
+            let mut entry = json!({
                 "name": rel_path,
-                "path": path.to_string_lossy().to_string(),
+                "path": abs_path,
                 "size": size,
                 "lines": lines,
                 "modified": modified
-            }));
+            });
+            if let Some(url) =
+                file_download_url(files_base_url, &abs_path, base.to_str().unwrap_or(""))
+            {
+                entry["download_url"] = json!(url);
+            }
+            files.push(entry);
         }
     }
 }
@@ -309,7 +330,7 @@ mod tests {
         let args = json!({
             "outputDirPath": "/tmp/nonexistent-mcp-test-dir"
         });
-        let result = handle_list_files(&cfg, &args).unwrap();
+        let result = handle_list_files(&cfg, &args, None).unwrap();
         assert!(result.text.contains("does not exist"));
         assert_eq!(result.structured.unwrap()["total"], 0);
     }

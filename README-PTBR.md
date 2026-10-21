@@ -29,7 +29,7 @@ Um servidor MCP (Model Context Protocol) leve e 100% em Rust para bancos de dado
 - `firebird_insert_batch` — Inserção em lote de múltiplas linhas em uma única transação
 
 ### Geração de Código
-- `firebird_generate_dev` — Gera código de desenvolvimento a partir dos schemas das tabelas (Java, Go, Rust, TypeScript, Protobuf, OpenAPI, GraphQL, Lazarus, Svelte 5)
+- `firebird_generate_dev` — Gera código de desenvolvimento a partir dos schemas das tabelas (Java, Go, Rust, TypeScript, Protobuf, OpenAPI, GraphQL, Python, JSON Schema, Lazarus, Svelte 5)
 - `firebird_generate_view_dto` — Gera DTOs/records a partir de views (mesmas linguagens)
 
 ### Descoberta
@@ -44,6 +44,16 @@ Um servidor MCP (Model Context Protocol) leve e 100% em Rust para bancos de dado
 - `firebird_grants` — Mostra GRANTs de uma tabela ou de todas as tabelas
 - `firebird_blob_info` — Lista colunas BLOB com subtipo (TEXT/BINARY)
 - `firebird_index_usage` — Mostra todos os índices com colunas, unicidade e tipo
+- `firebird_domains` — Analisa domínios definidos pelo usuário (contagem de uso, assinaturas de tipo, sugestões)
+- `firebird_crypt_state` — Estado de criptografia em repouso + versão do engine
+- `firebird_database_stats` — Snapshot de MON$DATABASE (tamanho, I/O, transações, attachments)
+- `firebird_query_history` — Ativas/ociosas/travadas de MON$STATEMENTS
+
+### Qualidade de Dados
+- `firebird_data_quality` — Verificações de qualidade de dados baseadas em regras (nulos, strings vazias, outliers, intervalo de datas)
+
+### Gerenciamento de Arquivos
+- `firebird_list_files` — Lista arquivos gerados no diretório de armazenamento (codegen, export, metadata)
 
 ### Migração de Dados
 - `firebird_export` — Exporta tabela/view/SQL para Parquet, Arrow IPC, CSV, DBF ou JSON Lines (com compressão)
@@ -508,7 +518,7 @@ Gera código de desenvolvimento a partir dos schemas das tabelas. Veja [README_C
 
 **Argumentos:**
 - `tables` (obrigatório): Array de nomes de tabelas (máx. 20)
-- `language` (obrigatório): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `graphql`, `lazarus` ou `svelte`
+- `language` (obrigatório): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `graphql`, `python`, `json_schema`, `lazarus` ou `svelte`
 - `database` (opcional): Nome do banco
 - `include_fks` (opcional): Se true, gera relações FK nomeadas (Java `@ManyToOne`) ou comentários de FK
 
@@ -533,6 +543,7 @@ Extrai os metadados completos do banco (DDL) usando as tabelas de sistema. Subst
 **Argumentos:**
 - `database` (opcional): Nome do banco
 - `objects` (opcional): Array de nomes de objetos para filtrar (ex.: `["CLIENTS", "ORDERS"]`)
+- `outputDirPath` (opcional): Diretório para salvar o arquivo DDL (retorna o caminho em vez do DDL inline)
 
 **Resultado:**
 ```sql
@@ -651,6 +662,88 @@ IDX_ORDERS_CLIENT | ORDERS | 0 | 0 | CLIENT_ID, CREATED_AT
 | 0 | Não único |
 | 1 | Único |
 | 2 | Chave primária |
+
+### `firebird_domains`
+
+Analisa domínios definidos pelo usuário: lista cada domínio com seu tipo, nullabilidade, default e contagem de uso (quantas colunas o utilizam), mostra as assinaturas de tipo mais comuns e sugere domínios que poderiam ser criados para tipos comuns que não possuem um.
+
+**Argumentos:**
+- `database` (opcional): Nome do banco
+
+### `firebird_data_quality`
+
+Executa regras configuráveis de qualidade de dados em uma única tabela. Regras: **nulls** (NULOs em colunas NOT NULL), **empty_strings** (strings vazias em colunas de texto), **outliers** (outliers baseados em IQR em colunas numéricas), **date_range** (datas fora de [1900-01-01, hoje+1]).
+
+**Argumentos:**
+- `table` (obrigatório): Nome da tabela
+- `rules` (opcional): Array de regras para executar (default: todas). Valores: `nulls`, `empty_strings`, `outliers`, `date_range`
+- `columns` (opcional): Array de nomes de colunas para limitar a análise
+- `output_format` (opcional): `markdown` (default) ou `json`
+- `sample_limit` (opcional): Máximo de valores de amostra por finding (default 5, máx 20)
+- `database` (opcional): Nome do banco
+
+### `firebird_list_files`
+
+Lista arquivos gerados (codegen, export, metadata) no diretório de armazenamento. Funciona em ambos os transports (stdio e SSE).
+
+**Argumentos:**
+- `database` (opcional): Filtrar por nome do banco
+- `format` (opcional): Filtrar por formato (ex.: `java`, `parquet`, `sql`)
+- `max_age_hours` (opcional): Apenas arquivos modificados nas últimas N horas
+- `outputDirPath` (opcional): Sobrescrever o diretório de armazenamento
+
+### `firebird_crypt_state`
+
+Retorna o estado de criptografia em repouso do banco (`MON$DATABASE.MON$CRYPT_STATE`, Firebird 3.0+) e a versão do engine.
+
+**Argumentos:**
+- `database` (opcional): Nome do banco
+
+### `firebird_database_stats`
+
+Retorna um snapshot de estatísticas do banco: `MON$DATABASE` (tamanho, page size, ODS, dialect, owner, data de criação), contadores de transações, I/O acumulado, attachments ativos e statements ativos.
+
+**Argumentos:**
+- `database` (opcional): Nome do banco
+
+### `firebird_query_history`
+
+Retorna o histórico de queries: todos os statements ativos de `MON$STATEMENTS`, juntados com `MON$ATTACHMENTS` para usuário e endereço remoto. Filtrável por estado e/ou usuário.
+
+**Argumentos:**
+- `state` (opcional): Filtrar por estado do statement: 0=ocioso, 1=ativo, 2=travado
+- `user` (opcional): Filtrar por nome de usuário (case-insensitive)
+- `limit` (opcional): Máximo de linhas para retornar (default 100, máx 1000)
+- `database` (opcional): Nome do banco
+
+## Transports
+
+O binário suporta dois transports:
+
+- **stdio** (default) — JSON-RPC delimitado por linha sobre stdin/stdout. Use para clientes MCP que spawnam o binário como subprocesso (Claude Desktop, Cursor, etc.).
+- **HTTP+SSE** (`--sse`) — especificação MCP `2024-11-05`. Use para web UIs e clientes não-stdio.
+
+```bash
+firebird-5-mcp --sse --port 9000                          # sem auth
+firebird-5-mcp --sse --port 9000 --token s3cret           # com bearer-token auth
+firebird-5-mcp --sse --host 0.0.0.0 --port 9000 --token-file /etc/mcp/token
+```
+
+Endpoints SSE:
+- `GET /sse` — abre um stream Server-Sent Events (primeiro evento: `endpoint` com a URL de mensagem)
+- `POST /messages?sessionId=<uuid>` — recebe JSON-RPC, responde via stream SSE
+- `GET /files?path=<rel>` — baixa um arquivo do diretório de armazenamento (apenas SSE)
+- `POST /files` — envia um arquivo para o diretório de armazenamento (apenas SSE, multipart, limite 500 MB)
+
+Sessões são chaveadas por UUID, removidas após 30 minutos de inatividade (configurável via `--session-timeout`).
+
+## Parâmetros de Evento Universais
+
+Toda chamada de ferramenta aceita dois parâmetros opcionais de string:
+- `on_success_event` — nome do evento para emitir em caso de sucesso
+- `on_fail_event` — nome do evento para emitir em caso de falha
+
+Quando definidos, o evento é: (1) anexado como linha JSON em `~/.firebird-mcp/events.jsonl`, e (2) se um banco válido é resolvido, `POST_EVENT '<name>'` é executado em uma transação nova (notificando listeners Firebird `SET EVENT` no commit). A emissão de eventos nunca falha a chamada da ferramenta.
 
 ## Créditos
 

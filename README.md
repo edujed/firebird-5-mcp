@@ -29,7 +29,7 @@ A lightweight, pure-Rust MCP (Model Context Protocol) server for Firebird 5 data
 - `firebird_insert_batch` — Batch insert multiple rows in one transaction
 
 ### Code Generation
-- `firebird_generate_dev` — Generate development code from table schemas (Java, Go, Rust, TypeScript, Protobuf, OpenAPI, GraphQL, Lazarus, Svelte 5)
+- `firebird_generate_dev` — Generate development code from table schemas (Java, Go, Rust, TypeScript, Protobuf, OpenAPI, GraphQL, Python, JSON Schema, Lazarus, Svelte 5)
 - `firebird_generate_view_dto` — Generate DTOs/records from views (same languages)
 
 ### Discovery
@@ -44,6 +44,16 @@ A lightweight, pure-Rust MCP (Model Context Protocol) server for Firebird 5 data
 - `firebird_grants` — Show GRANTs for a table or all tables
 - `firebird_blob_info` — List BLOB columns with subtype (TEXT/BINARY)
 - `firebird_index_usage` — Show all indexes with columns, uniqueness, and type
+- `firebird_domains` — Analyze user-defined domains (usage counts, type signatures, suggestions)
+- `firebird_crypt_state` — At-rest encryption state + engine version
+- `firebird_database_stats` — MON$DATABASE snapshot (size, I/O, transactions, attachments)
+- `firebird_query_history` — Active/idle/stalled statements from MON$STATEMENTS
+
+### Data Quality
+- `firebird_data_quality` — Rule-based data quality checks (nulls, empty strings, outliers, date range)
+
+### File Management
+- `firebird_list_files` — List generated files in the storage directory (codegen, export, metadata)
 
 ### Data Migration
 - `firebird_export` — Export table/view/SQL to Parquet, Arrow IPC, CSV, DBF, or JSON Lines (with compression)
@@ -508,7 +518,7 @@ Generates development code from table schemas. See [README_CODEGEN.md](README_CO
 
 **Arguments:**
 - `tables` (required): Array of table names (max 20)
-- `language` (required): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `graphql`, `lazarus`, or `svelte`
+- `language` (required): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `graphql`, `python`, `json_schema`, `lazarus`, or `svelte`
 - `database` (optional): Database name
 - `include_fks` (optional): If true, generates named FK relations (Java `@ManyToOne`) or FK comments
 
@@ -533,6 +543,7 @@ Extracts complete database metadata (DDL) using system tables. Replaces `isql -x
 **Arguments:**
 - `database` (optional): Database name
 - `objects` (optional): Array of object names to filter (e.g., `["CLIENTS", "ORDERS"]`)
+- `outputDirPath` (optional): Directory to save the DDL file (returns path instead of inline DDL)
 
 **Result:**
 ```sql
@@ -651,6 +662,88 @@ IDX_ORDERS_CLIENT | ORDERS | 0 | 0 | CLIENT_ID, CREATED_AT
 | 0 | Non-unique |
 | 1 | Unique |
 | 2 | Primary key |
+
+### `firebird_domains`
+
+Analyzes user-defined domains: lists each domain with its type, nullability, default, and usage count (how many columns use it), shows the most common column type signatures, and suggests domains that could be created for common types that lack one.
+
+**Arguments:**
+- `database` (optional): Database name
+
+### `firebird_data_quality`
+
+Runs configurable data quality rules on a single table. Rules: **nulls** (NULLs in NOT NULL columns), **empty_strings** (empty strings in text columns), **outliers** (IQR-based outliers in numeric columns), **date_range** (dates outside [1900-01-01, today+1]).
+
+**Arguments:**
+- `table` (required): Table name
+- `rules` (optional): Array of rules to run (default: all). Values: `nulls`, `empty_strings`, `outliers`, `date_range`
+- `columns` (optional): Array of column names to limit the analysis
+- `output_format` (optional): `markdown` (default) or `json`
+- `sample_limit` (optional): Max sample values per finding (default 5, max 20)
+- `database` (optional): Database name
+
+### `firebird_list_files`
+
+Lists generated files (codegen, export, metadata) in the storage directory. Works in both stdio and SSE transports.
+
+**Arguments:**
+- `database` (optional): Filter by database name
+- `format` (optional): Filter by format (e.g., `java`, `parquet`, `sql`)
+- `max_age_hours` (optional): Only files modified within the last N hours
+- `outputDirPath` (optional): Override the storage directory
+
+### `firebird_crypt_state`
+
+Returns the at-rest encryption state of the database (`MON$DATABASE.MON$CRYPT_STATE`, Firebird 3.0+) and the engine version.
+
+**Arguments:**
+- `database` (optional): Database name
+
+### `firebird_database_stats`
+
+Returns a snapshot of database statistics: `MON$DATABASE` (size, page size, ODS, dialect, owner, creation date), transaction counters, cumulative I/O, live attachments, and active statements.
+
+**Arguments:**
+- `database` (optional): Database name
+
+### `firebird_query_history`
+
+Returns the query history: all active statements from `MON$STATEMENTS`, joined with `MON$ATTACHMENTS` for user and remote address. Filter by state and/or user.
+
+**Arguments:**
+- `state` (optional): Filter by statement state: 0=idle, 1=active, 2=stalled
+- `user` (optional): Filter by user name (case-insensitive)
+- `limit` (optional): Maximum rows to return (default 100, max 1000)
+- `database` (optional): Database name
+
+## Transports
+
+The binary supports two transports:
+
+- **stdio** (default) — line-delimited JSON-RPC over stdin/stdout. Use this for MCP clients that spawn the binary as a subprocess (Claude Desktop, Cursor, etc.).
+- **HTTP+SSE** (`--sse`) — MCP spec `2024-11-05`. Use this for web UIs and non-stdio clients.
+
+```bash
+firebird-5-mcp --sse --port 9000                          # no auth
+firebird-5-mcp --sse --port 9000 --token s3cret           # with bearer-token auth
+firebird-5-mcp --sse --host 0.0.0.0 --port 9000 --token-file /etc/mcp/token
+```
+
+SSE endpoints:
+- `GET /sse` — opens a Server-Sent Events stream (first event: `endpoint` with the message URL)
+- `POST /messages?sessionId=<uuid>` — receives JSON-RPC, responds via the SSE stream
+- `GET /files?path=<rel>` — downloads a file from the storage directory (SSE only)
+- `POST /files` — uploads a file to the storage directory (SSE only, multipart, 500 MB limit)
+
+Sessions are UUID-keyed, reaped after 30 minutes of inactivity (configurable via `--session-timeout`).
+
+## Universal Event Parameters
+
+Every tool call accepts two optional string parameters:
+- `on_success_event` — event name to emit on success
+- `on_fail_event` — event name to emit on failure
+
+When set, the event is: (1) appended as a JSON line to `~/.firebird-mcp/events.jsonl`, and (2) if a valid database is resolved, `POST_EVENT '<name>'` is executed in a fresh transaction (notifying Firebird `SET EVENT` listeners on commit). Event emission never fails the tool call.
 
 ## Credits
 

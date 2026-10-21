@@ -212,7 +212,8 @@ pub fn tool_definitions() -> Vec<Value> {
                 "properties": {
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
                     "objects": { "type": "array", "items": { "type": "string" }, "description": "Optional list of object names to extract. If omitted, extracts everything." },
-                    "outputDirPath": { "type": "string", "description": "Directory path where the DDL file will be saved. If omitted, returns the DDL inline." }
+                    "outputDirPath": { "type": "string", "description": "Directory path where the DDL file will be saved. If omitted, returns the DDL inline." },
+                    "compression": { "type": "string", "enum": ["none", "zstd", "gzip", "lz4"], "description": "Compress the output file. 'zstd' → .zst, 'gzip' → .gz, 'lz4' → .lz4. Default: none (plain .sql)." }
                 }
             }),
         ),
@@ -318,7 +319,8 @@ pub fn tool_definitions() -> Vec<Value> {
                     "language": { "type": "string", "enum": ["java", "go", "rust", "typescript", "protobuf", "openapi", "graphql", "python", "json_schema", "lazarus", "svelte"], "description": "Target language. Use 'lazarus' to generate .lfm form files. Use 'python' to generate SQLAlchemy 2.0 models + Pydantic v2 schemas. Use 'json_schema' to generate JSON Schema (draft 2020-12) with Firebird extensions (x-numeric, x-column-order, x-foreign-key)." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
                     "include_fks": { "type": "boolean", "description": "If true, generates named FK relations (Java @ManyToOne, Python relationship) or FK comments (Go/Rust/TS). Defaults to false." },
-                    "outputDirPath": { "type": "string", "description": "Directory path where generated files will be saved. If omitted, uses config.storage.dir or ~/.firebird-mcp/output/ as fallback." }
+                    "outputDirPath": { "type": "string", "description": "Directory path where generated files will be saved. If omitted, uses config.storage.dir or ~/.firebird-mcp/output/ as fallback." },
+                    "compression": { "type": "string", "enum": ["none", "zstd", "gzip", "lz4"], "description": "Compress the output files. 'zstd' → .zst, 'gzip' → .gz, 'lz4' → .lz4. Default: none (plain files)." }
                 },
                 "required": ["tables", "language"]
             }),
@@ -332,7 +334,8 @@ pub fn tool_definitions() -> Vec<Value> {
                     "views": { "type": "array", "items": { "type": "string" }, "description": "View names to generate DTOs for (max 20)." },
                     "language": { "type": "string", "enum": ["java", "go", "rust", "typescript", "protobuf", "openapi", "graphql", "python", "json_schema", "lazarus", "svelte"], "description": "Target language. Use 'lazarus' to generate .lfm form files. Use 'python' to generate SQLAlchemy + Pydantic DTOs. Use 'json_schema' to generate JSON Schema (draft 2020-12) with Firebird extensions." },
                     "database": { "type": "string", "description": "Database name (as defined in config.json). Defaults to the default database." },
-                    "outputDirPath": { "type": "string", "description": "Directory path where generated files will be saved. If omitted, uses config.storage.dir or ~/.firebird-mcp/output/ as fallback." }
+                    "outputDirPath": { "type": "string", "description": "Directory path where generated files will be saved. If omitted, uses config.storage.dir or ~/.firebird-mcp/output/ as fallback." },
+                    "compression": { "type": "string", "enum": ["none", "zstd", "gzip", "lz4"], "description": "Compress the output files. 'zstd' → .zst, 'gzip' → .gz, 'lz4' → .lz4. Default: none (plain files)." }
                 },
                 "required": ["views", "language"]
             }),

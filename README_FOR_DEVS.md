@@ -47,10 +47,10 @@ Commits, tags, and pushes to origin. GitHub Actions handles the rest.
 firebird-5-mcp/             # Repository root
 ├── Cargo.toml              # Workspace manifest
 ├── crates/
-│   ├── mcp-types/          # Shared value types (Value, ColumnMeta, QueryResult)
+│   ├── mcp-types/          # Shared value types (Value, ColumnMeta, QueryResult) + DRY helpers
 │   ├── mcp-core/           # Core library — client, query, schema, DDL, metadata, stats, config, codegen
 │   ├── mcp-tools/          # Shared MCP tool handlers (transport-agnostic)
-│   ├── mcp-stdio-bin/      # MCP stdio server binary (firebird-5-mcp)
+│   ├── mcp-stdio-bin/      # MCP server binary (firebird-5-mcp) — stdio + SSE transports
 │   └── mcp-migration/      # Data file export/import (Parquet/IPC/CSV/DBF/JSONL)
 ├── vendor/
 │   └── rsfbclient-rust/    # Vendored driver with NUMERIC/DECIMAL precision patch
@@ -74,13 +74,13 @@ firebird-5-mcp/             # Repository root
 
 The project is split into five crates:
 
-1. **`mcp-types`** — Shared value types (`Value`, `ColumnMeta`, `QueryResult`) + pure formatting helpers. No IO, no async, no driver code.
+1. **`mcp-types`** — Shared value types (`Value`, `ColumnMeta`, `QueryResult`) + pure formatting helpers + DRY helpers (`is_not_null`, `trigger_type_label`). No IO, no async, no driver code.
 
 2. **`mcp-core`** — Core library with all Firebird logic: connection, query, schema, DDL, metadata, stats, storage, config, codegen. Can be used in other Rust projects without the MCP layer.
 
 3. **`mcp-tools`** — Shared MCP tool handlers (transport-agnostic): handlers, `ToolResult`, `dispatch()`, `tool_definitions()`.
 
-4. **`mcp-stdio-bin`** — Thin MCP-stdio layer: JSON-RPC protocol loop + config management. Depends on `mcp-tools`.
+4. **`mcp-stdio-bin`** — Thin transport layer: stdio (JSON-RPC over stdin/stdout) + HTTP+SSE (`--sse`, spec `2024-11-05`). Depends on `mcp-tools`.
 
 5. **`mcp-migration`** — Data file export/import: tables, views, SQL → Parquet/IPC/CSV/DBF/JSONL; Parquet/IPC/CSV/DBF/JSONL → tables (create/append).
 

@@ -4,6 +4,7 @@
 use rsfbclient::FbError;
 
 use crate::client::FirebirdClient;
+use crate::metadata::decode_blr_default;
 use crate::query::{Value, query, query_with_param};
 
 pub mod markdown;
@@ -150,7 +151,7 @@ pub fn describe_table(
             precision: int_at(row, 4),
             scale: int_at(row, 5),
             nullable: opt_int_at(row, 6),
-            default: opt_text_at(row, 7),
+            default: opt_text_at(row, 7).and_then(|raw| decode_blr_default(&raw)),
             position: opt_int_at(row, 8),
             domain,
         });

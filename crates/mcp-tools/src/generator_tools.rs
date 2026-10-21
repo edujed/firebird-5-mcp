@@ -11,7 +11,11 @@ use super::ToolResult;
 use super::common::{arg_bool, arg_str, open_client, save_or_inline};
 
 /// Handles the `firebird_generate_dev` tool call.
-pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
+pub fn handle_generate_dev(
+    cfg: &Config,
+    args: &Value,
+    files_base_url: Option<&str>,
+) -> Result<ToolResult, String> {
     let tables_raw = args
         .get("tables")
         .and_then(|v| v.as_array())
@@ -76,6 +80,7 @@ pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<ToolResult, Str
     };
 
     let db_name = arg_str(args, "database").unwrap_or_else(|| cfg.default_database().to_string());
+    let comp_suffix = compression_suffix(args)?;
 
     // Special case: Lazarus generates .lfm files, not code entities
     if language == Language::Lazarus {
@@ -87,12 +92,12 @@ pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<ToolResult, Str
                 .map(lazarus::from_column_info)
                 .collect();
             files.push(GeneratedFile::new(
-                format!("{}.lfm", schema.table.to_lowercase()),
+                format!("{}.lfm{}", schema.table.to_lowercase(), comp_suffix),
                 lazarus::generate_lfm(&schema.table, &lazarus_fields, false),
                 "lazarus",
             ));
         }
-        return save_or_inline(cfg, args, &db_name, "lazarus", &files);
+        return save_or_inline(cfg, args, &db_name, "lazarus", &files, files_base_url);
     }
 
     // Special case: Svelte generates .svelte files (Page + Form)
@@ -141,7 +146,7 @@ pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<ToolResult, Str
             let page = format!("// Page component for {}\n", schema.table)
                 + &svelte::generate_page(&schema.table, &svelte_fields, &pk_field, &fk_fields);
             files.push(GeneratedFile::new(
-                format!("{}_page.svelte", schema.table.to_lowercase()),
+                format!("{}_page.svelte{}", schema.table.to_lowercase(), comp_suffix),
                 page,
                 "svelte",
             ));
@@ -150,15 +155,20 @@ pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<ToolResult, Str
             let form = format!("// Form component for {}\n", schema.table)
                 + &svelte::generate_form(&schema.table, &svelte_fields);
             files.push(GeneratedFile::new(
-                format!("{}_form.svelte", schema.table.to_lowercase()),
+                format!("{}_form.svelte{}", schema.table.to_lowercase(), comp_suffix),
                 form,
                 "svelte",
             ));
         }
-        return save_or_inline(cfg, args, &db_name, "svelte", &files);
+        return save_or_inline(cfg, args, &db_name, "svelte", &files, files_base_url);
     }
 
-    let files = generator::generate(&schemas, &fks, &opts);
+    let mut files = generator::generate(&schemas, &fks, &opts);
+    if !comp_suffix.is_empty() {
+        for f in &mut files {
+            f.name.push_str(&comp_suffix);
+        }
+    }
     let format = match language {
         Language::Java => "java",
         Language::Go => "go",
@@ -171,5 +181,21 @@ pub fn handle_generate_dev(cfg: &Config, args: &Value) -> Result<ToolResult, Str
         Language::JsonSchema => "json-schema",
         _ => "unknown",
     };
-    save_or_inline(cfg, args, &db_name, format, &files)
+    save_or_inline(cfg, args, &db_name, format, &files, files_base_url)
+}
+
+/// Reads the optional `compression` argument and returns the file suffix to
+/// append (e.g. `.zst`). Returns an empty string when compression is `none`
+/// or omitted.
+pub fn compression_suffix(args: &Value) -> Result<String, String> {
+    let comp = arg_str(args, "compression").filter(|s| !s.is_empty());
+    match comp.as_deref() {
+        None | Some("none") => Ok(String::new()),
+        Some("zstd") => Ok(".zst".to_string()),
+        Some("gzip") => Ok(".gz".to_string()),
+        Some("lz4") => Ok(".lz4".to_string()),
+        Some(other) => Err(format!(
+            "unsupported compression '{other}' — valid: zstd, gzip, lz4, none"
+        )),
+    }
 }

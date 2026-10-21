@@ -36,6 +36,10 @@ struct Args {
     token_file: Option<String>,
     /// Session inactivity timeout in minutes for the SSE transport (default: 30).
     session_timeout_min: u64,
+    /// Explicit base URL for the `/files` download endpoint (e.g.
+    /// `http://192.168.1.50:8080`). When omitted, it is derived from
+    /// `--host`/`--port` (SSE mode only).
+    base_url: Option<String>,
 }
 
 /// Parses command-line arguments.
@@ -57,6 +61,7 @@ fn parse_args() -> Result<Args, String> {
         token: None,
         token_file: None,
         session_timeout_min: 30,
+        base_url: None,
     };
 
     let mut i = 0;
@@ -102,6 +107,13 @@ fn parse_args() -> Result<Args, String> {
                     .parse()
                     .map_err(|_| format!("invalid session timeout: {}", args[i]))?;
             }
+            "--base-url" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--base-url requires a value".to_string());
+                }
+                result.base_url = Some(args[i].clone());
+            }
             "--help" | "-h" => {
                 print_usage();
                 std::process::exit(0);
@@ -134,6 +146,7 @@ fn print_usage() {
          \x20 --token <token>     bearer token for authentication\n\
          \x20 --token-file <path> path to a file containing the bearer token\n\
          \x20 --session-timeout <min>  session inactivity timeout (default: 30)\n\
+         \x20 --base-url <url>    base URL for /files download links (default: derived from --host/--port)\n\
          \n\
          EXAMPLES:\n\
          \x20 firebird-5-mcp                          # stdio mode\n\
@@ -175,13 +188,39 @@ fn main() {
         cfg.server.allowed_paths.join(", ")
     );
 
-    let core = Arc::new(ProtocolCore::new(cfg));
+    // In SSE mode, file-generating tools advertise a `download_url` pointing
+    // at the `/files` endpoint. The base URL is `--base-url` if given, otherwise
+    // derived from `--host`/`--port` (skipped when the bind host is a wildcard,
+    // since that is not a usable URL host).
+    let files_base_url: Option<String> = if args.sse {
+        match &args.base_url {
+            Some(url) => {
+                let trimmed = url.trim_end_matches('/');
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            }
+            None => {
+                if args.host == "0.0.0.0" || args.host == "::" || args.host.is_empty() {
+                    None
+                } else {
+                    Some(format!("http://{}:{}", args.host, args.port))
+                }
+            }
+        }
+    } else {
+        None
+    };
+
+    let core = Arc::new(ProtocolCore::new(cfg, files_base_url.clone()));
 
     if args.sse {
         // Resolve the auth token (token-file overrides --token).
         let auth = resolve_auth(&args);
         mlog!(
-            "SSE mode: host={} port={} auth={} session_timeout={}min",
+            "SSE mode: host={} port={} auth={} session_timeout={}min files_base_url={}",
             args.host,
             args.port,
             if auth.is_enabled() {
@@ -189,7 +228,8 @@ fn main() {
             } else {
                 "disabled"
             },
-            args.session_timeout_min
+            args.session_timeout_min,
+            files_base_url.as_deref().unwrap_or("<none>")
         );
         let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
         if let Err(e) = rt.block_on(sse::run_sse(

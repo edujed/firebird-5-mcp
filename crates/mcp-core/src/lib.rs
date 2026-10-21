@@ -19,6 +19,7 @@
 
 pub mod client;
 pub mod codegen;
+pub mod compression;
 pub mod config;
 pub mod ddl;
 pub mod explain;

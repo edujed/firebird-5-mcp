@@ -221,6 +221,38 @@ fn char_size_for(size: i64, type_name: &str) -> i64 {
 }
 
 // ---------------------------------------------------------------------------
+// RDB$NULL_FLAG interpretation
+// ---------------------------------------------------------------------------
+
+/// Interprets `RDB$NULL_FLAG`: `1` = NOT NULL, `NULL`/`0` = nullable.
+///
+/// This is the single source of truth for NULL_FLAG semantics across the
+/// entire project. Use this instead of comparing the raw value inline.
+pub fn is_not_null(null_flag: Option<i64>) -> bool {
+    null_flag == Some(1)
+}
+
+// ---------------------------------------------------------------------------
+// RDB$TRIGGER_TYPE interpretation
+// ---------------------------------------------------------------------------
+
+/// Maps `RDB$TRIGGER_TYPE` to (timing, event) for DDL and display.
+///
+/// 1=BEFORE INSERT, 2=BEFORE UPDATE, 3=BEFORE DELETE,
+/// 4=AFTER INSERT, 5=AFTER UPDATE, 6=AFTER DELETE.
+pub fn trigger_type_label(trigger_type: i64) -> (&'static str, &'static str) {
+    match trigger_type {
+        1 => ("BEFORE", "INSERT"),
+        2 => ("BEFORE", "UPDATE"),
+        3 => ("BEFORE", "DELETE"),
+        4 => ("AFTER", "INSERT"),
+        5 => ("AFTER", "UPDATE"),
+        6 => ("AFTER", "DELETE"),
+        _ => ("BEFORE", "INSERT"),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Identifier validation
 // ---------------------------------------------------------------------------
 

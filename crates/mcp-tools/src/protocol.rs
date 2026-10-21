@@ -35,14 +35,28 @@ pub const SERVER_VERSION: &str = "1.0.0";
 /// so all mutable state is behind an `RwLock`.
 pub struct ProtocolCore {
     config: RwLock<Option<Config>>,
+    /// Base URL of the `/files` HTTP endpoint (e.g. `http://192.168.1.50:8080`),
+    /// set only in SSE mode. When present, file-generating tools include a
+    /// `download_url` in their structured response. `None` in stdio mode.
+    files_base_url: Option<String>,
 }
 
 impl ProtocolCore {
     /// Creates a new protocol core with the given initial configuration.
-    pub fn new(cfg: Config) -> Self {
+    ///
+    /// `files_base_url` is `None` for stdio mode (no HTTP endpoint) and
+    /// `Some("http://host:port")` for SSE mode, so that file-generating tools
+    /// can advertise a `download_url` in their responses.
+    pub fn new(cfg: Config, files_base_url: Option<String>) -> Self {
         Self {
             config: RwLock::new(Some(cfg)),
+            files_base_url,
         }
+    }
+
+    /// Returns the base URL of the `/files` endpoint, if any (SSE mode).
+    pub fn files_base_url(&self) -> Option<&str> {
+        self.files_base_url.as_deref()
     }
 
     /// Returns a read guard on the current configuration.
@@ -114,7 +128,7 @@ impl ProtocolCore {
                 // Get a read guard on the config for this tool call
                 let cfg_guard = self.config.read().unwrap();
                 let cfg = cfg_guard.as_ref().unwrap();
-                match dispatch(cfg, name, &args) {
+                match dispatch(cfg, name, &args, self.files_base_url.as_deref()) {
                     Ok(ToolResult { text, structured }) => {
                         let mut result = json!({
                             "content": [{ "type": "text", "text": text }],

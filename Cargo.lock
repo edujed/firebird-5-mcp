@@ -732,11 +732,14 @@ dependencies = [
  "chrono",
  "dirs",
  "firebird-5-mcp-types",
+ "flate2",
+ "lz4_flex",
  "rsfbclient",
  "rsfbclient-core",
  "rsfbclient-rust",
  "serde",
  "serde_json",
+ "zstd",
 ]
 
 [[package]]

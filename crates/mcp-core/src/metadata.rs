@@ -9,6 +9,7 @@ use rsfbclient::FbError;
 use crate::client::FirebirdClient;
 use crate::query::{Value, query, query_with_param};
 use crate::types::format_column_type;
+use firebird_5_mcp_types::{is_not_null, trigger_type_label};
 
 /// Extracts the complete DDL for the database.
 pub fn extract_ddl(client: &mut FirebirdClient) -> Result<String, FbError> {
@@ -88,12 +89,13 @@ fn extract_domains(
         );
         let default_raw = opt_text_at(row, 6).unwrap_or_default();
         let default = decode_blr_default(&default_raw).unwrap_or_default();
-        let null_flag = opt_int_at(row, 7).unwrap_or(0);
+        // RDB$NULL_FLAG: 1 = NOT NULL, NULL/0 = nullable
+        let null_flag = opt_int_at(row, 7);
         let mut stmt = format!("CREATE DOMAIN {name} AS {type_str}");
         if !default.is_empty() {
             stmt.push_str(&format!(" DEFAULT {default}"));
         }
-        if null_flag == 0 {
+        if is_not_null(null_flag) {
             stmt.push_str(" NOT NULL");
         }
         out.push_str(&format!("{stmt};\n"));
@@ -155,10 +157,8 @@ fn extract_tables(
                 int_at(c, 4),
                 int_at(c, 5),
             );
-            // In Firebird, RDB$NULL_FLAG = 0 means the column CAN be NULL,
-            // and RDB$NULL_FLAG = 1 means the column CANNOT be NULL.
-            // When NULL, the column can be NULL (default behavior).
-            let null_flag = opt_int_at(c, 6).unwrap_or(0);
+            // RDB$NULL_FLAG: 1 = NOT NULL, NULL/0 = nullable
+            let null_flag = opt_int_at(c, 6);
             let default_raw = opt_text_at(c, 7).unwrap_or_default();
             let default = decode_blr_default(&default_raw).unwrap_or_default();
             let _domain = text_at(c, 8);
@@ -166,7 +166,7 @@ fn extract_tables(
             if !default.is_empty() {
                 def.push_str(&format!(" DEFAULT {default}"));
             }
-            if null_flag == 1 {
+            if is_not_null(null_flag) {
                 def.push_str(" NOT NULL");
             }
             col_defs.push(def);
@@ -179,30 +179,41 @@ fn extract_tables(
             SELECT
                 C.RDB$CONSTRAINT_NAME,
                 C.RDB$CONSTRAINT_TYPE,
-                S.RDB$FIELD_NAME
+                S.RDB$FIELD_NAME,
+                S.RDB$FIELD_POSITION,
+                rc.RDB$FIELD_NAME AS REF_COLUMN
             FROM RDB$RELATION_CONSTRAINTS C
             JOIN RDB$INDICES I ON I.RDB$INDEX_NAME = C.RDB$INDEX_NAME
             JOIN RDB$INDEX_SEGMENTS S ON S.RDB$INDEX_NAME = I.RDB$INDEX_NAME
+            LEFT JOIN RDB$INDEX_SEGMENTS rc
+                ON rc.RDB$INDEX_NAME = I.RDB$FOREIGN_KEY
+               AND rc.RDB$FIELD_POSITION = S.RDB$FIELD_POSITION
             WHERE C.RDB$RELATION_NAME = ?
             ORDER BY C.RDB$CONSTRAINT_NAME, S.RDB$FIELD_POSITION
         "#;
         let cons = query_with_param(client, con_sql, &table)?;
         // Group by constraint
-        let mut grouped: std::collections::HashMap<String, (String, Vec<String>)> =
+        let mut grouped: std::collections::HashMap<String, (String, Vec<String>, Vec<String>)> =
             std::collections::HashMap::new();
         let mut order: Vec<String> = Vec::new();
         for c in &cons.rows {
             let name = text_at(c, 0);
             let ctype = text_at(c, 1);
             let col = text_at(c, 2);
+            let ref_col = text_at(c, 4);
             if !grouped.contains_key(&name) {
                 order.push(name.clone());
             }
-            let entry = grouped.entry(name).or_insert_with(|| (ctype, Vec::new()));
+            let entry = grouped
+                .entry(name)
+                .or_insert_with(|| (ctype, Vec::new(), Vec::new()));
             entry.1.push(col);
+            if !ref_col.is_empty() {
+                entry.2.push(ref_col);
+            }
         }
         for name in order {
-            if let Some((ctype, cols)) = grouped.remove(&name) {
+            if let Some((ctype, cols, ref_cols)) = grouped.remove(&name) {
                 let cols_str = cols
                     .iter()
                     .map(|c| c.to_string())
@@ -232,8 +243,13 @@ fn extract_tables(
                         );
                         let fk = query_with_param(client, &fk_sql, &name)?;
                         let ref_table = fk.rows.first().map(|r| text_at(r, 0)).unwrap_or_default();
+                        let ref_cols_str = if ref_cols.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" ({})", ref_cols.join(", "))
+                        };
                         out.push_str(&format!(
-                            "ALTER TABLE {table} ADD CONSTRAINT {name} FOREIGN KEY ({cols_str}) REFERENCES {ref_table};\n"
+                            "ALTER TABLE {table} ADD CONSTRAINT {name} FOREIGN KEY ({cols_str}) REFERENCES {ref_table}{ref_cols_str};\n"
                         ));
                     }
                     _ => {}
@@ -335,7 +351,22 @@ fn extract_sequences(
             out.push_str("-- Sequences\n\n");
             any = true;
         }
-        out.push_str(&format!("CREATE SEQUENCE {name};\n"));
+        // Get current value via GEN_ID(name, 0) — non-mutating
+        let current_value = query_with_param(
+            client,
+            &format!("SELECT GEN_ID(\"{name}\", 0) FROM RDB$DATABASE"),
+            &name,
+        )
+        .ok()
+        .and_then(|r| r.rows.first().and_then(|row| opt_int_at(row, 0)));
+        match current_value {
+            Some(v) => {
+                out.push_str(&format!("CREATE SEQUENCE {name} START WITH {v};\n"));
+            }
+            None => {
+                out.push_str(&format!("CREATE SEQUENCE {name};\n"));
+            }
+        }
     }
     if any {
         out.push('\n');
@@ -372,15 +403,7 @@ fn extract_triggers(
         let trig_type = int_at(row, 1);
         let table = text_at(row, 2);
         let body = text_at(row, 3);
-        let (timing, event) = match trig_type {
-            1 => ("BEFORE", "INSERT"),
-            2 => ("AFTER", "INSERT"),
-            3 => ("BEFORE", "UPDATE"),
-            4 => ("AFTER", "UPDATE"),
-            5 => ("BEFORE", "DELETE"),
-            6 => ("AFTER", "DELETE"),
-            _ => ("BEFORE", "INSERT"),
-        };
+        let (timing, event) = trigger_type_label(trig_type);
         // RDB$TRIGGER_SOURCE already contains "AS BEGIN ... END" — don't add extra AS/END
         out.push_str(&format!(
             "SET TERM ^ ;\nCREATE TRIGGER {name} FOR {table}\n{timing} {event}\n{body} ^\nSET TERM ; ^\n\n"
@@ -450,9 +473,9 @@ fn extract_procedures(
             header.push_str(&format!(" RETURNS ({})", outputs.join(", ")));
         }
 
-        // RDB$PROCEDURE_SOURCE already contains "AS BEGIN ... END" — don't add extra AS/END
+        // RDB$PROCEDURE_SOURCE contains "BEGIN ... END" without "AS" — add AS
         out.push_str(&format!(
-            "SET TERM ^ ;\n{header}\n{source} ^\nSET TERM ; ^\n\n"
+            "SET TERM ^ ;\n{header}\nAS\n{source} ^\nSET TERM ; ^\n\n"
         ));
     }
     Ok(())
@@ -490,7 +513,7 @@ fn resolve_domain_type(client: &mut FirebirdClient, domain: &str) -> Result<Stri
 /// Decodes a BLR-encoded default value into a SQL literal.
 /// Handles common cases: text literals, boolean, current_timestamp.
 /// Returns None if the BLR cannot be decoded.
-fn decode_blr_default(blr_text: &str) -> Option<String> {
+pub fn decode_blr_default(blr_text: &str) -> Option<String> {
     // Check for current_timestamp
     if blr_text.contains("blr_current_timestamp") {
         return Some("CURRENT_TIMESTAMP".to_string());
@@ -634,9 +657,9 @@ fn extract_functions(
         }
         header.push_str(&format!(" RETURNS {return_type}"));
 
-        // RDB$FUNCTION_SOURCE already contains "AS BEGIN ... END" — don't add extra AS/END
+        // RDB$FUNCTION_SOURCE contains "BEGIN ... END" without "AS" — add AS
         out.push_str(&format!(
-            "SET TERM ^ ;\n{header}\n{source} ^\nSET TERM ; ^\n\n"
+            "SET TERM ^ ;\n{header}\nAS\n{source} ^\nSET TERM ; ^\n\n"
         ));
     }
     Ok(())
@@ -783,15 +806,7 @@ CREATE FUNCTION {upper}\nAS\n{source}
             let trig_type = int_at(row, 1);
             let table = text_at(row, 2);
             let source = text_at(row, 3);
-            let (timing, event) = match trig_type {
-                1 => ("BEFORE", "INSERT"),
-                2 => ("BEFORE", "UPDATE"),
-                4 => ("BEFORE", "DELETE"),
-                8 => ("AFTER", "INSERT"),
-                16 => ("AFTER", "UPDATE"),
-                32 => ("AFTER", "DELETE"),
-                _ => ("BEFORE", "INSERT"),
-            };
+            let (timing, event) = trigger_type_label(trig_type);
             out.push_str(&format!(
                 "### {upper} (TRIGGER on {table})\n\n{timing} {event}\n\n```
 {source}
@@ -831,9 +846,14 @@ CREATE FUNCTION {upper}\nAS\n{source}
                 int_at(row, 4),
                 int_at(row, 5),
             );
-            let default = text_at(row, 6);
+            let default = decode_blr_default(&text_at(row, 6)).unwrap_or_default();
             let null_flag = int_at(row, 7);
-            let null_str = if null_flag == 0 { "NOT NULL" } else { "NULL" };
+            // RDB$NULL_FLAG: 1 = NOT NULL, NULL/0 = nullable
+            let null_str = if is_not_null(Some(null_flag)) {
+                "NOT NULL"
+            } else {
+                "NULL"
+            };
             let default_str = if default.is_empty() {
                 String::new()
             } else {

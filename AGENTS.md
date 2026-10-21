@@ -15,7 +15,7 @@
 
 | Directory | AGENTS.md | Role |
 |---|---|---|
-| `crates/mcp-types/` | [`crates/mcp-types/AGENTS.md`](crates/mcp-types/AGENTS.md) | Shared value types (`Value`, `ColumnMeta` with `is_numeric` flag, `QueryResult`) + pure formatting helpers. No IO, no async, no driver code. |
+| `crates/mcp-types/` | [`crates/mcp-types/AGENTS.md`](crates/mcp-types/AGENTS.md) | Shared value types (`Value`, `ColumnMeta` with `is_numeric` flag, `QueryResult`) + pure formatting helpers + DRY helpers (`is_not_null`, `trigger_type_label`). No IO, no async, no driver code. |
 | `crates/mcp-core/` | [`crates/mcp-core/AGENTS.md`](crates/mcp-core/AGENTS.md) | Core library — client, query, schema, DDL, metadata, stats, storage, config, codegen |
 | `crates/mcp-tools/` | [`crates/mcp-tools/AGENTS.md`](crates/mcp-tools/AGENTS.md) | Shared MCP tool handlers (transport-agnostic) — handlers, `ToolResult`, `dispatch()` (with universal POST_EVENT), `tool_definitions()` |
 | `crates/mcp-stdio-bin/` | [`crates/mcp-stdio-bin/AGENTS.md`](crates/mcp-stdio-bin/AGENTS.md) | MCP server binary (`firebird-5-mcp`) — stdio (default) + HTTP+SSE (`--sse`) transports, CLI flags, bearer-token auth |

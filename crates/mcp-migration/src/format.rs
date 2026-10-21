@@ -3,6 +3,9 @@
 //! This is the single source of truth for "which formats, codecs, and
 //! character encodings are supported". The actual I/O (compression-aware
 //! reading/writing) lives in [`crate::io`].
+//!
+//! The `Compression` enum and `file_compression_from_path` are re-exported
+//! from [`firebird_5_mcp_core::compression`] to keep a single source of truth.
 
 /// Supported data file formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,40 +74,8 @@ impl Format {
     }
 }
 
-/// Compression codecs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Compression {
-    Snappy,
-    Zstd,
-    Lz4,
-    Gzip,
-    None,
-}
-
-impl Compression {
-    /// Parses a compression string (case-insensitive).
-    pub fn parse(s: &str) -> Result<Self, String> {
-        match s.to_lowercase().as_str() {
-            "snappy" => Ok(Self::Snappy),
-            "zstd" => Ok(Self::Zstd),
-            "lz4" => Ok(Self::Lz4),
-            "gzip" => Ok(Self::Gzip),
-            "none" => Ok(Self::None),
-            other => Err(format!("unsupported compression '{other}'")),
-        }
-    }
-
-    /// Returns the canonical lowercase name.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Snappy => "snappy",
-            Self::Zstd => "zstd",
-            Self::Lz4 => "lz4",
-            Self::Gzip => "gzip",
-            Self::None => "none",
-        }
-    }
-}
+/// Compression codecs (re-exported from `mcp-core`).
+pub use firebird_5_mcp_core::compression::Compression;
 
 /// Detects the compression codec from a file path's extension.
 ///
@@ -114,16 +85,7 @@ impl Compression {
 /// - `.lz4` → LZ4 frame
 /// - anything else → None (plain)
 pub fn file_compression_from_path(path: &str) -> Compression {
-    let lower = path.to_lowercase();
-    if lower.ends_with(".zst") {
-        Compression::Zstd
-    } else if lower.ends_with(".gz") {
-        Compression::Gzip
-    } else if lower.ends_with(".lz4") {
-        Compression::Lz4
-    } else {
-        Compression::None
-    }
+    firebird_5_mcp_core::compression::from_path(path)
 }
 
 /// Character encodings (codepages) for text-based formats.

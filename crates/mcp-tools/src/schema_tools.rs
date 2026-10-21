@@ -2,6 +2,7 @@
 
 use firebird_5_mcp_core::types::{format_column_type, is_valid_identifier};
 use firebird_5_mcp_core::{Config, FirebirdClient, metadata, query, schema};
+use firebird_5_mcp_types::{is_not_null, trigger_type_label};
 use serde_json::Value;
 
 use super::ToolResult;
@@ -9,93 +10,13 @@ use super::common::{
     arg_bool, arg_str, cell_int, cell_text, cell_text_or, open_client, save_or_inline,
 };
 
-/// Formats a table schema as Markdown.
+/// Formats a table schema as Markdown (with a table header).
 pub fn format_schema(schema: &schema::TableSchema) -> String {
-    let mut b = String::new();
-    b.push_str(&format!("### Table: {}\n\n", schema.table));
-
-    b.push_str("#### Columns\n\n");
-    b.push_str("NAME | TYPE | NULL | DEFAULT | POSITION\n");
-    b.push_str("--- | --- | --- | --- | ---\n");
-    for col in &schema.columns {
-        let type_str = format_column_type(
-            col.type_num,
-            col.sub_type,
-            col.size,
-            col.precision,
-            col.scale,
-        );
-        let null_str = if col.nullable.map(|n| n == 1).unwrap_or(false) {
-            "YES"
-        } else {
-            "NO"
-        };
-        let default = col.default.as_deref().unwrap_or("-");
-        let position = col
-            .position
-            .map(|p| p.to_string())
-            .unwrap_or_else(|| "-".to_string());
-        b.push_str(&format!(
-            "{} | {} | {null_str} | {default} | {position}\n",
-            col.name, type_str
-        ));
-    }
-
-    if !schema.indexes.is_empty() {
-        b.push('\n');
-        b.push_str("#### Indexes\n\n");
-        b.push_str("NAME | UNIQUE | TYPE | COLUMNS\n");
-        b.push_str("--- | --- | --- | ---\n");
-        for idx in &schema.indexes {
-            let unique = if idx.unique { "YES" } else { "NO" };
-            let type_str = idx
-                .r#type
-                .map(|t| t.to_string())
-                .unwrap_or_else(|| "-".to_string());
-            b.push_str(&format!(
-                "{} | {unique} | {type_str} | {}\n",
-                idx.name, idx.columns
-            ));
-        }
-    }
-
-    if !schema.constraints.is_empty() {
-        b.push('\n');
-        b.push_str("#### Constraints\n\n");
-        b.push_str("NAME | TYPE\n");
-        b.push_str("--- | ---\n");
-        for con in &schema.constraints {
-            b.push_str(&format!("{} | {}\n", con.name, con.r#type));
-        }
-    }
-
-    if !schema.triggers.is_empty() {
-        b.push('\n');
-        b.push_str("#### Triggers\n\n");
-        b.push_str("NAME | TYPE | SEQUENCE\n");
-        b.push_str("--- | --- | ---\n");
-        for trg in &schema.triggers {
-            let type_str = trg
-                .r#type
-                .map(|t| t.to_string())
-                .unwrap_or_else(|| "-".to_string());
-            let seq = trg
-                .sequence
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "-".to_string());
-            b.push_str(&format!("{} | {type_str} | {seq}\n", trg.name));
-        }
-    }
-
-    if !schema.comments.is_empty() {
-        b.push('\n');
-        b.push_str("#### Comments\n\n");
-        for (key, value) in &schema.comments {
-            b.push_str(&format!("- {key}: {value}\n"));
-        }
-    }
-
-    b
+    format!(
+        "### Table: {}\n\n{}",
+        schema.table,
+        schema::format_schema_markdown(schema)
+    )
 }
 
 pub fn handle_describe_table(cfg: &Config, args: &Value) -> Result<String, String> {
@@ -462,7 +383,11 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
                 );
                 let def = cell_text_or(row, 6, "-");
                 let null_flag = cell_int(row, 7);
-                let null_str = if null_flag == 1 { "NO" } else { "YES" };
+                let null_str = if is_not_null(Some(null_flag)) {
+                    "NO"
+                } else {
+                    "YES"
+                };
                 b.push_str(&format!("{name} | {type_str} | {def} | {null_str}\n"));
             }
         }
@@ -491,15 +416,8 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
                 let trig_type = cell_int(row, 1);
                 let table = cell_text(row, 2);
                 let desc = cell_text_or(row, 3, "-");
-                let type_name = match trig_type {
-                    1 => "BEFORE INSERT",
-                    2 => "BEFORE UPDATE",
-                    4 => "BEFORE DELETE",
-                    8 => "AFTER INSERT",
-                    16 => "AFTER UPDATE",
-                    32 => "AFTER DELETE",
-                    _ => "-",
-                };
+                let (timing, event) = trigger_type_label(trig_type);
+                let type_name = format!("{timing} {event}");
                 b.push_str(&format!("{name} | {type_name} | {table} | {desc}\n"));
             }
         }
@@ -561,7 +479,11 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
     Ok(b)
 }
 
-pub fn handle_metadata_extract(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
+pub fn handle_metadata_extract(
+    cfg: &Config,
+    args: &Value,
+    files_base_url: Option<&str>,
+) -> Result<ToolResult, String> {
     let mut client = open_client(cfg, args)?;
     // Check for optional 'objects' filter
     let objects: Option<Vec<String>> = args.get("objects").and_then(|v| v.as_array()).map(|arr| {
@@ -584,12 +506,26 @@ pub fn handle_metadata_extract(cfg: &Config, args: &Value) -> Result<ToolResult,
 
     if has_output_dir {
         // Create a GeneratedFile with the DDL content
+        let mut name = format!("{}_metadata.sql", db_name);
+        if let Some(comp) = arg_str(args, "compression").filter(|s| !s.is_empty() && s != "none") {
+            let suffix = match comp.to_lowercase().as_str() {
+                "zstd" => ".zst",
+                "gzip" => ".gz",
+                "lz4" => ".lz4",
+                other => {
+                    return Err(format!(
+                        "unsupported compression '{other}' — valid: zstd, gzip, lz4, none"
+                    ));
+                }
+            };
+            name.push_str(suffix);
+        }
         let files = vec![firebird_5_mcp_core::codegen::targets::GeneratedFile {
-            name: format!("{}_metadata.sql", db_name),
+            name,
             content: ddl,
             format: "sql".to_string(),
         }];
-        save_or_inline(cfg, args, &db_name, "sql", &files)
+        save_or_inline(cfg, args, &db_name, "sql", &files, files_base_url)
     } else {
         // Return inline as before
         Ok(ToolResult::text(ddl))
@@ -835,7 +771,11 @@ pub fn handle_domains(cfg: &Config, args: &Value) -> Result<String, String> {
             cell_int(row, 5),
         );
         let null_flag = cell_int(row, 6);
-        let null_str = if null_flag == 1 { "NO" } else { "YES" };
+        let null_str = if is_not_null(Some(null_flag)) {
+            "NO"
+        } else {
+            "YES"
+        };
         let has_default = cell_int(row, 7);
         let default_str = if has_default == 1 { "YES" } else { "NO" };
         let uses = usage_map.get(&name).copied().unwrap_or(0);
@@ -937,7 +877,11 @@ pub fn handle_find_column(cfg: &Config, args: &Value) -> Result<String, String> 
             cell_int(row, 6),
         );
         let null_flag = cell_int(row, 7);
-        let null_str = if null_flag == 1 { "NO" } else { "YES" };
+        let null_str = if is_not_null(Some(null_flag)) {
+            "NO"
+        } else {
+            "YES"
+        };
         let is_view = cell_int(row, 8);
         let view_str = if is_view == 1 { "YES" } else { "" };
         b.push_str(&format!(

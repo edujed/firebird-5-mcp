@@ -108,10 +108,15 @@ fn wrap_text(result: Result<String, String>) -> Result<ToolResult, String> {
 /// POST_EVENT is emitted: a JSON line is appended to `events.jsonl` and,
 /// when a valid database is resolved, `POST_EVENT '<name>'` is executed on
 /// the database in a fresh transaction.
-pub fn dispatch(cfg: &Config, name: &str, args: &Value) -> Result<ToolResult, String> {
+pub fn dispatch(
+    cfg: &Config,
+    name: &str,
+    args: &Value,
+    files_base_url: Option<&str>,
+) -> Result<ToolResult, String> {
     mlog!("tool call: {name}");
     let started = std::time::Instant::now();
-    let result = dispatch_inner(cfg, name, args);
+    let result = dispatch_inner(cfg, name, args, files_base_url);
     let duration_ms = started.elapsed().as_millis();
 
     if let Err(ref e) = result {
@@ -128,7 +133,12 @@ pub fn dispatch(cfg: &Config, name: &str, args: &Value) -> Result<ToolResult, St
     result
 }
 
-fn dispatch_inner(cfg: &Config, name: &str, args: &Value) -> Result<ToolResult, String> {
+fn dispatch_inner(
+    cfg: &Config,
+    name: &str,
+    args: &Value,
+    files_base_url: Option<&str>,
+) -> Result<ToolResult, String> {
     match name {
         // Query tools
         "firebird_query" => wrap_text(handle_query(cfg, args)),
@@ -148,7 +158,7 @@ fn dispatch_inner(cfg: &Config, name: &str, args: &Value) -> Result<ToolResult, 
         "firebird_check_duplicates" => wrap_text(handle_check_duplicates(cfg, args)),
         "firebird_domains" => wrap_text(handle_domains(cfg, args)),
         "firebird_get_databases" => wrap_text(handle_get_databases(cfg)),
-        "firebird_metadata_extract" => handle_metadata_extract(cfg, args),
+        "firebird_metadata_extract" => handle_metadata_extract(cfg, args, files_base_url),
 
         // Stats tools
         "firebird_crypt_state" => wrap_text(handle_crypt_state(cfg, args)),
@@ -163,8 +173,8 @@ fn dispatch_inner(cfg: &Config, name: &str, args: &Value) -> Result<ToolResult, 
         "firebird_index_usage" => wrap_text(handle_index_usage(cfg, args)),
 
         // Generator tools (support file-save)
-        "firebird_generate_dev" => handle_generate_dev(cfg, args),
-        "firebird_generate_view_dto" => handle_generate_view_dto(cfg, args),
+        "firebird_generate_dev" => handle_generate_dev(cfg, args, files_base_url),
+        "firebird_generate_view_dto" => handle_generate_view_dto(cfg, args, files_base_url),
 
         // DDL tools
         "firebird_create_database" => handle_create_database(cfg, args),
@@ -176,15 +186,15 @@ fn dispatch_inner(cfg: &Config, name: &str, args: &Value) -> Result<ToolResult, 
         "firebird_drop" => wrap_text(handle_drop(cfg, args)),
 
         // Migration tools (export/import/describe)
-        "firebird_export" => handle_export(cfg, args),
-        "firebird_import" => handle_import(cfg, args),
-        "firebird_describe_file" => handle_describe_file(cfg, args),
+        "firebird_export" => handle_export(cfg, args, files_base_url),
+        "firebird_import" => handle_import(cfg, args, files_base_url),
+        "firebird_describe_file" => handle_describe_file(cfg, args, files_base_url),
 
         // Data quality tools
         "firebird_data_quality" => handle_data_quality(cfg, args),
 
         // File tools
-        "firebird_list_files" => handle_list_files(cfg, args),
+        "firebird_list_files" => handle_list_files(cfg, args, files_base_url),
 
         other => Err(format!("Unknown tool: {other}")),
     }

@@ -27,10 +27,21 @@ pub mod targets;
 pub mod ui;
 pub mod view_dto;
 
+use crate::schema::ColumnInfo;
+use firebird_5_mcp_types::is_not_null;
+
 pub use fbtype::FbType;
 pub use generator::{GenOptions, Language, generate};
 pub use naming::{to_camel_case, to_pascal_case, to_snake_case};
 pub use targets::Target;
+
+/// Returns `true` if the column is nullable.
+///
+/// `RDB$NULL_FLAG`: `1` = NOT NULL, `NULL`/`0` = nullable.
+/// This is the single source of truth for nullability across all codegen targets.
+pub fn is_nullable(col: &ColumnInfo) -> bool {
+    !is_not_null(col.nullable)
+}
 pub use ui::lazarus::{
     LazarusField, from_column_info as lazarus_from_column_info,
     from_view_field as lazarus_from_view_field, generate_lfm,

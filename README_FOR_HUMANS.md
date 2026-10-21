@@ -353,6 +353,8 @@ fi
 | `firebird_domains` | Analyze user-defined domains and usage |
 | `firebird_get_databases` | List configured databases |
 | `firebird_crypt_state` | Check at-rest encryption state |
+| `firebird_data_quality` | Rule-based data quality checks (nulls, empty strings, outliers, date range) |
+| `firebird_list_files` | List generated files in the storage directory |
 
 ---
 

@@ -3,14 +3,11 @@
 use super::{GeneratedFile, Target};
 use crate::codegen::fbtype::FbType;
 use crate::codegen::generator::GenOptions;
+use crate::codegen::is_nullable;
 use crate::codegen::naming::{to_camel_case, to_pascal_case};
-use crate::schema::{ColumnInfo, ForeignKeyInfo, TableSchema};
+use crate::schema::{ForeignKeyInfo, TableSchema};
 
 pub struct OpenApiTarget;
-
-fn is_nullable(col: &ColumnInfo) -> bool {
-    col.nullable.map(|n| n == 1).unwrap_or(false)
-}
 
 impl Target for OpenApiTarget {
     /// Maps a Firebird type to `(type, format)` for OpenAPI.

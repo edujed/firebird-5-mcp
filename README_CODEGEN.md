@@ -8,7 +8,7 @@ Generates development code from table schemas.
 
 **Arguments:**
 - `tables` (required): Array of table names (max 20)
-- `language` (required): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `graphql`, `lazarus`, or `svelte`
+- `language` (required): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `graphql`, `python`, `json_schema`, `lazarus`, or `svelte`
 - `database` (optional): Database name
 - `include_fks` (optional): If true, generates named FK relations (Java `@ManyToOne`) or FK comments
 
@@ -489,7 +489,7 @@ Generates DTOs/records from views (resolved metadata).
 
 **Arguments:**
 - `views` (required): Array of view names (max 20)
-- `language` (required): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `graphql`, `lazarus`, or `svelte`
+- `language` (required): `java`, `go`, `rust`, `typescript`, `protobuf`, `openapi`, `graphql`, `python`, `json_schema`, `lazarus`, or `svelte`
 - `database` (optional): Database name
 
 Generated code is read-only (no entity annotations, no FKs). Supports the same languages as `firebird_generate_dev`.
