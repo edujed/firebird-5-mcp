@@ -3,7 +3,7 @@
 use firebird_5_mcp_core::types::{format_column_type, is_valid_identifier};
 use firebird_5_mcp_core::{Config, FirebirdClient, metadata, query, schema};
 use firebird_5_mcp_types::{is_not_null, trigger_type_label};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::ToolResult;
 use super::common::{
@@ -19,7 +19,7 @@ pub fn format_schema(schema: &schema::TableSchema) -> String {
     )
 }
 
-pub fn handle_describe_table(cfg: &Config, args: &Value) -> Result<String, String> {
+pub fn handle_describe_table(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
     let table_name = arg_str(args, "table_name")
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "The 'table_name' argument is required and must be a string.".to_string())?;
@@ -30,10 +30,84 @@ pub fn handle_describe_table(cfg: &Config, args: &Value) -> Result<String, Strin
 
     let mut client = open_client(cfg, args)?;
     let schema = schema::describe_table(&mut client, &table_name).map_err(|e| e.to_string())?;
-    Ok(format_schema(&schema))
+    let text = format_schema(&schema);
+    let structured = schema_to_json(&schema);
+    Ok(ToolResult::with_structured(text, structured))
 }
 
-pub fn handle_get_databases(_cfg: &Config) -> Result<String, String> {
+/// Serializes a [`TableSchema`] to a JSON value for `structuredContent`.
+fn schema_to_json(schema: &schema::TableSchema) -> Value {
+    let columns: Vec<Value> = schema
+        .columns
+        .iter()
+        .map(|c| {
+            let type_str = format_column_type(c.type_num, c.sub_type, c.size, c.precision, c.scale);
+            json!({
+                "name": c.name,
+                "type": type_str,
+                "nullable": !is_not_null(c.nullable),
+                "default": c.default,
+                "position": c.position,
+                "domain": c.domain,
+            })
+        })
+        .collect();
+    let indexes: Vec<Value> = schema
+        .indexes
+        .iter()
+        .map(|i| {
+            json!({
+                "name": i.name,
+                "unique": i.unique,
+                "type": i.r#type,
+                "columns": i.columns,
+            })
+        })
+        .collect();
+    let constraints: Vec<Value> = schema
+        .constraints
+        .iter()
+        .map(|c| {
+            json!({
+                "name": c.name,
+                "type": c.r#type,
+            })
+        })
+        .collect();
+    let triggers: Vec<Value> = schema
+        .triggers
+        .iter()
+        .map(|t| {
+            let (timing, event) = t
+                .r#type
+                .map(|tt| trigger_type_label(tt))
+                .unwrap_or(("BEFORE", "INSERT"));
+            json!({
+                "name": t.name,
+                "timing": timing,
+                "event": event,
+                "sequence": t.sequence,
+            })
+        })
+        .collect();
+    let comments: Value = Value::Object(
+        schema
+            .comments
+            .iter()
+            .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+            .collect(),
+    );
+    json!({
+        "table": schema.table,
+        "columns": columns,
+        "indexes": indexes,
+        "constraints": constraints,
+        "triggers": triggers,
+        "comments": comments,
+    })
+}
+
+pub fn handle_get_databases(_cfg: &Config) -> Result<ToolResult, String> {
     // Reload config from disk to pick up external changes
     // (e.g. databases registered by firebird_create_database in a previous session)
     let cfg = match Config::reload() {
@@ -62,7 +136,27 @@ pub fn handle_get_databases(_cfg: &Config) -> Result<String, String> {
         ));
     }
     b.push_str(&format!("\n**MCP Build Time:** {}\n", crate::build_time()));
-    Ok(b)
+
+    // Structured content for the Web UI database selector.
+    let databases: Vec<Value> = cfg
+        .server
+        .databases
+        .iter()
+        .map(|db| {
+            json!({
+                "name": db.name,
+                "description": db.description,
+                "path": db.path,
+                "is_default": db.name == default,
+            })
+        })
+        .collect();
+    let structured = json!({
+        "databases": databases,
+        "default": default,
+        "build_time": crate::build_time(),
+    });
+    Ok(ToolResult::with_structured(b, structured))
 }
 
 /// Collects the database health info from MON$DATABASE + MON$ATTACHMENTS.
@@ -482,7 +576,7 @@ pub fn handle_describe_database(
     }
 }
 
-pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
+pub fn handle_list(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
     let obj_type =
         arg_str(args, "type").ok_or_else(|| "The 'type' argument is required.".to_string())?;
     let obj_type = obj_type.trim().to_uppercase();
@@ -504,6 +598,7 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
 
     let mut client = open_client(cfg, args)?;
     let mut b = String::new();
+    let mut objects: Vec<Value> = Vec::new();
 
     match obj_type.as_str() {
         "TABLES" => {
@@ -511,7 +606,10 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
             b.push_str(&format!("### Tables and Views ({})\n\n", tables.len()));
             if tables.is_empty() {
                 b.push_str("No tables or views found.\n");
-                return Ok(b);
+                return Ok(ToolResult::with_structured(
+                    b,
+                    json!({ "type": obj_type, "objects": [] }),
+                ));
             }
             b.push_str("NAME | TYPE | COMMENT\n");
             b.push_str("--- | --- | ---\n");
@@ -522,6 +620,11 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
                     t.comment.as_str()
                 };
                 b.push_str(&format!("{} | {} | {comment}\n", t.name, t.r#type));
+                objects.push(json!({
+                    "name": t.name,
+                    "type": t.r#type,
+                    "comment": t.comment,
+                }));
             }
         }
         "PROCEDURES" => {
@@ -538,7 +641,10 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
             b.push_str("### Stored Procedures\n\n");
             if result.rows.is_empty() {
                 b.push_str("No stored procedures found.\n");
-                return Ok(b);
+                return Ok(ToolResult::with_structured(
+                    b,
+                    json!({ "type": obj_type, "objects": [] }),
+                ));
             }
             b.push_str(&format!("Count: {} procedures\n\n", result.rows.len()));
             b.push_str("NAME | PARAMETERS | RETURNS | DESCRIPTION\n");
@@ -549,6 +655,12 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
                 let returns = cell_int(row, 2);
                 let desc = cell_text_or(row, 3, "-");
                 b.push_str(&format!("{name} | {params} | {returns} | {desc}\n"));
+                objects.push(json!({
+                    "name": name,
+                    "parameters": params,
+                    "returns": returns,
+                    "description": desc,
+                }));
             }
         }
         "FUNCTIONS" => {
@@ -564,7 +676,10 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
             b.push_str("### User-Defined Functions\n\n");
             if result.rows.is_empty() {
                 b.push_str("No user-defined functions found.\n");
-                return Ok(b);
+                return Ok(ToolResult::with_structured(
+                    b,
+                    json!({ "type": obj_type, "objects": [] }),
+                ));
             }
             b.push_str(&format!("Count: {} functions\n\n", result.rows.len()));
             b.push_str("NAME | TYPE | DESCRIPTION\n");
@@ -579,6 +694,11 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
                     _ => "-",
                 };
                 b.push_str(&format!("{name} | {type_name} | {desc}\n"));
+                objects.push(json!({
+                    "name": name,
+                    "type": type_name,
+                    "description": desc,
+                }));
             }
         }
         "DOMAINS" => {
@@ -604,7 +724,10 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
             b.push_str("### Domains (Named Data Types)\n\n");
             if result.rows.is_empty() {
                 b.push_str("No domains found.\n");
-                return Ok(b);
+                return Ok(ToolResult::with_structured(
+                    b,
+                    json!({ "type": obj_type, "objects": [] }),
+                ));
             }
             b.push_str(&format!("Count: {} domains\n\n", result.rows.len()));
             b.push_str("NAME | TYPE | DEFAULT | NULL\n");
@@ -626,6 +749,12 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
                     "YES"
                 };
                 b.push_str(&format!("{name} | {type_str} | {def} | {null_str}\n"));
+                objects.push(json!({
+                    "name": name,
+                    "type": type_str,
+                    "default": def,
+                    "nullable": null_str == "YES",
+                }));
             }
         }
         "TRIGGERS" => {
@@ -643,7 +772,10 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
             b.push_str("### Triggers\n\n");
             if result.rows.is_empty() {
                 b.push_str("No triggers found.\n");
-                return Ok(b);
+                return Ok(ToolResult::with_structured(
+                    b,
+                    json!({ "type": obj_type, "objects": [] }),
+                ));
             }
             b.push_str(&format!("Count: {} triggers\n\n", result.rows.len()));
             b.push_str("NAME | TYPE | TABLE | DESCRIPTION\n");
@@ -656,6 +788,12 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
                 let (timing, event) = trigger_type_label(trig_type);
                 let type_name = format!("{timing} {event}");
                 b.push_str(&format!("{name} | {type_name} | {table} | {desc}\n"));
+                objects.push(json!({
+                    "name": name,
+                    "type": type_name,
+                    "table": table,
+                    "description": desc,
+                }));
             }
         }
         "INDEXES" => {
@@ -673,7 +811,10 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
             b.push_str("### Indexes\n\n");
             if result.rows.is_empty() {
                 b.push_str("No indexes found.\n");
-                return Ok(b);
+                return Ok(ToolResult::with_structured(
+                    b,
+                    json!({ "type": obj_type, "objects": [] }),
+                ));
             }
             b.push_str(&format!("Count: {} indexes\n\n", result.rows.len()));
             b.push_str("NAME | TABLE | UNIQUE | DESCRIPTION\n");
@@ -685,6 +826,12 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
                 let desc = cell_text_or(row, 3, "-");
                 let unique_str = if unique_flag == 1 { "YES" } else { "NO" };
                 b.push_str(&format!("{name} | {table} | {unique_str} | {desc}\n"));
+                objects.push(json!({
+                    "name": name,
+                    "table": table,
+                    "unique": unique_flag == 1,
+                    "description": desc,
+                }));
             }
         }
         "SEQUENCES" => {
@@ -700,7 +847,10 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
             b.push_str("### Sequences\n\n");
             if result.rows.is_empty() {
                 b.push_str("No sequences found.\n");
-                return Ok(b);
+                return Ok(ToolResult::with_structured(
+                    b,
+                    json!({ "type": obj_type, "objects": [] }),
+                ));
             }
             b.push_str(&format!("Count: {} sequences\n\n", result.rows.len()));
             b.push_str("NAME | DESCRIPTION\n");
@@ -709,11 +859,18 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<String, String> {
                 let name = cell_text(row, 0);
                 let desc = cell_text_or(row, 1, "-");
                 b.push_str(&format!("{name} | {desc}\n"));
+                objects.push(json!({
+                    "name": name,
+                    "description": desc,
+                }));
             }
         }
         _ => unreachable!(),
     }
-    Ok(b)
+    Ok(ToolResult::with_structured(
+        b,
+        json!({ "type": obj_type, "objects": objects }),
+    ))
 }
 
 pub fn handle_metadata_extract(
@@ -764,8 +921,13 @@ pub fn handle_metadata_extract(
         }];
         save_or_inline(cfg, args, &db_name, "sql", &files, files_base_url)
     } else {
-        // Return inline as before
-        Ok(ToolResult::text(ddl))
+        // Return inline as before, with structured content for the Web UI.
+        let structured = json!({
+            "database": db_name,
+            "objects": objects.unwrap_or_default(),
+            "ddl": ddl,
+        });
+        Ok(ToolResult::with_structured(ddl, structured))
     }
 }
 

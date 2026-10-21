@@ -9,3 +9,4 @@ authors = [ "Eduardo Jedliczka <edujed@gmail.com>"]
 
 [dependencies]
 chrono = { workspace = true }
+serde_json = { workspace = true }

@@ -7,4 +7,5 @@
 
 pub use firebird_5_mcp_types::{
     ColumnMeta, QueryResult, Value, format_cell, format_column_type, is_valid_identifier,
+    value_to_json,
 };

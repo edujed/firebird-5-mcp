@@ -304,3 +304,67 @@ fn format_float(f: f64) -> String {
 fn flatten(s: &str) -> String {
     s.replace('\n', " ").replace('|', "\\|")
 }
+
+// ---------------------------------------------------------------------------
+// JSON serialization (for structuredContent)
+// ---------------------------------------------------------------------------
+
+/// Serializes a [`Value`] to a [`serde_json::Value`], preserving type
+/// fidelity for the Web UI's `structuredContent` payload.
+///
+/// - `Null` → `null`
+/// - `Int` → JSON number
+/// - `Float` → JSON number (or `null` if not finite)
+/// - `Bool` → JSON boolean
+/// - `Text` → JSON string (NUMERIC/DECIMAL arrives as exact decimal text
+///   via the vendor patch and must stay a string to preserve precision)
+/// - `Date` → `"YYYY-MM-DD"`
+/// - `Time` → `"HH:MM:SS"`
+/// - `Timestamp` → `"YYYY-MM-DD HH:MM:SS"` (with `.ffffff` when nanos ≠ 0)
+/// - `Binary` → base64-encoded string
+pub fn value_to_json(v: &Value) -> serde_json::Value {
+    match v {
+        Value::Null => serde_json::Value::Null,
+        Value::Int(n) => serde_json::Value::Number(serde_json::Number::from(*n)),
+        Value::Float(f) => serde_json::Number::from_f64(*f)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        Value::Bool(b) => serde_json::Value::Bool(*b),
+        Value::Text(s) => serde_json::Value::String(s.clone()),
+        Value::Date(d) => serde_json::Value::String(d.format("%Y-%m-%d").to_string()),
+        Value::Time(t) => serde_json::Value::String(t.format("%H:%M:%S").to_string()),
+        Value::Timestamp(ts) => {
+            let s = if ts.nanosecond() != 0 {
+                ts.format("%Y-%m-%d %H:%M:%S%.6f").to_string()
+            } else {
+                ts.format("%Y-%m-%d %H:%M:%S").to_string()
+            };
+            serde_json::Value::String(s)
+        }
+        Value::Binary(data) => serde_json::Value::String(base64_encode(data)),
+    }
+}
+
+/// Minimal base64 encoder (avoids adding a dependency).
+fn base64_encode(data: &[u8]) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).map(|b| *b as u32).unwrap_or(0);
+        let b2 = chunk.get(2).map(|b| *b as u32).unwrap_or(0);
+        out.push(CHARS[(b0 >> 2) as usize] as char);
+        out.push(CHARS[(((b0 & 3) << 4) | (b1 >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(CHARS[(((b1 & 15) << 2) | (b2 >> 6)) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(CHARS[(b2 & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}

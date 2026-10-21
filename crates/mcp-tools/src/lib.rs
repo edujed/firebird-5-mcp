@@ -141,23 +141,23 @@ fn dispatch_inner(
 ) -> Result<ToolResult, String> {
     match name {
         // Query tools
-        "firebird_query" => wrap_text(handle_query(cfg, args)),
+        "firebird_query" => handle_query(cfg, args),
         "firebird_count" => wrap_text(handle_count(cfg, args)),
         "firebird_sample" => wrap_text(handle_sample(cfg, args)),
         "firebird_insert_batch" => wrap_text(handle_insert_batch(cfg, args)),
         "firebird_run_script" => wrap_text(handle_run_script(cfg, args)),
         "firebird_execute_immediate" => wrap_text(handle_execute_immediate(cfg, args)),
-        "firebird_explain_plan" => wrap_text(handle_explain_plan(cfg, args)),
+        "firebird_explain_plan" => handle_explain_plan(cfg, args),
 
         // Schema tools
-        "firebird_describe_table" => wrap_text(handle_describe_table(cfg, args)),
+        "firebird_describe_table" => handle_describe_table(cfg, args),
         "firebird_describe_database" => handle_describe_database(cfg, args, files_base_url),
         "firebird_describe" => wrap_text(handle_describe(cfg, args)),
-        "firebird_list" => wrap_text(handle_list(cfg, args)),
+        "firebird_list" => handle_list(cfg, args),
         "firebird_find_column" => wrap_text(handle_find_column(cfg, args)),
         "firebird_check_duplicates" => wrap_text(handle_check_duplicates(cfg, args)),
         "firebird_domains" => wrap_text(handle_domains(cfg, args)),
-        "firebird_get_databases" => wrap_text(handle_get_databases(cfg)),
+        "firebird_get_databases" => handle_get_databases(cfg),
         "firebird_metadata_extract" => handle_metadata_extract(cfg, args, files_base_url),
         "firebird_er_diagram" => handle_er_diagram(cfg, args, files_base_url),
 

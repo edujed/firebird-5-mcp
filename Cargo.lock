@@ -777,6 +777,7 @@ name = "firebird-5-mcp-types"
 version = "1.4.0"
 dependencies = [
  "chrono",
+ "serde_json",
 ]
 
 [[package]]

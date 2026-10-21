@@ -1,16 +1,21 @@
 //! Query-related tool handlers.
 
-use firebird_5_mcp_core::types::is_valid_identifier;
+use firebird_5_mcp_core::types::{is_valid_identifier, value_to_json};
 use firebird_5_mcp_core::{Config, FirebirdClient, IsolationPreset, explain, query};
-use serde_json::Value;
+use serde_json::{Value, json};
 
+use super::ToolResult;
 use super::common::*;
 
 /// Executes a SQL statement (SELECT, INSERT, UPDATE, DELETE, DDL).
 ///
 /// For SELECT statements, results are bounded to 1000 rows by default.
 /// Use `max_rows` and `skip` to paginate large result sets.
-pub fn handle_query(cfg: &Config, args: &Value) -> Result<String, String> {
+///
+/// Returns `structuredContent` with `{columns, rows, row_count, truncated}`
+/// for SELECT results, so the Web UI can render a grid without parsing
+/// Markdown.
+pub fn handle_query(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
     let sql = arg_str(args, "sql")
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "The 'sql' argument is required and must be a string.".to_string())?;
@@ -37,20 +42,46 @@ pub fn handle_query(cfg: &Config, args: &Value) -> Result<String, String> {
     match result {
         Some(result) => {
             let mut text = result_to_text(&result);
+            let truncated = result.rows.len() as u32 >= max_rows;
             // Hint for pagination when the result is full.
-            if result.rows.len() as u32 >= max_rows {
+            if truncated {
                 let next_skip = skip + max_rows;
                 text.push_str(&format!(
                     "\n\n---\nResults truncated at {max_rows} rows. Use `skip: \"{next_skip}\"` to fetch the next page."
                 ));
             }
-            Ok(text)
+            // Structured content for the Web UI grid.
+            let columns: Vec<Value> = result
+                .columns
+                .iter()
+                .map(|c| {
+                    json!({
+                        "name": c.name,
+                        "type": c.type_name,
+                        "is_numeric": c.is_numeric,
+                    })
+                })
+                .collect();
+            let rows: Vec<Value> = result
+                .rows
+                .iter()
+                .map(|row| Value::Array(row.iter().map(value_to_json).collect()))
+                .collect();
+            let structured = json!({
+                "columns": columns,
+                "rows": rows,
+                "row_count": result.rows.len(),
+                "truncated": truncated,
+            });
+            Ok(ToolResult::with_structured(text, structured))
         }
         None => {
             // Opção B: anexar o plano de execução ao resultado de DML/DDL.
             match explain::explain_plan(&mut client, &sql) {
-                Ok(plan) if !plan.is_empty() => Ok(format!("{message}\n\nExecution plan:\n{plan}")),
-                _ => Ok(message),
+                Ok(plan) if !plan.is_empty() => Ok(ToolResult::text(format!(
+                    "{message}\n\nExecution plan:\n{plan}"
+                ))),
+                _ => Ok(ToolResult::text(message)),
             }
         }
     }
@@ -208,14 +239,18 @@ pub fn handle_execute_immediate(cfg: &Config, args: &Value) -> Result<String, St
 }
 
 /// Returns the execution plan for a SQL statement.
-pub fn handle_explain_plan(cfg: &Config, args: &Value) -> Result<String, String> {
+///
+/// Returns `structuredContent` with `{plan}` so the Web UI can display the
+/// plan without parsing Markdown.
+pub fn handle_explain_plan(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
     let sql = arg_str(args, "sql")
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "The 'sql' argument is required and must be a string.".to_string())?;
 
     let mut client = open_client(cfg, args)?;
     let plan = explain::explain_plan(&mut client, &sql).map_err(|e| e.to_string())?;
-    Ok(format!(
+    let text = format!(
         "Execution plan (the statement was executed inside a rolled-back transaction):\n{plan}"
-    ))
+    );
+    Ok(ToolResult::with_structured(text, json!({ "plan": plan })))
 }
