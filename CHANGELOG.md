@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.0] — WIP
+## [1.5.0] - WIP
+
+### Added
+
+### Changed
+
+### Fixed
+- Resolved bugs.
+
+## [1.4.0]
 
 ### Added
 - **HTTP+SSE transport (Web UI)** — the binary now supports the MCP HTTP+SSE
@@ -93,17 +102,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all root-level READMEs (including `README_FOR_HUMANS.md` / `LEIAME_PARA_HUMANOS.md`
   and the cross-language counterpart). `LEIAME_PARA_HUMANOS.md` fixed a swapped
   language description in its references table.
-- **DRY refactor: shared helpers in `mcp-types`** — two new pure functions in
-  `mcp-types::lib` eliminate duplicated logic across `mcp-core` and `mcp-tools`:
-  - `is_not_null(row, col_idx)` — single source of truth for NOT NULL detection
-    from RDB$ metadata (previously reimplemented in `metadata.rs`,
-    `schema/markdown.rs`, `schema_tools.rs`, and `quality_tools.rs`).
-  - `trigger_type_label(trigger_type)` — maps `RDB$TRIGGER_TYPE` enum (1-6) to
-    human-readable labels (BEFORE/AFTER INSERT/UPDATE/DELETE). Previously each
-    call site had its own `match` with inconsistent or incorrect mappings.
-  All call sites now use these helpers. `mcp-tools::format_schema` is now a
-  thin wrapper over `mcp-core::schema::format_schema_markdown` (the Markdown
-  rendering lives in one place).
 
 ### Fixed
 - **`describe_objects` domain defaults** — domain branch now calls
