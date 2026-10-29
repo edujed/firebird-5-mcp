@@ -7,8 +7,10 @@ use crate::codegen::is_nullable;
 use crate::codegen::naming::{to_camel_case, to_pascal_case};
 use crate::schema::{ForeignKeyInfo, TableSchema};
 
+/// OpenAPI 3.2.0 code generation target.
 pub struct OpenApiTarget;
 
+/// Implements the `Target` trait for OpenAPI code generation.
 impl Target for OpenApiTarget {
     /// Maps a Firebird type to `(type, format)` for OpenAPI.
     fn type_for(&self, t: &FbType) -> String {
@@ -18,6 +20,7 @@ impl Target for OpenApiTarget {
         openapi_type(t).0
     }
 
+    /// Generates an OpenAPI 3.2.0 schema for the table.
     fn generate(
         &self,
         schema: &TableSchema,
@@ -99,6 +102,7 @@ impl Target for OpenApiTarget {
     }
 }
 
+/// Maps a Firebird type to an OpenAPI `(type, format)` pair.
 fn openapi_type(t: &FbType) -> (String, Option<String>) {
     match t {
         FbType::BlobText => ("string".to_string(), None),

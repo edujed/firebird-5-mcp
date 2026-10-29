@@ -1,11 +1,11 @@
 //! Query-related tool handlers.
 
-use firebird_5_mcp_core::types::{is_valid_identifier, value_to_json};
-use firebird_5_mcp_core::{Config, FirebirdClient, IsolationPreset, explain, query};
+use firebird_5_mcp_core::{FirebirdClient, IsolationPreset, explain, query};
+use mcp_core::Config;
+use mcp_types::{ToolResult, is_valid_identifier, value_to_json};
 use serde_json::{Value, json};
 
-use super::ToolResult;
-use super::common::*;
+use super::*;
 
 /// Executes a SQL statement (SELECT, INSERT, UPDATE, DELETE, DDL).
 ///
@@ -59,6 +59,8 @@ pub fn handle_query(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
                         "name": c.name,
                         "type": c.type_name,
                         "is_numeric": c.is_numeric,
+                        "precision": c.precision,
+                        "scale": c.scale,
                     })
                 })
                 .collect();

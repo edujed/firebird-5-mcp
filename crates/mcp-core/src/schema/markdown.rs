@@ -2,7 +2,7 @@
 
 use super::TableSchema;
 use crate::types::format_column_type;
-use firebird_5_mcp_types::is_not_null;
+use mcp_types::is_not_null;
 
 /// Formats a table schema as Markdown (for use in describe_objects).
 pub fn format_schema_markdown(schema: &TableSchema) -> String {

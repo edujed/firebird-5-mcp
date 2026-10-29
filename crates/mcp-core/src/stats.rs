@@ -5,8 +5,9 @@
 //! `MON$STATEMENTS`. Also reads the at-rest encryption state via
 //! `MON$DATABASE.MON$CRYPT_STATE` (Firebird 3.0+).
 
-use crate::client::FirebirdClient;
-use crate::query::{self, Value};
+use mcp_core::FirebirdClient;
+use mcp_core::query;
+use mcp_types::Value;
 use rsfbclient::FbError;
 
 /// Encryption state of an attached Firebird database.
@@ -32,6 +33,7 @@ pub enum CryptState {
     EncryptInProgress,
 }
 
+/// Parsing, labeling, and predicates for the database encryption state.
 impl CryptState {
     /// Parses the raw integer reported by `MON$CRYPT_STATE`.
     pub fn from_raw(value: i64) -> Self {
@@ -334,6 +336,7 @@ pub fn query_history(
 
 // --- helpers ---
 
+/// Returns the value at `idx` as a String, or empty string if NULL.
 fn cell_text(row: &[Value], idx: usize) -> String {
     match row.get(idx) {
         Some(Value::Text(s)) => s.clone(),
@@ -344,6 +347,7 @@ fn cell_text(row: &[Value], idx: usize) -> String {
     }
 }
 
+/// Returns the value at `idx` as an i64, or 0 if NULL or non-numeric.
 fn cell_int(row: &[Value], idx: usize) -> i64 {
     match row.get(idx) {
         Some(Value::Int(n)) => *n,

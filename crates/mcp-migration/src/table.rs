@@ -4,8 +4,9 @@
 //! duplicated across `import.rs` and `csv.rs`.
 
 use arrow::datatypes::Schema;
-use firebird_5_mcp_core::client::FirebirdClient;
-use firebird_5_mcp_core::query::{Value, exec, query_with_param};
+use firebird_5_mcp_core::FirebirdClient;
+use mcp_core::query::{exec, query_with_param};
+use mcp_types::Value;
 
 use crate::types::{arrow_to_firebird, check_append_compatibility};
 

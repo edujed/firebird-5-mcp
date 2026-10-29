@@ -3,7 +3,7 @@
 //! Used by the export path to render values as text (CSV) or coerce them
 //! into typed Arrow arrays.
 
-use firebird_5_mcp_types::Value;
+use mcp_types::Value;
 
 /// Renders a `Value` as a display string.
 ///

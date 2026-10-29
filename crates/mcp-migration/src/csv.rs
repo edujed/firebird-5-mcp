@@ -13,7 +13,7 @@
 //! Compression is transparent: the file extension determines the codec
 //! (`.csv`, `.csv.zst`, `.csv.gz`, `.csv.lz4`).
 
-use firebird_5_mcp_core::client::FirebirdClient;
+use firebird_5_mcp_core::FirebirdClient;
 use firebird_5_mcp_core::mlog;
 
 use crate::format::{CodePage, Format};

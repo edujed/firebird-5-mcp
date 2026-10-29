@@ -242,17 +242,20 @@
   insert_batch). `import_parquet` and `import_ipc` are thin wrappers that read
   the file and delegate. `insert_rows_in_batches()` and `keep_column_indices()`
   are shared helpers used by all import paths (Parquet, IPC, CSV, DBF, JSONL).
-- **NUMERIC/DECIMAL → Float64:** the vendor patch renders NUMERIC/DECIMAL as
+- **NUMERIC/DECIMAL → Decimal128:** the vendor patch renders NUMERIC/DECIMAL as
   exact decimal text (e.g. `"80.00"`), but the `raw_type` stays `SQL_INT64` (580),
   so `type_name` alone cannot distinguish a NUMERIC from a real BIGINT. The query
   layer (`mcp-core/src/query/mod.rs::rows_to_result`) detects this (raw_type 580 +
-  decimal text) and sets `ColumnMeta.is_numeric = true`. The export path maps
-  `is_numeric` → `Float64`, which preserves the value through the Arrow → JSON →
-  Firebird import round-trip. Trade-off: loses exact decimal precision (e.g.
-  `80.005` may become `80.004999...`), but the value is no longer zeroed out.
-  For exact precision, the driver would need to propagate scale to `ColumnMeta`
-  and the export would use `Decimal128`. **CSV/JSONL export bypasses this** —
+  decimal text) and sets `ColumnMeta.is_numeric = true`, then infers
+  `precision`/`scale` from the data (max integer digits + max fractional digits
+  across all rows, capped at 18 — the driver does not propagate the declared
+  precision/scale). The export path maps `is_numeric` → `Decimal128(p, s)`
+  (falls back to `Float64` if p > 38), preserving the exact value through the
+  Arrow → JSON → Firebird import round-trip (`"80.00"` → unscaled `8000` at
+  scale 2 → `NUMERIC(4,2)` on import). `parse_decimal()` in `export.rs` does
+  exact digit shifting (no float rounding). **CSV/JSONL export bypasses this** —
   they render the exact decimal text directly (NUMERIC stays `"80.00"`).
+  JSONL import infers `NUMERIC(p,s)` for columns of all-decimal strings.
 - **JSONL:** always UTF-8 (codepage ignored). `Value::Text` is exported as a
   JSON string, never coerced to a JSON number — a VARCHAR containing `"123"`
   must stay a string, and NUMERIC/DECIMAL text must stay exact. On import,

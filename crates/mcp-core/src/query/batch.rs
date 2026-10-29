@@ -3,7 +3,7 @@
 use rsfbclient::{Execute, FbError};
 use rsfbclient_core::SqlType;
 
-use crate::client::{FirebirdClient, IsolationPreset};
+use mcp_core::{FirebirdClient, IsolationPreset};
 
 use super::split::split_statements;
 use super::{QueryResult, Value, query};

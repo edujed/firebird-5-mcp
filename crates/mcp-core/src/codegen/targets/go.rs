@@ -7,9 +7,12 @@ use crate::codegen::is_nullable;
 use crate::codegen::naming::{to_camel_case, to_pascal_case};
 use crate::schema::{ForeignKeyInfo, TableSchema};
 
+/// Go code generation target (sqlx-compatible structs).
 pub struct GoTarget;
 
+/// Implements the `Target` trait for Go code generation.
 impl Target for GoTarget {
+    /// Maps a Firebird type to a Go type (sqlx-compatible).
     fn type_for(&self, t: &FbType) -> String {
         match t {
             FbType::BlobText => "string".to_string(),
@@ -31,10 +34,12 @@ impl Target for GoTarget {
         }
     }
 
+    /// Returns the nullable Go type (pointer) for a Firebird type.
     fn dto_type_for(&self, t: &FbType) -> String {
         go_null_type(&self.type_for(t))
     }
 
+    /// Generates a Go struct with sqlx db tags and JSON tags.
     fn generate(
         &self,
         schema: &TableSchema,
@@ -129,6 +134,7 @@ impl Target for GoTarget {
     }
 }
 
+/// Wraps a Go type in a pointer for nullable fields.
 fn go_null_type(t: &str) -> String {
     format!("*{t}")
 }

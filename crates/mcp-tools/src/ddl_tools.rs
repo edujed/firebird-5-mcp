@@ -1,12 +1,13 @@
 //! DDL tools: create database/trigger/procedure/function/sequence, alter, drop.
 
-use firebird_5_mcp_core::types::is_valid_identifier;
-use firebird_5_mcp_core::{Config, FirebirdClient, ddl, mlog};
+use firebird_5_mcp_core::{FirebirdClient, ddl, mlog};
+use mcp_core::Config;
+use mcp_types::{ToolResult, is_valid_identifier};
 use serde_json::Value;
 
-use super::ToolResult;
-use super::common::{arg_str, arg_u32, open_client};
+use super::{arg_str, arg_u32, open_client};
 
+/// Creates a new Firebird database file and optionally registers it in config.
 pub fn handle_create_database(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
     let path = arg_str(args, "path")
         .filter(|s| !s.is_empty())
@@ -94,6 +95,7 @@ fn is_valid_page_size(size: u32) -> bool {
     matches!(size, 1024 | 2048 | 4096 | 8192 | 16384 | 32768)
 }
 
+/// Creates a trigger on a table.
 pub fn handle_create_trigger(cfg: &Config, args: &Value) -> Result<String, String> {
     let db_name = arg_str(args, "database")
         .ok_or_else(|| "The 'database' argument is required.".to_string())?;
@@ -127,6 +129,7 @@ pub fn handle_create_trigger(cfg: &Config, args: &Value) -> Result<String, Strin
     ))
 }
 
+/// Creates a stored procedure.
 pub fn handle_create_procedure(cfg: &Config, args: &Value) -> Result<String, String> {
     let db_name = arg_str(args, "database")
         .ok_or_else(|| "The 'database' argument is required.".to_string())?;
@@ -146,6 +149,7 @@ pub fn handle_create_procedure(cfg: &Config, args: &Value) -> Result<String, Str
     Ok(format!("Procedure {procedure_name} created."))
 }
 
+/// Creates a user-defined function.
 pub fn handle_create_function(cfg: &Config, args: &Value) -> Result<String, String> {
     let db_name = arg_str(args, "database")
         .ok_or_else(|| "The 'database' argument is required.".to_string())?;
@@ -167,6 +171,7 @@ pub fn handle_create_function(cfg: &Config, args: &Value) -> Result<String, Stri
     Ok(format!("Function {function_name} created."))
 }
 
+/// Creates a sequence (generator).
 pub fn handle_create_sequence(cfg: &Config, args: &Value) -> Result<String, String> {
     let db_name = arg_str(args, "database")
         .ok_or_else(|| "The 'database' argument is required.".to_string())?;
@@ -182,6 +187,7 @@ pub fn handle_create_sequence(cfg: &Config, args: &Value) -> Result<String, Stri
     Ok(format!("Sequence {sequence_name} created."))
 }
 
+/// Changes a column's type to a user-defined domain.
 pub fn handle_alter_column_type(cfg: &Config, args: &Value) -> Result<String, String> {
     let table = arg_str(args, "table").unwrap_or_default();
     let column = arg_str(args, "column").unwrap_or_default();
@@ -195,6 +201,7 @@ pub fn handle_alter_column_type(cfg: &Config, args: &Value) -> Result<String, St
     Ok(format!("Column {table}.{column} type changed to {domain}."))
 }
 
+/// Drops a database object (table, view, domain, trigger, procedure, etc.).
 pub fn handle_drop(cfg: &Config, args: &Value) -> Result<String, String> {
     let obj_type = arg_str(args, "type").unwrap_or_default();
     let name = arg_str(args, "name").unwrap_or_default();

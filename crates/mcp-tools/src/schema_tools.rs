@@ -1,14 +1,14 @@
 //! Schema inspection tools: describe table/database, list objects, extract DDL.
 
-use firebird_5_mcp_core::types::{format_column_type, is_valid_identifier};
-use firebird_5_mcp_core::{Config, FirebirdClient, metadata, query, schema};
-use firebird_5_mcp_types::{is_not_null, trigger_type_label};
+use firebird_5_mcp_core::{FirebirdClient, metadata, query, schema};
+use mcp_core::Config;
+use mcp_types::{
+    ToolResult, format_column_type, is_not_null, is_valid_identifier, trigger_type_label,
+};
 use serde_json::{Value, json};
 
-use super::ToolResult;
-use super::common::{
-    arg_bool, arg_str, cell_int, cell_text, cell_text_or, open_client, save_or_inline,
-};
+use super::save::save_or_inline;
+use super::{arg_bool, arg_str, cell_int, cell_text, cell_text_or, open_client};
 
 /// Formats a table schema as Markdown (with a table header).
 pub fn format_schema(schema: &schema::TableSchema) -> String {
@@ -19,6 +19,7 @@ pub fn format_schema(schema: &schema::TableSchema) -> String {
     )
 }
 
+/// Returns the full schema of a table or view (columns, indexes, constraints, triggers).
 pub fn handle_describe_table(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
     let table_name = arg_str(args, "table_name")
         .filter(|s| !s.is_empty())
@@ -107,6 +108,7 @@ fn schema_to_json(schema: &schema::TableSchema) -> Value {
     })
 }
 
+/// Lists all configured databases, reloading the config from disk first.
 pub fn handle_get_databases(_cfg: &Config) -> Result<ToolResult, String> {
     // Reload config from disk to pick up external changes
     // (e.g. databases registered by firebird_create_database in a previous session)
@@ -416,6 +418,7 @@ fn render_describe_database_markdown(
     b
 }
 
+/// Returns a full overview of a database: health, tables, and ER diagram.
 pub fn handle_describe_database(
     cfg: &Config,
     args: &Value,
@@ -576,6 +579,7 @@ pub fn handle_describe_database(
     }
 }
 
+/// Lists database objects of a given type (tables, procedures, functions, etc.).
 pub fn handle_list(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
     let obj_type =
         arg_str(args, "type").ok_or_else(|| "The 'type' argument is required.".to_string())?;
@@ -873,6 +877,7 @@ pub fn handle_list(cfg: &Config, args: &Value) -> Result<ToolResult, String> {
     ))
 }
 
+/// Extracts the DDL (CREATE statements) for all or selected database objects.
 pub fn handle_metadata_extract(
     cfg: &Config,
     args: &Value,
@@ -931,6 +936,7 @@ pub fn handle_metadata_extract(
     }
 }
 
+/// Describes the given database objects (tables, views, procedures, etc.).
 pub fn handle_describe(cfg: &Config, args: &Value) -> Result<String, String> {
     let objects = args
         .get("objects")
@@ -1079,7 +1085,7 @@ pub fn handle_er_diagram(
     }
 }
 
-/// Checks for duplicate values in one or more columns (validates uniqueness before creating index/constraint).
+/// Checks for duplicate values in one or more columns of a table.
 pub fn handle_check_duplicates(cfg: &Config, args: &Value) -> Result<String, String> {
     let table = arg_str(args, "table")
         .filter(|s| !s.is_empty())
@@ -1159,11 +1165,11 @@ pub fn handle_check_duplicates(cfg: &Config, args: &Value) -> Result<String, Str
         let mut conditions = Vec::new();
         for (i, col) in columns.iter().enumerate() {
             let val = &first_dup_row[i];
-            let val_str = firebird_5_mcp_core::types::format_cell(val);
+            let val_str = mcp_types::format_cell(val);
             // Quote string values, leave numbers as-is
-            let condition = if matches!(val, firebird_5_mcp_core::query::Value::Int(_)) {
+            let condition = if matches!(val, mcp_types::Value::Int(_)) {
                 format!("{col} = {val_str}")
-            } else if matches!(val, firebird_5_mcp_core::query::Value::Null) {
+            } else if matches!(val, mcp_types::Value::Null) {
                 format!("{col} IS NULL")
             } else {
                 format!("{col} = '{val_str}'")
@@ -1207,8 +1213,10 @@ pub fn handle_check_duplicates(cfg: &Config, args: &Value) -> Result<String, Str
     Ok(b)
 }
 
-/// Analyzes user-defined domains: lists them with usage counts, shows the most
-/// common column type signatures, and suggests domains that could be created.
+/// Analyzes user-defined domains and suggests missing ones.
+///
+/// Lists domains with usage counts, shows the most common column type
+/// signatures, and suggests domains that could be created.
 pub fn handle_domains(cfg: &Config, args: &Value) -> Result<String, String> {
     let mut client = open_client(cfg, args)?;
 

@@ -5,7 +5,7 @@
 //! - Append: compatibility check between Arrow schema and Firebird table
 
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
-use firebird_5_mcp_types::ColumnMeta;
+use mcp_types::ColumnMeta;
 
 /// Maps a Firebird column (from RDB$ introspection) to an Arrow `DataType`.
 ///
@@ -77,19 +77,26 @@ pub fn arrow_to_firebird(dt: &DataType) -> String {
 /// Builds an Arrow `Schema` from `ColumnMeta` (type info from query results).
 ///
 /// This is what the export path uses. NUMERIC/DECIMAL columns (detected via
-/// `ColumnMeta.is_numeric`) are mapped to `Float64` — the vendor patch renders
-/// them as exact decimal text (e.g. `"80.00"`), and Float64 preserves the value
-/// through the Arrow → JSON → Firebird import round-trip.
+/// `ColumnMeta.is_numeric`) are mapped to `Decimal128(p, s)` using the
+/// precision/scale inferred by the query layer — this preserves the exact
+/// decimal value (e.g. `"80.00"` → `8000` at scale 2) through the Arrow →
+/// JSON → Firebird import round-trip. If the inferred precision exceeds 38
+/// (Arrow's Decimal128 limit), the column falls back to `Float64`.
 pub fn column_meta_to_arrow(columns: &[ColumnMeta]) -> Schema {
     let fields: Vec<Field> = columns
         .iter()
         .map(|c| {
             // NUMERIC/DECIMAL columns (detected by the query layer) map to
-            // Float64 — the vendor patch renders them as exact decimal text
-            // (e.g. "80.00"), and Float64 preserves the value through the
-            // Arrow → JSON → Firebird import round-trip.
+            // Decimal128 with the inferred precision/scale — the vendor patch
+            // renders them as exact decimal text (e.g. "80.00"), and
+            // Decimal128 preserves the value exactly through the Arrow → JSON
+            // → Firebird import round-trip.
             let dt = if c.is_numeric {
-                DataType::Float64
+                if c.precision > 38 {
+                    DataType::Float64
+                } else {
+                    DataType::Decimal128(c.precision.max(1), c.scale)
+                }
             } else {
                 match c.type_name.to_uppercase().as_str() {
                     "SMALLINT" => DataType::Int16,

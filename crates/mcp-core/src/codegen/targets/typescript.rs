@@ -7,9 +7,12 @@ use crate::codegen::is_nullable;
 use crate::codegen::naming::{to_camel_case, to_pascal_case};
 use crate::schema::{ForeignKeyInfo, TableSchema};
 
+/// TypeScript code generation target (interfaces + types).
 pub struct TypeScriptTarget;
 
+/// Implements the `Target` trait for TypeScript code generation.
 impl Target for TypeScriptTarget {
+    /// Maps a Firebird type to a TypeScript type.
     fn type_for(&self, t: &FbType) -> String {
         match t {
             FbType::BlobText => "string".to_string(),
@@ -29,6 +32,7 @@ impl Target for TypeScriptTarget {
         }
     }
 
+    /// Generates a TypeScript interface for the table.
     fn generate(
         &self,
         schema: &TableSchema,

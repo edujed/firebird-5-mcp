@@ -3,9 +3,10 @@
 
 use rsfbclient::FbError;
 
-use crate::client::FirebirdClient;
 use crate::metadata::decode_blr_default;
-use crate::query::{Value, query, query_with_param};
+use mcp_core::FirebirdClient;
+use mcp_core::query::{query, query_with_param};
+use mcp_types::Value;
 
 pub mod markdown;
 
@@ -325,6 +326,7 @@ fn get_comments(
 
 // --- Row value helpers ---
 
+/// Returns the value at `idx` as a trimmed String, or empty string if NULL.
 fn text_at(row: &[Value], idx: usize) -> String {
     row.get(idx)
         .map(|v| match v {
@@ -338,6 +340,7 @@ fn text_at(row: &[Value], idx: usize) -> String {
         .unwrap_or_default()
 }
 
+/// Returns the value at `idx` as an i64, or 0 if NULL or non-numeric.
 fn int_at(row: &[Value], idx: usize) -> i64 {
     row.get(idx)
         .and_then(|v| match v {
@@ -348,6 +351,7 @@ fn int_at(row: &[Value], idx: usize) -> i64 {
         .unwrap_or(0)
 }
 
+/// Returns the value at `idx` as an i64, or None if NULL or non-numeric.
 fn opt_int_at(row: &[Value], idx: usize) -> Option<i64> {
     row.get(idx).and_then(|v| match v {
         Value::Int(n) => Some(*n),
@@ -356,6 +360,7 @@ fn opt_int_at(row: &[Value], idx: usize) -> Option<i64> {
     })
 }
 
+/// Returns the value at `idx` as a trimmed String, or None if NULL or empty.
 fn opt_text_at(row: &[Value], idx: usize) -> Option<String> {
     row.get(idx).and_then(|v| match v {
         Value::Text(s) if !s.trim().is_empty() => Some(s.trim().to_string()),

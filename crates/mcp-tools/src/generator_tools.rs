@@ -3,12 +3,13 @@
 use firebird_5_mcp_core::codegen::targets::GeneratedFile;
 use firebird_5_mcp_core::codegen::ui::{lazarus, svelte};
 use firebird_5_mcp_core::codegen::{GenOptions, Language, generator};
-use firebird_5_mcp_core::config::Config;
 use firebird_5_mcp_core::schema;
+use mcp_core::Config;
+use mcp_types::ToolResult;
 use serde_json::Value;
 
-use super::ToolResult;
-use super::common::{arg_bool, arg_str, open_client, save_or_inline};
+use super::save::save_or_inline;
+use super::{arg_bool, arg_str, open_client};
 
 /// Handles the `firebird_generate_dev` tool call.
 pub fn handle_generate_dev(

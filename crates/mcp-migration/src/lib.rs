@@ -73,7 +73,7 @@ pub use jsonl::{describe_jsonl, import_jsonl, write_jsonl};
 ///
 /// Dispatches on `format`: `"parquet"`, `"ipc"`, `"csv"`, `"dbf"`, or `"jsonl"`.
 pub fn import(
-    client: &mut firebird_5_mcp_core::client::FirebirdClient,
+    client: &mut firebird_5_mcp_core::FirebirdClient,
     input_path: &str,
     table: &str,
     mode: ImportMode,

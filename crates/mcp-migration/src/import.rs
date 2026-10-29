@@ -16,9 +16,8 @@ use arrow::datatypes::{Field, Schema};
 use arrow::ipc::reader::FileReader as IpcFileReader;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
-use firebird_5_mcp_core::client::FirebirdClient;
-use firebird_5_mcp_core::mlog;
-use firebird_5_mcp_core::query::insert_batch;
+use firebird_5_mcp_core::{FirebirdClient, mlog};
+use mcp_core::query::insert_batch;
 
 use crate::arrow_json::arrow_value_to_json;
 use crate::table::{create_table_from_arrow, verify_append};

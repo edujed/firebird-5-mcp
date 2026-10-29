@@ -136,12 +136,12 @@
 | `XSQLDA_DESCRIBE_VARS` | 13–31 | Info items requested on prepare |
 | `XSqlVar` | 35–60 | Column metadata; `alias_name: Arc<str>` (built once, cloned per row) |
 | `XSqlVar::coerce` | 64–129 | **PATCH** — keeps scaled `SQL_INT64`/`SQL_INT128` as exact scaled integers instead of coercing to double (patch sites at L82, L93) |
-| `xsqlda_to_blr` | 133–180 | XSqlVar slice → BLR (carries the signed scale byte) |
+| `xsqlda_to_blr` | 133–180 | XSqlVar slice → BLR. **PATCH** — `SQL_INT64` now carries the real scale byte (`var.scale as u8`) instead of always `0`; upstream sent `0` because `coerce` zeroed the scale and converted to double, but the patch keeps the scaled integer, so the engine must be told the scale or it returns the unscaled integer and the driver mis-renders it (e.g. `1234.5678` → `0.1235`). `SQL_INT128` already carried the scale. |
 | `PrepareInfo` | 183–187 | stmt_type, param_count, truncated |
 | `parse_xsqlda` | 193–258 | Prepare response → statement type + xsqlda (rejects >1024 columns) |
 | `parse_select_items` | 261–417 | Item-by-item xsqlda fill; `true` when truncated |
 | `err_invalid_xsqlda` | 419–423 | Helper: `FbError` for malformed xsqlda |
-| `mod tests` | 426–472 | **PATCH** tests (marker at L431): fixed-point and integer INT128 preserved through `coerce` + BLR |
+| `mod tests` | 426–510 | **PATCH** tests (marker at L431): fixed-point and integer INT128 preserved through `coerce` + BLR; fixed-point and integer INT64 carry the correct scale byte in the BLR |
 
 ## `events.rs`
 

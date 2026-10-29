@@ -715,14 +715,15 @@ checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
 name = "firebird-5-mcp"
 version = "1.4.0"
 dependencies = [
- "async-stream",
- "axum",
  "firebird-5-mcp-core",
  "firebird-5-mcp-tools",
+ "mcp-core",
+ "mcp-protocol",
+ "mcp-transport",
+ "mcp-types",
  "serde",
  "serde_json",
  "tokio",
- "uuid",
 ]
 
 [[package]]
@@ -731,9 +732,10 @@ version = "1.4.0"
 dependencies = [
  "chrono",
  "dirs",
- "firebird-5-mcp-types",
  "flate2",
  "lz4_flex",
+ "mcp-core",
+ "mcp-types",
  "rsfbclient",
  "rsfbclient-core",
  "rsfbclient-rust",
@@ -752,9 +754,10 @@ dependencies = [
  "dbase",
  "encoding_rs",
  "firebird-5-mcp-core",
- "firebird-5-mcp-types",
  "flate2",
  "lz4_flex",
+ "mcp-core",
+ "mcp-types",
  "parquet",
  "serde_json",
  "yore 0.2.0",
@@ -768,15 +771,9 @@ dependencies = [
  "chrono",
  "firebird-5-mcp-core",
  "firebird-5-mcp-migration",
- "firebird-5-mcp-types",
- "serde_json",
-]
-
-[[package]]
-name = "firebird-5-mcp-types"
-version = "1.4.0"
-dependencies = [
- "chrono",
+ "mcp-core",
+ "mcp-protocol",
+ "mcp-types",
  "serde_json",
 ]
 
@@ -1301,6 +1298,55 @@ name = "matchit"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
+
+[[package]]
+name = "mcp-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dirs",
+ "mcp-types",
+ "rsfbclient",
+ "rsfbclient-core",
+ "rsfbclient-rust",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "mcp-protocol"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "mcp-core",
+ "mcp-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "mcp-transport"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "axum",
+ "mcp-core",
+ "mcp-protocol",
+ "mcp-types",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "mcp-types"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "md-5"

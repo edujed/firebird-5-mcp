@@ -23,6 +23,7 @@ use crate::codegen::generator::GenOptions;
 use crate::codegen::is_nullable;
 use crate::schema::{ForeignKeyInfo, TableSchema};
 
+/// JSON Schema code generation target (draft 2020-12).
 pub struct JsonSchemaTarget;
 
 /// Escapes a string for inclusion in a JSON string literal.
@@ -44,12 +45,14 @@ fn json_escape(s: &str) -> String {
     out
 }
 
+/// Implements the `Target` trait for JSON Schema code generation.
 impl Target for JsonSchemaTarget {
     /// Maps a Firebird type to the JSON Schema `type` keyword.
     fn type_for(&self, t: &FbType) -> String {
         json_schema_type(t).0
     }
 
+    /// Generates a JSON Schema (draft 2020-12) with Firebird extensions.
     fn generate(
         &self,
         schema: &TableSchema,
@@ -216,6 +219,7 @@ mod tests {
     use crate::codegen::Language;
     use crate::schema::{ColumnInfo, ConstraintInfo, IndexInfo};
 
+    /// Builds a test ColumnInfo with basic type info.
     fn col(name: &str, type_num: i64, sub_type: i64, size: i64, nullable: bool) -> ColumnInfo {
         ColumnInfo {
             name: name.to_string(),
@@ -231,6 +235,7 @@ mod tests {
         }
     }
 
+    /// Builds a test ColumnInfo with precision/scale (for NUMERIC/DECIMAL).
     fn col_prec(
         name: &str,
         type_num: i64,
@@ -278,6 +283,7 @@ mod tests {
         }
     }
 
+    /// Extracts the JSON Schema content from generated files.
     fn content(files: &[GeneratedFile]) -> &str {
         files
             .iter()

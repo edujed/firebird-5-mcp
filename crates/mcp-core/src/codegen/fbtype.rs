@@ -150,26 +150,32 @@ impl FbType {
 
     // --- Category predicates (replace the old free-standing is_* fns) ---
 
+    /// Whether this is any BLOB variant (text, binary, or untyped).
     pub fn is_blob(&self) -> bool {
         matches!(self, Self::BlobText | Self::BlobBinary | Self::Blob)
     }
 
+    /// Whether this is specifically a `BLOB SUB_TYPE TEXT`.
     pub fn is_blob_text(&self) -> bool {
         matches!(self, Self::BlobText)
     }
 
+    /// Whether this is a `NUMERIC(p,s)` type.
     pub fn is_numeric(&self) -> bool {
         matches!(self, Self::Numeric { .. })
     }
 
+    /// Whether this is a `DECIMAL(p,s)` type.
     pub fn is_decimal(&self) -> bool {
         matches!(self, Self::Decimal { .. })
     }
 
+    /// Whether this is a floating-point type (`FLOAT` or `DOUBLE PRECISION`).
     pub fn is_float(&self) -> bool {
         matches!(self, Self::Float | Self::DoublePrecision)
     }
 
+    /// Whether this is an integer type (SMALLINT, INTEGER, BIGINT, INT128).
     pub fn is_integer(&self) -> bool {
         matches!(
             self,
@@ -177,6 +183,7 @@ impl FbType {
         )
     }
 
+    /// Whether this is a character type (CHAR, VARCHAR, or NVARCHAR).
     pub fn is_char(&self) -> bool {
         matches!(
             self,
@@ -184,18 +191,22 @@ impl FbType {
         )
     }
 
+    /// Whether this is a `DATE` type.
     pub fn is_date(&self) -> bool {
         matches!(self, Self::Date)
     }
 
+    /// Whether this is a `TIME` type.
     pub fn is_time(&self) -> bool {
         matches!(self, Self::Time)
     }
 
+    /// Whether this is a `TIMESTAMP` type.
     pub fn is_timestamp(&self) -> bool {
         matches!(self, Self::Timestamp)
     }
 
+    /// Whether this is a `BOOLEAN` type.
     pub fn is_boolean(&self) -> bool {
         matches!(self, Self::Boolean)
     }
@@ -324,6 +335,7 @@ mod tests {
     use super::*;
     use crate::schema::ColumnInfo;
 
+    /// Builds a test ColumnInfo with the given type parameters.
     fn col(type_num: i64, sub_type: i64, size: i64, precision: i64, scale: i64) -> ColumnInfo {
         ColumnInfo {
             name: "C".to_string(),

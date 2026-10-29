@@ -6,10 +6,11 @@
 
 use rsfbclient::FbError;
 
-use crate::client::FirebirdClient;
-use crate::query::{Value, query, query_with_param};
 use crate::types::format_column_type;
-use firebird_5_mcp_types::{is_not_null, trigger_type_label};
+use mcp_core::FirebirdClient;
+use mcp_core::query::{query, query_with_param};
+use mcp_types::Value;
+use mcp_types::{is_not_null, trigger_type_label};
 
 /// Extracts the complete DDL for the database.
 pub fn extract_ddl(client: &mut FirebirdClient) -> Result<String, FbError> {
@@ -40,6 +41,7 @@ pub fn extract_ddl_filtered(
     Ok(out)
 }
 
+/// Returns `true` if the object name passes the extraction filter.
 fn should_extract(filter: &Option<std::collections::HashSet<String>>, name: &str) -> bool {
     match filter {
         None => true,
@@ -47,6 +49,7 @@ fn should_extract(filter: &Option<std::collections::HashSet<String>>, name: &str
     }
 }
 
+/// Appends `CREATE DOMAIN` statements for all user domains to the output.
 fn extract_domains(
     client: &mut FirebirdClient,
     out: &mut String,
@@ -106,6 +109,7 @@ fn extract_domains(
     Ok(())
 }
 
+/// Appends `CREATE TABLE` statements with columns, constraints, and indexes.
 fn extract_tables(
     client: &mut FirebirdClient,
     out: &mut String,
@@ -300,6 +304,7 @@ fn extract_tables(
     Ok(())
 }
 
+/// Appends `CREATE VIEW` statements for all user views to the output.
 fn extract_views(
     client: &mut FirebirdClient,
     out: &mut String,
@@ -329,6 +334,7 @@ fn extract_views(
     Ok(())
 }
 
+/// Appends `CREATE SEQUENCE` statements for all user generators to the output.
 fn extract_sequences(
     client: &mut FirebirdClient,
     out: &mut String,
@@ -374,6 +380,7 @@ fn extract_sequences(
     Ok(())
 }
 
+/// Appends `CREATE TRIGGER` statements for all user triggers to the output.
 fn extract_triggers(
     client: &mut FirebirdClient,
     out: &mut String,
@@ -412,6 +419,7 @@ fn extract_triggers(
     Ok(())
 }
 
+/// Appends `CREATE PROCEDURE` statements for all user procedures to the output.
 fn extract_procedures(
     client: &mut FirebirdClient,
     out: &mut String,
@@ -553,6 +561,7 @@ pub fn decode_blr_default(blr_text: &str) -> Option<String> {
     None
 }
 
+/// Appends `CREATE FUNCTION` statements for all user functions to the output.
 fn extract_functions(
     client: &mut FirebirdClient,
     out: &mut String,
@@ -874,6 +883,7 @@ CREATE FUNCTION {upper}\nAS\n{source}
 
 // --- Helpers (shared with schema.rs logic) ---
 
+/// Returns the value at `idx` as a trimmed String, or empty string if NULL.
 fn text_at(row: &[Value], idx: usize) -> String {
     row.get(idx)
         .map(|v| match v {
@@ -903,6 +913,7 @@ fn opt_int_at(row: &[Value], idx: usize) -> Option<i64> {
     })
 }
 
+/// Returns the value at `idx` as an i64, or 0 if NULL or non-numeric.
 fn int_at(row: &[Value], idx: usize) -> i64 {
     row.get(idx)
         .and_then(|v| match v {

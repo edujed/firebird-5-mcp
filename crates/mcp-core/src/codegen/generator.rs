@@ -28,7 +28,9 @@ pub enum Language {
     Svelte,
 }
 
+/// Parsing of language names from user input.
 impl Language {
+    /// Parses a language name string (case-insensitive) into a `Language`.
     pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "java" => Some(Self::Java),
@@ -66,6 +68,7 @@ pub struct GenOptions {
     pub is_view: bool,
 }
 
+/// Construction of code generation options.
 impl GenOptions {
     /// Creates options with sensible defaults (comments on, examples off, no package).
     pub fn new(language: Language, include_fks: bool) -> Self {

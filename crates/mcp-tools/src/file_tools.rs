@@ -5,9 +5,10 @@
 //! reads files from the local filesystem; in SSE the client downloads them
 //! via the `/files` HTTP endpoint.
 
-use crate::ToolResult;
-use crate::common::{arg_str, file_download_url, storage_dir};
 use firebird_5_mcp_core::Config;
+use mcp_types::ToolResult;
+
+use super::{arg_str, file_download_url, storage_dir};
 use serde_json::{Value, json};
 use std::path::Path;
 

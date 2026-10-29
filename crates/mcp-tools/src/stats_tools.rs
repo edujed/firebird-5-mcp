@@ -1,9 +1,10 @@
 //! Statistics and encryption-state tool handlers.
 
-use firebird_5_mcp_core::{Config, stats};
+use firebird_5_mcp_core::stats;
+use mcp_core::Config;
 use serde_json::Value;
 
-use super::common::*;
+use super::*;
 
 /// Returns the at-rest encryption state of the database.
 pub fn handle_crypt_state(cfg: &Config, args: &Value) -> Result<String, String> {
@@ -128,6 +129,7 @@ pub fn handle_database_stats(cfg: &Config, args: &Value) -> Result<String, Strin
     Ok(b)
 }
 
+/// Maps a MON$BACKUP_STATE code to a human-readable label.
 fn backup_state_label(v: i64) -> &'static str {
     match v {
         0 => "normal",
@@ -137,6 +139,7 @@ fn backup_state_label(v: i64) -> &'static str {
     }
 }
 
+/// Maps a MON$SHUTDOWN_MODE code to a human-readable label.
 fn shutdown_mode_label(v: i64) -> &'static str {
     match v {
         0 => "online",
@@ -147,6 +150,7 @@ fn shutdown_mode_label(v: i64) -> &'static str {
     }
 }
 
+/// Maps a MON$ATTACHMENTS state code to a human-readable label.
 fn attachment_state_label(v: i64) -> &'static str {
     match v {
         0 => "idle",
@@ -156,6 +160,7 @@ fn attachment_state_label(v: i64) -> &'static str {
     }
 }
 
+/// Maps a MON$STATEMENTS state code to a human-readable label.
 fn statement_state_label(v: i64) -> &'static str {
     match v {
         0 => "idle",
@@ -165,6 +170,7 @@ fn statement_state_label(v: i64) -> &'static str {
     }
 }
 
+/// Truncates a string to `max` characters, appending an ellipsis if cut.
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()

@@ -7,9 +7,12 @@ use crate::codegen::is_nullable;
 use crate::codegen::naming::{to_pascal_case, to_snake_case};
 use crate::schema::{ForeignKeyInfo, TableSchema};
 
+/// Rust code generation target (sqlx-compatible structs).
 pub struct RustTarget;
 
+/// Implements the `Target` trait for Rust code generation.
 impl Target for RustTarget {
+    /// Maps a Firebird type to a Rust type (sqlx-compatible).
     fn type_for(&self, t: &FbType) -> String {
         match t {
             FbType::BlobText => "String".to_string(),
@@ -33,10 +36,12 @@ impl Target for RustTarget {
         }
     }
 
+    /// Returns the nullable Rust type (Option wrapper) for a Firebird type.
     fn dto_type_for(&self, t: &FbType) -> String {
         format!("Option<{}>", self.type_for(t))
     }
 
+    /// Generates a Rust struct with sqlx FromRow derive for the table.
     fn generate(
         &self,
         schema: &TableSchema,

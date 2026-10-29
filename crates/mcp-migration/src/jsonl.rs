@@ -23,10 +23,8 @@
 //! - all `YYYY-MM-DD HH:MM:SS` strings → TIMESTAMP
 //! - anything else → VARCHAR(255)
 
-use firebird_5_mcp_core::client::FirebirdClient;
-use firebird_5_mcp_core::mlog;
-use firebird_5_mcp_core::query::Value;
-use firebird_5_mcp_types::QueryResult;
+use firebird_5_mcp_core::{FirebirdClient, mlog};
+use mcp_types::{QueryResult, Value};
 
 use crate::import::{ImportMode, ImportResult, insert_rows_in_batches, keep_column_indices};
 use crate::io::{TextReader, TextWriter};
@@ -316,7 +314,45 @@ fn infer_jsonl_type(values: &[&serde_json::Value]) -> String {
         return "TIMESTAMP".to_string();
     }
 
+    // All strings that look like exact decimals (NUMERIC/DECIMAL export
+    // renders them as text, e.g. "80.00")? Infer NUMERIC(p,s) from the data
+    // so the round-trip preserves the fixed-point type.
+    if non_null
+        .iter()
+        .all(|v| matches!(v, serde_json::Value::String(s) if is_decimal_str(s)))
+    {
+        let (int_digits, frac_digits) =
+            non_null
+                .iter()
+                .filter_map(|v| v.as_str())
+                .fold((1usize, 0usize), |(mi, mf), s| {
+                    let body = s.trim().strip_prefix('-').unwrap_or(s.trim());
+                    let (int, frac) = match body.split_once('.') {
+                        Some((a, b)) => (a, b),
+                        None => (body, ""),
+                    };
+                    (mi.max(int.chars().count()), mf.max(frac.chars().count()))
+                });
+        let precision = (int_digits + frac_digits).min(18);
+        let scale = frac_digits.min(precision);
+        return format!("NUMERIC({precision},{scale})");
+    }
+
     "VARCHAR(255)".to_string()
+}
+
+/// Returns true when the string is a plain decimal number with at least one
+/// fractional digit (e.g. `"80.00"`, `"-12.5"`).
+fn is_decimal_str(v: &str) -> bool {
+    let v = v.trim();
+    let body = v.strip_prefix('-').unwrap_or(v);
+    let (int, frac) = match body.split_once('.') {
+        Some((a, b)) if !b.is_empty() => (a, b),
+        _ => return false,
+    };
+    !int.is_empty()
+        && int.chars().all(|c| c.is_ascii_digit())
+        && frac.chars().all(|c| c.is_ascii_digit())
 }
 
 fn is_date_str(v: &str) -> bool {

@@ -3,10 +3,11 @@
 //! These are read-only tools that query the RDB$ system tables to provide
 //! database health and structure insights.
 
-use firebird_5_mcp_core::{Config, query};
+use firebird_5_mcp_core::query;
+use mcp_core::Config;
 use serde_json::Value;
 
-use super::common::{arg_str, open_client, result_to_text};
+use super::{arg_str, open_client, result_to_text};
 
 /// Returns per-table row counts.
 ///

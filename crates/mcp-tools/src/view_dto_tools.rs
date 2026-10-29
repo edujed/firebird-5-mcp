@@ -2,11 +2,12 @@
 
 use firebird_5_mcp_core::codegen::view_dto;
 use firebird_5_mcp_core::codegen::{GenOptions, Language};
-use firebird_5_mcp_core::config::Config;
+use mcp_core::Config;
+use mcp_types::ToolResult;
 use serde_json::Value;
 
-use super::ToolResult;
-use super::common::{arg_bool, arg_str, open_client, save_or_inline};
+use super::save::save_or_inline;
+use super::{arg_bool, arg_str, open_client};
 
 /// Handles the `firebird_generate_view_dto` tool call.
 pub fn handle_generate_view_dto(

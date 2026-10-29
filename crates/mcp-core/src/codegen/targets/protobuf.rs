@@ -7,9 +7,12 @@ use crate::codegen::is_nullable;
 use crate::codegen::naming::{to_pascal_case, to_snake_case};
 use crate::schema::{ForeignKeyInfo, TableSchema};
 
+/// Protobuf code generation target (Connect-RPC / gRPC).
 pub struct ProtobufTarget;
 
+/// Implements the `Target` trait for Protobuf code generation.
 impl Target for ProtobufTarget {
+    /// Maps a Firebird type to a Protobuf scalar type.
     fn type_for(&self, t: &FbType) -> String {
         match t {
             FbType::BlobText => "string".to_string(),
@@ -30,6 +33,7 @@ impl Target for ProtobufTarget {
         }
     }
 
+    /// Generates a Protobuf message definition for the table.
     fn generate(
         &self,
         schema: &TableSchema,

@@ -1,11 +1,13 @@
 //! Migration tools: export tables/views/SQL to data files, import files to tables,
 //! and describe file schemas.
 
-use crate::ToolResult;
-use crate::common::{arg_str, file_download_url, open_client, storage_dir};
 use firebird_5_mcp_core::Config;
 use firebird_5_mcp_migration::{ImportMode, describe_file, export, import};
+use mcp_types::ToolResult;
 
+use super::{arg_str, file_download_url, open_client, storage_dir};
+
+/// Human-readable list of supported data file formats (for error messages).
 const SUPPORTED_FORMATS: &str = "'parquet', 'ipc', 'csv', 'dbf' and 'jsonl'";
 
 /// `firebird_export` — export a table, view, or SQL query to a data file.
@@ -16,10 +18,28 @@ pub fn handle_export(
 ) -> Result<ToolResult, String> {
     let source =
         arg_str(args, "source").ok_or_else(|| "missing required argument: source".to_string())?;
-    let output_path = arg_str(args, "output_path")
+    let output_path_raw = arg_str(args, "output_path")
         .ok_or_else(|| "missing required argument: output_path".to_string())?;
     let format = arg_str(args, "format").unwrap_or("parquet".to_string());
     let fmt = normalise_format(&format)?;
+
+    // Resolve a relative `output_path` against the storage dir. The web UI
+    // passes just a filename (e.g. `query-2025.csv.zst`); the file must land
+    // inside the storage dir so the `/files` download endpoint can serve it.
+    // Absolute paths are used as-is (stdio / CLI clients).
+    let storage_base = storage_dir(config, args)
+        .ok_or_else(|| "could not resolve storage directory".to_string())?;
+    let output_path = {
+        let p = std::path::Path::new(&output_path_raw);
+        if p.is_absolute() {
+            output_path_raw
+        } else {
+            std::path::Path::new(&storage_base)
+                .join(p)
+                .to_string_lossy()
+                .to_string()
+        }
+    };
 
     let compression = arg_str(args, "compression");
     if let Some(ref c) = compression {
@@ -91,10 +111,7 @@ pub fn handle_export(
 
     // Build the download URL when the file is inside the storage dir and the
     // transport exposes a `/files` endpoint (SSE mode).
-    let storage_base = storage_dir(config, args);
-    let download_url = storage_base
-        .as_deref()
-        .and_then(|base| file_download_url(files_base_url, &result.path, base));
+    let download_url = file_download_url(files_base_url, &result.path, &storage_base);
 
     let mut text = format!(
         "Exported {} rows × {} columns to `{}` (format: {fmt})",

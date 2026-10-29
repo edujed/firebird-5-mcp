@@ -6,9 +6,12 @@ use crate::codegen::generator::GenOptions;
 use crate::codegen::naming::{to_camel_case, to_pascal_case};
 use crate::schema::{ForeignKeyInfo, TableSchema};
 
+/// Java code generation target (JPA entities + Lombok).
 pub struct JavaTarget;
 
+/// Implements the `Target` trait for Java code generation.
 impl Target for JavaTarget {
+    /// Maps a Firebird type to a Java type (JPA-compatible).
     fn type_for(&self, t: &FbType) -> String {
         match t {
             FbType::BlobText => "String".to_string(),
@@ -31,6 +34,7 @@ impl Target for JavaTarget {
         }
     }
 
+    /// Generates a Java JPA entity class with Lombok annotations.
     fn generate(
         &self,
         schema: &TableSchema,
@@ -166,6 +170,7 @@ impl Target for JavaTarget {
     }
 }
 
+/// Returns the Java import statements needed for the types used in this table.
 fn java_imports(schema: &TableSchema, is_view: bool) -> Vec<&'static str> {
     let mut imports: Vec<&'static str> = Vec::new();
     if !is_view {

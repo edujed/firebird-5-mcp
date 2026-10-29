@@ -19,9 +19,9 @@ use super::targets::{
     ProtobufTarget, PythonTarget, RustTarget, Target, TypeScriptTarget,
 };
 use super::ui::{lazarus, svelte};
-use crate::client::FirebirdClient;
-use crate::query::{Value, query};
 use crate::schema::{ColumnInfo, TableSchema};
+use mcp_core::FirebirdClient;
+use mcp_types::Value;
 
 /// A field in a generated DTO.
 #[derive(Debug, Clone)]
@@ -43,7 +43,7 @@ pub fn get_view_metadata(
     view_name: &str,
 ) -> Result<Vec<ViewField>, FbError> {
     let sql = format!("SELECT FIRST 1 * FROM {}", view_name);
-    let result = query(client, &sql)?;
+    let result = mcp_core::query::query(client, &sql)?;
 
     let mut fields = Vec::new();
     for (i, col) in result.columns.iter().enumerate() {

@@ -4,12 +4,12 @@
 //! outliers, date_range) against a table and returns findings with severity,
 //! counts, and sample values. Output can be Markdown (default) or JSON.
 
-use firebird_5_mcp_core::types::is_valid_identifier;
-use firebird_5_mcp_core::{Config, FirebirdClient, query, schema};
+use firebird_5_mcp_core::{FirebirdClient, query, schema};
+use mcp_core::Config;
+use mcp_types::{ToolResult, is_valid_identifier};
 use serde_json::{Value, json};
 
-use super::ToolResult;
-use super::common::{arg_str, arg_u32, open_client};
+use super::{arg_str, arg_u32, open_client};
 
 /// All supported rule names.
 const ALL_RULES: &[&str] = &["nulls", "empty_strings", "outliers", "date_range"];
@@ -174,7 +174,7 @@ fn run_nulls(
 ) {
     for col in cols {
         // RDB$NULL_FLAG: 1 = NOT NULL, NULL/0 = nullable
-        if !firebird_5_mcp_types::is_not_null(col.nullable) {
+        if !mcp_types::is_not_null(col.nullable) {
             continue;
         }
 
@@ -445,7 +445,7 @@ fn query_count(client: &mut FirebirdClient, sql: &str) -> Result<i64, String> {
 }
 
 /// Executes a query and returns the first value of the first row as f64.
-fn query_first_value(client: &mut FirebirdClient, sql: &str) -> Result<query::Value, String> {
+fn query_first_value(client: &mut FirebirdClient, sql: &str) -> Result<mcp_types::Value, String> {
     let result = query::query(client, sql).map_err(|e| e.to_string())?;
     result
         .rows
@@ -469,17 +469,17 @@ fn query_sample_values(client: &mut FirebirdClient, sql: &str) -> Vec<String> {
 }
 
 /// Formats a Value for display in samples.
-fn format_cell_value(v: &query::Value) -> String {
-    firebird_5_mcp_core::types::format_cell(v)
+fn format_cell_value(v: &mcp_types::Value) -> String {
+    mcp_types::format_cell(v)
 }
 
 /// Returns the value as f64, parsing text and coercing integers/booleans.
-fn value_as_f64(v: &query::Value) -> Option<f64> {
+fn value_as_f64(v: &mcp_types::Value) -> Option<f64> {
     match v {
-        query::Value::Float(f) => Some(*f),
-        query::Value::Int(n) => Some(*n as f64),
-        query::Value::Bool(b) => Some(f64::from(*b)),
-        query::Value::Text(s) => s.parse::<f64>().ok(),
+        mcp_types::Value::Float(f) => Some(*f),
+        mcp_types::Value::Int(n) => Some(*n as f64),
+        mcp_types::Value::Bool(b) => Some(f64::from(*b)),
+        mcp_types::Value::Text(s) => s.parse::<f64>().ok(),
         _ => None,
     }
 }
@@ -575,6 +575,7 @@ fn format_markdown(table: &str, rules: &[String], findings: &[Finding]) -> Strin
 mod tests {
     use super::*;
 
+    /// Builds a minimal `Finding` for tests.
     fn finding(rule: &'static str, column: &str, count: i64) -> Finding {
         Finding {
             rule,
@@ -601,12 +602,15 @@ mod tests {
 
     #[test]
     fn test_value_as_f64() {
-        assert_eq!(value_as_f64(&query::Value::Float(3.14)), Some(3.14));
-        assert_eq!(value_as_f64(&query::Value::Int(42)), Some(42.0));
-        assert_eq!(value_as_f64(&query::Value::Bool(true)), Some(1.0));
-        assert_eq!(value_as_f64(&query::Value::Text("12.5".into())), Some(12.5));
-        assert_eq!(value_as_f64(&query::Value::Text("abc".into())), None);
-        assert_eq!(value_as_f64(&query::Value::Null), None);
+        assert_eq!(value_as_f64(&mcp_types::Value::Float(3.14)), Some(3.14));
+        assert_eq!(value_as_f64(&mcp_types::Value::Int(42)), Some(42.0));
+        assert_eq!(value_as_f64(&mcp_types::Value::Bool(true)), Some(1.0));
+        assert_eq!(
+            value_as_f64(&mcp_types::Value::Text("12.5".into())),
+            Some(12.5)
+        );
+        assert_eq!(value_as_f64(&mcp_types::Value::Text("abc".into())), None);
+        assert_eq!(value_as_f64(&mcp_types::Value::Null), None);
     }
 
     #[test]

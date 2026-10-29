@@ -4,9 +4,9 @@
 //! SQL text (including `SET TERM ^` blocks) to the server in a single
 //! prepare call — so no isql shell-out is needed.
 
-use rsfbclient::{Execute, FbError};
+use rsfbclient::FbError;
 
-use crate::client::FirebirdClient;
+use mcp_core::FirebirdClient;
 
 /// Creates a new trigger. The `body` should contain only the SQL statements
 /// (without BEGIN/END or SET TERM).
@@ -85,7 +85,7 @@ pub fn create_function(
 /// Creates a new sequence (generator).
 pub fn create_sequence(client: &mut FirebirdClient, sequence_name: &str) -> Result<(), FbError> {
     let sql = format!("CREATE SEQUENCE \"{sequence_name}\"");
-    client.conn.execute(&sql, ())?;
+    mcp_core::query::exec(client, &sql)?;
     Ok(())
 }
 
@@ -128,17 +128,6 @@ pub fn alter_column_type(
 /// read-write access, so we start an explicit RW transaction, execute the
 /// statement, and commit.
 fn exec_block(client: &mut FirebirdClient, sql: &str) -> Result<(), FbError> {
-    use rsfbclient::Execute;
-    client.begin_rw_transaction()?;
-    let result = client.conn.execute(sql, ());
-    match result {
-        Ok(_) => {
-            client.conn.commit()?;
-            Ok(())
-        }
-        Err(e) => {
-            let _ = client.conn.rollback();
-            Err(e)
-        }
-    }
+    mcp_core::query::exec(client, sql)?;
+    Ok(())
 }

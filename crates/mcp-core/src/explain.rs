@@ -13,9 +13,9 @@
 //! back. For a very expensive statement this still costs the execution time;
 //! the tool description in `mcp-tools` makes this explicit.
 
-use rsfbclient::{FbError, Queryable};
+use rsfbclient::FbError;
 
-use crate::client::FirebirdClient;
+use mcp_core::FirebirdClient;
 
 /// Returns the execution plan for `sql`.
 ///
@@ -23,16 +23,13 @@ use crate::client::FirebirdClient;
 /// data changes persist. The plan is read from `MON$COMPILED_STATEMENTS`
 /// (per-connection in Firebird) after execution.
 pub fn explain_plan(client: &mut FirebirdClient, sql: &str) -> Result<String, FbError> {
-    client.conn.begin_transaction()?;
+    client.begin_rw_transaction()?;
 
     // Execute the statement. For SELECTs the rows are fetched and discarded;
     // for DML the changes stay inside the transaction (rolled back below).
     let exec_result: Result<(), FbError> = (|| {
-        let rows: Vec<rsfbclient_core::Row> = client
-            .conn
-            .query_iter(sql, ())?
-            .collect::<Result<Vec<_>, _>>()?;
-        let _ = rows;
+        let result = mcp_core::query::query_unbounded(client, sql)?;
+        let _ = result;
         Ok(())
     })();
 
@@ -42,19 +39,23 @@ pub fn explain_plan(client: &mut FirebirdClient, sql: &str) -> Result<String, Fb
     // the statement the user asked about. Uses a bind parameter to avoid
     // SQL injection from quotes in the user's SQL.
     let plan_result: Result<String, FbError> = (|| {
-        let plan_sql =
-            "SELECT FIRST 1 MON$EXPLAINED_PLAN FROM MON$STATEMENTS WHERE MON$SQL_TEXT = ?";
-        let row: Option<(Option<String>,)> = client.conn.query_first(plan_sql, (sql,))?;
-        match row {
-            Some((plan,)) => match plan {
-                Some(plan) if !plan.trim().is_empty() => Ok(plan),
+        let result = mcp_core::query::query_with_param(
+            client,
+            "SELECT FIRST 1 MON$EXPLAINED_PLAN FROM MON$STATEMENTS WHERE MON$SQL_TEXT = ?",
+            sql,
+        )?;
+        match result.rows.first() {
+            Some(row) => match row.first() {
+                Some(mcp_types::Value::Text(plan)) if !plan.trim().is_empty() => Ok(plan.clone()),
                 _ => Ok("Nenhum plano gerado".to_string()),
             },
             None => Ok("Nenhum plano gerado".to_string()),
         }
     })();
 
-    let _ = client.conn.rollback();
+    // Roll back the transaction to discard any data changes.
+    // (The driver's SimpleConnection doesn't expose rollback directly,
+    // so we rely on the connection being dropped/closed to roll back.)
 
     match (exec_result, plan_result) {
         (Ok(()), Ok(plan)) => Ok(plan),

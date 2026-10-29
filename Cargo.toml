@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/mcp-types", "crates/mcp-core", "crates/mcp-tools", "crates/mcp-stdio-bin"]
+members = ["crates/mcp-core", "crates/mcp-tools", "crates/mcp-stdio-bin", "crates/mcp-migration"]
 
 [workspace.package]
 version = "1.4.0"
@@ -33,10 +33,15 @@ axum = { version = "0.7", features = ["macros", "multipart"] }
 dirs = "6.0"
 
 # Crates internas do workspace
-firebird-5-mcp-types = { path = "crates/mcp-types" }
 firebird-5-mcp-core = { path = "crates/mcp-core" }
 firebird-5-mcp-tools = { path = "crates/mcp-tools" }
 firebird-5-mcp-migration = { path = "crates/mcp-migration" }
+
+# Plataforma MCP compartilhada (mcp-rs)
+mcp-types = { path = "/home/edujed/github/mcp-rs/crates/mcp-types" }
+mcp-core = { path = "/home/edujed/github/mcp-rs/crates/mcp-core" }
+mcp-protocol = { path = "/home/edujed/github/mcp-rs/crates/mcp-protocol" }
+mcp-transport = { path = "/home/edujed/github/mcp-rs/crates/mcp-transport" }
 
 # Apache Arrow + Parquet + IPC (migration crate)
 arrow = { version = "55", default-features = false, features = ["prettyprint", "ipc_compression"] }

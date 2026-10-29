@@ -1,11 +1,11 @@
 //! Firebird type formatting and identifier validation.
 //!
-//! These helpers now live in the [`firebird_5_mcp_types`] crate so that
-//! sibling crates (e.g. the OpenAI-API edition) can share them without
-//! depending on the full driver stack. This module re-exports them for
-//! backward compatibility.
+//! The shared types (`Value`, `ColumnMeta`, `QueryResult`, `format_cell`,
+//! `is_valid_identifier`, `value_to_json`) come from `mcp-types`.
+//! The Firebird-specific helpers (`format_column_type`, `is_not_null`,
+//! `trigger_type_label`) are defined in `mcp-types` as well.
 
-pub use firebird_5_mcp_types::{
-    ColumnMeta, QueryResult, Value, format_cell, format_column_type, is_valid_identifier,
-    value_to_json,
+pub use mcp_types::{
+    ColumnMeta, QueryResult, Value, format_cell, format_column_type, is_not_null,
+    is_valid_identifier, trigger_type_label, value_to_json,
 };

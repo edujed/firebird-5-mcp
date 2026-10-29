@@ -6,8 +6,9 @@
 //! resulting [`ColumnMeta`] drives the Arrow schema.
 //!
 //! NUMERIC/DECIMAL columns arrive as exact decimal text (vendor patch) and
-//! are mapped to `Float64` — the query layer sets `ColumnMeta.is_numeric`
-//! so the export path can distinguish them from real BIGINT columns.
+//! are mapped to `Decimal128(p, s)` using the precision/scale inferred by the
+//! query layer — `ColumnMeta.is_numeric` distinguishes them from real BIGINT
+//! columns.
 
 use std::sync::Arc;
 
@@ -24,10 +25,9 @@ use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
 
-use firebird_5_mcp_core::client::FirebirdClient;
-use firebird_5_mcp_core::mlog;
-use firebird_5_mcp_core::query::{Value, query_unbounded};
-use firebird_5_mcp_types::QueryResult;
+use firebird_5_mcp_core::{FirebirdClient, mlog};
+use mcp_core::query::query_unbounded;
+use mcp_types::{QueryResult, Value};
 
 use crate::dbf::write_dbase;
 use crate::format::{CodePage, Format};
@@ -266,16 +266,20 @@ fn build_column_array(dt: &DataType, values: &[&Value], _n: usize) -> Result<Arr
                 .collect();
             Ok(Arc::new(arr) as ArrayRef)
         }
-        DataType::Decimal128(_p, s) => {
+        DataType::Decimal128(p, s) => {
+            let scale = *s;
             let arr: Decimal128Array = values
                 .iter()
                 .map(|v| match v {
                     Value::Null => None,
-                    Value::Text(txt) => parse_decimal(txt, *s),
-                    Value::Int(n) => Some(*n as i128),
+                    Value::Text(txt) => parse_decimal(txt, scale),
+                    Value::Int(n) => Some(*n as i128 * 10i128.pow(scale.max(0) as u32)),
                     _ => None,
                 })
                 .collect();
+            // The FromIterator impl uses the max Decimal128 type (38, 10);
+            // override with the schema's precision/scale so the array matches.
+            let arr = arr.with_data_type(DataType::Decimal128(*p, *s));
             Ok(Arc::new(arr) as ArrayRef)
         }
         other => Err(format!("unsupported Arrow type: {other:?}")),
@@ -294,7 +298,12 @@ fn naive_dt_to_micros(ts: &NaiveDateTime) -> i64 {
     days_from_epoch * 86_400_000_000 + secs * 1_000_000 + nanos / 1000
 }
 
-/// Parses a decimal string (e.g. "12.3456") into an unscaled i128.
+/// Parses a decimal string (e.g. "12.3456") into an unscaled i128 for the
+/// given scale.
+///
+/// The fractional part is right-padded (or truncated) to exactly `scale`
+/// digits, so the result is `int_part * 10^scale + frac_part` — e.g.
+/// `"80.00"` at scale 2 → `8000`, `"12.3"` at scale 4 → `123000`.
 fn parse_decimal(s: &str, scale: i8) -> Option<i128> {
     let negative = s.starts_with('-');
     let s = s.strip_prefix('-').unwrap_or(s);
@@ -307,9 +316,66 @@ fn parse_decimal(s: &str, scale: i8) -> Option<i128> {
     let unscaled = if scale < 0 {
         int_part * 10i128.pow((-scale) as u32) + frac_part
     } else {
-        int_part
+        let scale = scale as u32;
+        int_part * 10i128.pow(scale)
+            + frac_part
+                * 10i128.pow(scale.saturating_sub(frac_digits(parts.get(1).map_or("", |v| v))))
     };
     Some(if negative { -unscaled } else { unscaled })
+}
+
+/// Number of digits in a fractional part (empty string → 0).
+fn frac_digits(frac: &str) -> u32 {
+    frac.chars().count() as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_decimal_positive_scale() {
+        assert_eq!(parse_decimal("80.00", 2), Some(8000));
+        assert_eq!(parse_decimal("12.3456", 4), Some(123456));
+        assert_eq!(parse_decimal("12.3", 4), Some(123000));
+        assert_eq!(parse_decimal("0.10", 2), Some(10));
+        assert_eq!(parse_decimal("-1234.5678", 4), Some(-12345678));
+        assert_eq!(parse_decimal("7", 2), Some(700));
+        assert_eq!(parse_decimal("7.5", 2), Some(750));
+    }
+
+    #[test]
+    fn parse_decimal_negative_scale() {
+        assert_eq!(parse_decimal("123", -2), Some(12300));
+        assert_eq!(parse_decimal("-123", -2), Some(-12300));
+    }
+
+    #[test]
+    fn parse_decimal_invalid() {
+        assert_eq!(parse_decimal("abc", 2), None);
+    }
+
+    #[test]
+    fn decimal128_array_preserves_scale() {
+        // Reproduces the Parquet export path: build a Decimal128Array from
+        // decimal text values and verify the array's scale matches the schema.
+        let v0 = Value::Text("1234.5678".into());
+        let v1 = Value::Text("80.0000".into());
+        let v2 = Value::Text("-0.0001".into());
+        let v3 = Value::Text("99999999.9999".into());
+        let values: Vec<&Value> = vec![&v0, &v1, &v2, &v3];
+        let arr = build_column_array(&DataType::Decimal128(12, 4), &values, 4).unwrap();
+        let dec = arr
+            .as_any()
+            .downcast_ref::<Decimal128Array>()
+            .expect("expected Decimal128Array");
+        use arrow::array::Array;
+        assert_eq!(dec.data_type(), &DataType::Decimal128(12, 4));
+        assert_eq!(dec.value(0), 12345678);
+        assert_eq!(dec.value(1), 800000);
+        assert_eq!(dec.value(2), -1);
+        assert_eq!(dec.value(3), 999999999999);
+    }
 }
 
 /// Writes a `RecordBatch` to a Parquet file.

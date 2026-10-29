@@ -11,8 +11,10 @@ use crate::codegen::is_nullable;
 use crate::codegen::naming::{to_camel_case, to_pascal_case};
 use crate::schema::{ColumnInfo, ForeignKeyInfo, TableSchema};
 
+/// GraphQL code generation target (schema + Node.js resolvers).
 pub struct GraphqlTarget;
 
+/// Implements the `Target` trait for GraphQL code generation.
 impl Target for GraphqlTarget {
     /// Maps a Firebird type to a GraphQL scalar type.
     fn type_for(&self, t: &FbType) -> String {
@@ -37,6 +39,7 @@ impl Target for GraphqlTarget {
         }
     }
 
+    /// Generates a GraphQL schema and Node.js resolvers for the table.
     fn generate(
         &self,
         schema: &TableSchema,
@@ -381,6 +384,7 @@ mod tests {
     use crate::codegen::Language;
     use crate::schema::{ColumnInfo, ConstraintInfo, IndexInfo, TableSchema};
 
+    /// Builds a test ColumnInfo with basic type info.
     fn col(name: &str, type_num: i64, sub_type: i64, size: i64, nullable: bool) -> ColumnInfo {
         ColumnInfo {
             name: name.to_string(),
@@ -396,6 +400,7 @@ mod tests {
         }
     }
 
+    /// Builds a test TableSchema with a few representative columns.
     fn test_schema() -> TableSchema {
         TableSchema {
             table: "USUARIO".to_string(),

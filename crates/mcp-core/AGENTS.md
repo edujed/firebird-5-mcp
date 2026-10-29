@@ -101,7 +101,7 @@ Re-exports `Value`, `ColumnMeta`, `QueryResult` from `firebird-5-mcp-types`.
 | `query_with_limit()` | 33–49 | SELECT with `FIRST`/`SKIP` injection |
 | `query_with_param()` | 52–62 | SELECT with a bound parameter |
 | `query_unbounded()` | 68–78 | SELECT with **no** row-limit injection — for bulk data movement (file export); never for LLM-facing queries |
-| `rows_to_result()` | 78–107 | Converts raw rows to `QueryResult`. Detects NUMERIC/DECIMAL (raw_type 580 + decimal text) and sets `ColumnMeta.is_numeric = true` |
+| `rows_to_result()` | 78–135 | Converts raw rows to `QueryResult`. Detects NUMERIC/DECIMAL (raw_type 580 + decimal text) and sets `ColumnMeta.is_numeric = true`, then infers `precision`/`scale` from the data (max integer + fractional digits, capped at 18) |
 | `sql_type_name()` | 120–144 | Raw ISC_* code → type name string |
 | `row_value()` | 147–159 | Raw cell → `Value` enum |
 | `exec()` | 169–188 | DML/DDL in RW transaction, commit/rollback |

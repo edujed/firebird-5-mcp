@@ -6,14 +6,23 @@
 //! [`generator::generate`](super::generator::generate) — no other target is
 //! touched.
 
+/// Go (sqlx) target.
 mod go;
+/// GraphQL (schema + resolvers) target.
 mod graphql;
+/// Java (JPA + Lombok) target.
 mod java;
+/// JSON Schema (draft 2020-12) target.
 mod json_schema;
+/// OpenAPI 3.2.0 target.
 mod openapi;
+/// Protobuf (Connect-RPC / gRPC) target.
 mod protobuf;
+/// Python (dataclass) target.
 mod python;
+/// Rust (serde struct) target.
 mod rust;
+/// TypeScript (interface) target.
 mod typescript;
 
 use super::fbtype::FbType;

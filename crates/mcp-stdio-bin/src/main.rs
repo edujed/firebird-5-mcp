@@ -8,19 +8,54 @@
 //!   clients that don't support stdio (llama.cpp `--ui-mcp-proxy`, CODEX,
 //!   ClaudeCode, etc.).
 //!
-//! All tool handlers and the protocol routing logic live in the sibling
-//! crate `firebird-5-mcp-tools` (`crates/mcp-tools`). This crate is a thin
-//! transport layer.
+//! All tool handlers live in the sibling crate `firebird-5-mcp-tools`.
+//! The protocol routing and transports come from the shared MCP platform
+//! (`mcp-protocol` and `mcp-transport`).
 
-mod auth;
-mod files;
-mod sse;
-
-use auth::AuthConfig;
 use firebird_5_mcp_core::{Config, mlog};
-use firebird_5_mcp_tools::{ProtocolCore, build_time};
-use std::io::{self, BufRead, Write};
+use firebird_5_mcp_tools::{build_time, dispatch, tool_definitions};
+use mcp_core::paths;
+use mcp_protocol::{ProtocolCore, ToolHandler};
+use mcp_transport::{AuthConfig, run_sse, run_stdio};
+use serde_json::Value;
 use std::sync::Arc;
+
+/// Server name reported in the `initialize` response.
+const SERVER_NAME: &str = "jed-personal-mcp";
+
+/// Server version reported in the `initialize` response.
+const SERVER_VERSION: &str = "1.0.0";
+
+/// Implements the `ToolHandler` trait for the Firebird MCP server.
+struct FirebirdHandler;
+
+impl ToolHandler for FirebirdHandler {
+    fn server_name(&self) -> &str {
+        SERVER_NAME
+    }
+
+    fn server_version(&self) -> &str {
+        SERVER_VERSION
+    }
+
+    fn build_time(&self) -> &'static str {
+        build_time()
+    }
+
+    fn tool_definitions(&self) -> Value {
+        Value::Array(tool_definitions())
+    }
+
+    fn dispatch(
+        &self,
+        cfg: &Config,
+        name: &str,
+        args: &Value,
+        files_base_url: Option<&str>,
+    ) -> Result<mcp_types::ToolResult, String> {
+        dispatch(cfg, name, args, files_base_url)
+    }
+}
 
 /// CLI arguments for the MCP server.
 struct Args {
@@ -156,6 +191,7 @@ fn print_usage() {
     );
 }
 
+/// Entry point for the MCP server binary (stdio and SSE modes).
 fn main() {
     let args = match parse_args() {
         Ok(a) => a,
@@ -175,9 +211,9 @@ fn main() {
     };
 
     // Initialize file logging to {base}/logs/ (see paths module)
-    let log_dir = firebird_5_mcp_core::paths::logs_dir();
+    let log_dir = paths::logs_dir();
     let _ = std::fs::create_dir_all(&log_dir);
-    firebird_5_mcp_core::log::init(log_dir.to_str().unwrap());
+    mcp_core::log::init(log_dir.to_str().unwrap());
     mlog!("MCP server started (build {})", build_time());
     mlog!(
         "config: host={} port={} user={} dbs=[{}] allowed_paths=[{}]",
@@ -214,7 +250,8 @@ fn main() {
         None
     };
 
-    let core = Arc::new(ProtocolCore::new(cfg, files_base_url.clone()));
+    let handler = Box::new(FirebirdHandler);
+    let core = Arc::new(ProtocolCore::new(cfg, files_base_url.clone(), handler));
 
     if args.sse {
         // Resolve the auth token (token-file overrides --token).
@@ -232,7 +269,7 @@ fn main() {
             files_base_url.as_deref().unwrap_or("<none>")
         );
         let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
-        if let Err(e) = rt.block_on(sse::run_sse(
+        if let Err(e) = rt.block_on(run_sse(
             core,
             &args.host,
             args.port,
@@ -272,40 +309,5 @@ fn resolve_auth(args: &Args) -> AuthConfig {
         AuthConfig::with_token(token.clone())
     } else {
         AuthConfig::disabled()
-    }
-}
-
-/// Runs the stdio transport: reads JSON-RPC lines from stdin and writes
-/// responses to stdout.
-fn run_stdio(core: Arc<ProtocolCore>) {
-    let stdin = io::stdin();
-    let stdout = io::stdout();
-    let reader = stdin.lock();
-    let mut writer = stdout.lock();
-
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => break,
-        };
-        if line.trim().is_empty() {
-            continue;
-        }
-        let request: serde_json::Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(e) => {
-                mlog!("ignoring malformed JSON line: {e}");
-                continue;
-            }
-        };
-
-        if let Some(response) = core.handle_request(&request) {
-            let mut out = response.to_string();
-            out.push('\n');
-            if writer.write_all(out.as_bytes()).is_err() {
-                break;
-            }
-            let _ = writer.flush();
-        }
     }
 }

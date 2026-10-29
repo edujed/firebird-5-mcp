@@ -28,7 +28,7 @@ pub mod ui;
 pub mod view_dto;
 
 use crate::schema::ColumnInfo;
-use firebird_5_mcp_types::is_not_null;
+use mcp_types::is_not_null;
 
 pub use fbtype::FbType;
 pub use generator::{GenOptions, Language, generate};

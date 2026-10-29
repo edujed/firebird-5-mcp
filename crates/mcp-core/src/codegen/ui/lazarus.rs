@@ -9,13 +9,19 @@ use crate::codegen::view_dto::ViewField;
 use crate::schema::ColumnInfo;
 use crate::types::format_column_type;
 
-/// Layout constants for form generation (in pixels).
+/// Left margin for form elements (pixels).
 const MARGEM_ESQUERDA: i32 = 24;
+/// Initial top position for the first field (pixels).
 const TOP_INICIAL_CAMPOS: i32 = 100;
+/// Height of a label element (pixels).
 const ALTURA_LABEL: i32 = 15;
+/// Height of an edit element (pixels).
 const ALTURA_EDIT: i32 = 23;
+/// Vertical space between a label and its edit element (pixels).
 const ESPACO_ENTRE_ELEMENTOS: i32 = 6;
+/// Vertical space between consecutive fields (pixels).
 const ESPACO_ENTRE_CAMPOS: i32 = 16;
+/// Default width for edit elements (pixels).
 const LARGURA_PADRAO_EDIT: i32 = 250;
 
 /// A field in a Lazarus form.

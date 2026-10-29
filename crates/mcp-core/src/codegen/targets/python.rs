@@ -26,6 +26,7 @@ use crate::codegen::is_nullable;
 use crate::codegen::naming::{to_pascal_case, to_snake_case};
 use crate::schema::{ForeignKeyInfo, TableSchema};
 
+/// Python code generation target (SQLAlchemy 2.0 + Pydantic v2).
 pub struct PythonTarget;
 
 /// PK columns: prefer the PRIMARY KEY constraint, fall back to the first
@@ -169,11 +170,14 @@ fn pydantic_imports(schema: &TableSchema) -> Vec<String> {
     imports
 }
 
+/// Implements the `Target` trait for Python code generation.
 impl Target for PythonTarget {
+    /// Maps a Firebird type to a SQLAlchemy column type.
     fn type_for(&self, t: &FbType) -> String {
         sa_type(t)
     }
 
+    /// Generates SQLAlchemy model and Pydantic schema files for the table.
     fn generate(
         &self,
         schema: &TableSchema,
@@ -338,6 +342,7 @@ mod tests {
     use crate::codegen::Language;
     use crate::schema::{ColumnInfo, ConstraintInfo, IndexInfo, TableSchema};
 
+    /// Builds a test ColumnInfo with basic type info.
     fn col(name: &str, type_num: i64, sub_type: i64, size: i64, nullable: bool) -> ColumnInfo {
         ColumnInfo {
             name: name.to_string(),
@@ -353,6 +358,7 @@ mod tests {
         }
     }
 
+    /// Builds a test ColumnInfo with precision/scale (for NUMERIC/DECIMAL).
     fn col_prec(
         name: &str,
         type_num: i64,
@@ -400,6 +406,7 @@ mod tests {
         }
     }
 
+    /// Extracts the SQLAlchemy model content from generated files.
     fn model_content(files: &[GeneratedFile]) -> &str {
         files
             .iter()
@@ -408,6 +415,7 @@ mod tests {
             .unwrap_or("")
     }
 
+    /// Extracts the Pydantic schemas content from generated files.
     fn schemas_content(files: &[GeneratedFile]) -> &str {
         files
             .iter()

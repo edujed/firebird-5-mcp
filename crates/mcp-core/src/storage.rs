@@ -9,32 +9,12 @@ use crate::codegen::targets::GeneratedFile;
 use crate::compression;
 use std::path::PathBuf;
 
-/// Storage configuration from `config.json`.
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct StorageConfig {
-    /// Base directory for generated files.
-    pub dir: String,
-}
-
-impl StorageConfig {
-    /// Returns the effective storage directory.
-    ///
-    /// If `dir` is set, uses it. Otherwise, falls back to
-    /// `{base}/output/` (see [`crate::paths::output_dir`]).
-    pub fn effective_dir(&self) -> Option<PathBuf> {
-        if !self.dir.is_empty() {
-            return Some(PathBuf::from(&self.dir));
-        }
-        Some(crate::paths::output_dir())
-    }
-}
-
 /// Returns the default storage directory: `{base}/output/`.
 ///
 /// This is a persistent, predictable location that survives reboots and
 /// OS temp cleanup. The directory is created on first write.
 pub fn default_storage_dir() -> Option<PathBuf> {
-    Some(crate::paths::output_dir())
+    Some(mcp_core::paths::output_dir())
 }
 
 /// Result of writing generated files to disk.
@@ -211,10 +191,12 @@ fn format_size(bytes: usize) -> String {
     }
 }
 
+/// Truncates each line in the slice to the given max length.
 fn truncate_lines(lines: &[&str], max_len: usize) -> Vec<String> {
     lines.iter().map(|l| truncate_line(l, max_len)).collect()
 }
 
+/// Truncates a single line to the given max length, appending `…` if cut.
 fn truncate_line(line: &str, max_len: usize) -> String {
     if line.len() <= max_len {
         line.to_string()
@@ -349,19 +331,6 @@ mod tests {
         let s = dir.to_str().unwrap();
         assert!(s.contains(".firebird-mcp"));
         assert!(s.ends_with("output") || s.ends_with("output\\"));
-    }
-
-    #[test]
-    fn test_storage_config_effective_dir() {
-        let cfg = StorageConfig {
-            dir: "/custom/path".to_string(),
-        };
-        let dir = cfg.effective_dir().unwrap();
-        assert_eq!(dir, PathBuf::from("/custom/path"));
-
-        let cfg_empty = StorageConfig { dir: String::new() };
-        let dir = cfg_empty.effective_dir();
-        assert!(dir.is_some(), "should fall back to default");
     }
 
     #[test]

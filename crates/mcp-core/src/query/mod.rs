@@ -8,14 +8,17 @@
 use rsfbclient::{Execute, FbError, Queryable};
 use rsfbclient_core::SqlType;
 
-use crate::client::FirebirdClient;
+use mcp_core::FirebirdClient;
 
+/// Script execution, batch inserts, count, sample.
 pub mod batch;
+/// `FIRST`/`SKIP` clause injection for row limiting.
 pub mod row_limit;
+/// SQL statement splitting (`SET TERM`, `BEGIN`/`END`).
 pub mod split;
 
 pub use batch::{count, insert_batch, run_script, sample};
-pub use firebird_5_mcp_types::{ColumnMeta, QueryResult, Value};
+pub use mcp_types::{ColumnMeta, QueryResult, Value};
 pub use row_limit::{DEFAULT_ROWS, MAX_ROWS, accepts_row_limit, inject_row_limit};
 pub use split::split_statements;
 
@@ -88,7 +91,7 @@ fn rows_to_result(rows: Vec<rsfbclient_core::Row>) -> QueryResult {
                 let type_name = sql_type_name(col.raw_type);
                 // NUMERIC/DECIMAL columns arrive as SQL_INT64 (580) with a
                 // decimal text value (vendor patch). Detect them so the
-                // export path can map to Float64 instead of Int64.
+                // export path can map to Decimal128 instead of Int64.
                 let is_numeric = col.raw_type == 580
                     && matches!(
                         &col.value,
@@ -98,6 +101,8 @@ fn rows_to_result(rows: Vec<rsfbclient_core::Row>) -> QueryResult {
                     name,
                     type_name,
                     is_numeric,
+                    precision: 0,
+                    scale: 0,
                 });
             }
         }
@@ -106,7 +111,100 @@ fn rows_to_result(rows: Vec<rsfbclient_core::Row>) -> QueryResult {
             .push((0..row.cols.len()).map(|i| row_value(&row, i)).collect());
     }
 
+    // The driver does not propagate NUMERIC/DECIMAL precision/scale, so
+    // infer them from the data: max integer digits + max fractional digits
+    // across all rows. Precision is capped at 18 (Firebird DECIMAL limit).
+    for (i, col) in result.columns.iter_mut().enumerate() {
+        if !col.is_numeric {
+            continue;
+        }
+        let mut int_digits = 1usize;
+        let mut frac_digits = 0usize;
+        for row in &result.rows {
+            if let Some(Value::Text(s)) = row.get(i) {
+                let body = s.strip_prefix('-').unwrap_or(s);
+                let (int, frac) = match body.split_once('.') {
+                    Some((a, b)) => (a, b),
+                    None => (body, ""),
+                };
+                int_digits = int_digits.max(int.chars().count());
+                frac_digits = frac_digits.max(frac.chars().count());
+            }
+        }
+        let precision = (int_digits + frac_digits).min(18) as u8;
+        col.precision = precision;
+        col.scale = frac_digits.min(precision as usize) as i8;
+    }
+
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rsfbclient_core::Column;
+
+    /// Creates a test column with the given name, raw type, and value.
+    fn col(name: &str, raw_type: u32, value: SqlType) -> Column {
+        Column {
+            name: name.into(),
+            raw_type,
+            value,
+        }
+    }
+
+    /// Creates a test row from the given columns.
+    fn row(cols: Vec<Column>) -> rsfbclient_core::Row {
+        rsfbclient_core::Row { cols }
+    }
+
+    #[test]
+    fn numeric_column_infers_precision_and_scale() {
+        let rows = vec![
+            row(vec![
+                col("A", 580, SqlType::Text("80.00".into())),
+                col("B", 580, SqlType::Text("-1234.5678".into())),
+            ]),
+            row(vec![
+                col("A", 580, SqlType::Text("0.10".into())),
+                col("B", 580, SqlType::Text("9999.9999".into())),
+            ]),
+            row(vec![
+                col("A", 580, SqlType::Null),
+                col("B", 580, SqlType::Text("0.0001".into())),
+            ]),
+        ];
+        let result = rows_to_result(rows);
+        assert!(result.columns[0].is_numeric);
+        assert_eq!(result.columns[0].precision, 4); // 80.00 → 2 int + 2 frac
+        assert_eq!(result.columns[0].scale, 2);
+        assert!(result.columns[1].is_numeric);
+        assert_eq!(result.columns[1].precision, 8); // 1234.5678
+        assert_eq!(result.columns[1].scale, 4);
+    }
+
+    #[test]
+    fn all_null_numeric_column_gets_default_precision() {
+        let rows = vec![row(vec![
+            col("A", 580, SqlType::Text("1.5".into())),
+            col("B", 580, SqlType::Null),
+        ])];
+        let result = rows_to_result(rows);
+        assert!(result.columns[0].is_numeric);
+        assert_eq!(result.columns[0].precision, 2); // 1.5 → 1 int + 1 frac
+        assert_eq!(result.columns[0].scale, 1);
+        // B: first row is null → not detected as numeric at all
+        assert!(!result.columns[1].is_numeric);
+    }
+
+    #[test]
+    fn scale_zero_numeric_stays_bigint() {
+        let rows = vec![row(vec![col("A", 580, SqlType::Text("123".into()))])];
+        let result = rows_to_result(rows);
+        // No '.' in the value → not flagged as numeric → stays BIGINT (exact)
+        assert!(!result.columns[0].is_numeric);
+        assert_eq!(result.columns[0].type_name, "BIGINT");
+    }
 }
 
 /// Maps a raw Firebird SQL type code (wire `sqltype` from `XSqlVar`) to a

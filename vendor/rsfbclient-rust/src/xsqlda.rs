@@ -151,10 +151,14 @@ pub fn xsqlda_to_blr(xsqlda: &[XSqlVar]) -> Result<Bytes, FbError> {
                 blr.put_i16_le(var.data_length);
             }
 
-            ibase::SQL_INT64 => blr.put_slice(&[
-                consts::blr::INT64,
-                0, // Scale
-            ]),
+            ibase::SQL_INT64 => {
+                // FIREBIRD-5-MCP PATCH: carry the real scale. Upstream always
+                // sent 0 because `coerce` zeroed the scale and converted
+                // NUMERIC/DECIMAL to double. The patch keeps the scaled
+                // integer, so the engine must be told the scale or it returns
+                // the unscaled integer and the driver mis-renders it.
+                blr.put_slice(&[consts::blr::INT64, var.scale as u8]);
+            }
 
             ibase::SQL_INT128 => blr.put_slice(&[consts::blr::INT128, var.scale as u8]),
 
@@ -468,5 +472,44 @@ mod tests {
 
         let blr = xsqlda_to_blr(&[var]).unwrap();
         assert_eq!(&blr[6..8], &[consts::blr::INT128, 0]);
+    }
+
+    #[test]
+    fn fixed_point_int64_carries_scale_in_blr() {
+        // FIREBIRD-5-MCP PATCH: NUMERIC/DECIMAL backed by INT64 must carry the
+        // real scale in the BLR, otherwise the engine returns the unscaled
+        // integer and the driver mis-renders it (e.g. 1234.5678 -> 0.1235).
+        let mut var = XSqlVar {
+            sqltype: ibase::SQL_INT64 as i16 + 1,
+            scale: -4,
+            sqlsubtype: 0,
+            data_length: 8,
+            ..Default::default()
+        };
+
+        var.coerce().unwrap();
+
+        assert_eq!(var.sqltype, ibase::SQL_INT64 as i16 + 1);
+        assert_eq!(var.scale, -4);
+
+        let blr = xsqlda_to_blr(&[var]).unwrap();
+        // The BLR carries the raw (signed) scale byte: -4 == 252 as u8.
+        assert_eq!(&blr[6..8], &[consts::blr::INT64, 252]);
+    }
+
+    #[test]
+    fn integer_int64_carries_zero_scale_in_blr() {
+        let mut var = XSqlVar {
+            sqltype: ibase::SQL_INT64 as i16 + 1,
+            scale: 0,
+            sqlsubtype: 0,
+            data_length: 8,
+            ..Default::default()
+        };
+
+        var.coerce().unwrap();
+
+        let blr = xsqlda_to_blr(&[var]).unwrap();
+        assert_eq!(&blr[6..8], &[consts::blr::INT64, 0]);
     }
 }

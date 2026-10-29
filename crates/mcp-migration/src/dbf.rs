@@ -14,10 +14,8 @@ use std::io::Cursor;
 use chrono::Datelike;
 use dbase::{Date, DateTime, FieldName, FieldValue, Record, TableWriterBuilder};
 
-use firebird_5_mcp_core::client::FirebirdClient;
-use firebird_5_mcp_core::mlog;
-use firebird_5_mcp_core::query::Value;
-use firebird_5_mcp_types::QueryResult;
+use firebird_5_mcp_core::{FirebirdClient, mlog};
+use mcp_types::{QueryResult, Value};
 
 use crate::format::{CodePage, Format};
 use crate::import::{ImportMode, ImportResult, insert_rows_in_batches, keep_column_indices};
